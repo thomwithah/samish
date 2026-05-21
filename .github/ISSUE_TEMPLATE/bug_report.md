@@ -1,58 +1,28 @@
-\---
-
-name: 🐛 Bug Report
-
+﻿---
+name: Bug Report
 about: Create a report to help us improve SAMISH
-
-title: '\[BUG] '
-
+title: '[BUG] '
 labels: bug
-
 assignees: ''
+---
 
-\---
-
-
-
-\*\*Describe the bug\*\*
-
+**Describe the bug**
 A clear and concise description of what the bug is.
 
-
-
-\*\*To Reproduce\*\*
-
+**To Reproduce**
 Steps to reproduce the behavior:
+1. Go to '...'
+2. Click on '....'
+3. See error
 
-1\. Go to '...'
-
-2\. Click on '....'
-
-3\. See error
-
-
-
-\*\*Expected Behavior\*\*
-
+**Expected Behavior**
 A clear and concise description of what you expected to happen.
 
+**System Information:**
+- Windows Version: [e.g. Windows 11]
+- SAMISH Version:
+- Audio Hardware: [e.g. BEACN Mix]
+- SAMISH Mode: [Hidden / Interactive]
 
-
-\*\*System Information:\*\*
-
-\- Windows Version: \[e.g. Windows 11 23H2]
-
-\- SAMISH Version: \[e.g. 1.0.3]
-
-\- Audio Hardware/Software: \[e.g. BEACN Mix Create]
-
-\- SAMISH Mode: \[Hidden / Interactive]
-
-
-
-\*\*Additional Context\*\*
-
+**Additional Context**
 Add any other context or logs about the problem here.
-
-
-
