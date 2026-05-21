@@ -10,7 +10,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.3"
+$ScriptVersion = "v1.0.4"
 $ReleaseDate   = "2026-05-03"
 
 # ---------- PATH RESOLUTION ----------
@@ -461,6 +461,12 @@ function Invoke-MixerStart {
     # 2. Start all custom monitored apps
     if ($script:MonitoredApps) {
         foreach ($app in $script:MonitoredApps) {
+            # Honour per-app NoRestartOnWake flag - skip restart if user opted out
+            if ($app.NoRestartOnWake -eq $true) {
+                Log-Always "Skipping restart of $($app.ProcessName) (NoRestartOnWake = true)"
+                continue
+            }
+
             # Check if already running
             if (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue) {
                 Log-Always "Custom app $($app.ProcessName) is already running."
@@ -506,7 +512,7 @@ if ($EnableTrayIcon) {
     $script:icon.Visible = $true
 
     # Note: NotifyIcon.Text has a short length limit
-    $script:icon.Text = "SAMISH v1.0.3"
+    $script:icon.Text = "SAMISH v1.0.4"
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem

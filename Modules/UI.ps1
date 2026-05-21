@@ -1,4 +1,4 @@
-﻿# ---------- UI ----------
+# ---------- UI ----------
 function Get-HighQualityScaledImage {
     param(
         [string]$Path,
@@ -36,7 +36,7 @@ if ($EnableTrayIcon) {
     $script:icon.Icon = if ($script:IconActive) { $script:IconActive } else { [System.Drawing.SystemIcons]::Application }
     $script:icon.Visible = $true
 
-    $script:icon.Text = "SAMISH v1.0.3"
+    $script:icon.Text = "SAMISH v1.0.4"
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1396,7 +1396,7 @@ function Show-SleepDiagnosticsDialog {
     $diagForm.FormBorderStyle = "FixedDialog"
     $diagForm.MaximizeBox = $false
     $diagForm.MinimizeBox = $false
-    $diagForm.ClientSize = New-Object System.Drawing.Size(720, 660)
+    $diagForm.ClientSize = New-Object System.Drawing.Size(720, 693)
     if ($form.Icon) { $diagForm.Icon = $form.Icon }
 
     $diagTip = New-Object System.Windows.Forms.ToolTip
@@ -1502,7 +1502,7 @@ function Show-SleepDiagnosticsDialog {
     $grpOverrides.Text = "Ignored Blockers (System Overrides)"
     $grpOverrides.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $grpOverrides.ForeColor = $BrandPurple
-    $grpOverrides.Size = New-Object System.Drawing.Size($colW, 185)
+    $grpOverrides.Size = New-Object System.Drawing.Size($colW, 218)
     $grpOverrides.Location = New-Object System.Drawing.Point($leftX, 396)
     $diagForm.Controls.Add($grpOverrides)
     $diagTip.SetToolTip($grpOverrides, "Blockers currently configured to be ignored by Windows - they will not prevent sleep or hibernation.")
@@ -1519,7 +1519,7 @@ function Show-SleepDiagnosticsDialog {
     $btnDiagRestore.Font = $font
     $btnDiagRestore.ForeColor = [System.Drawing.SystemColors]::ControlText
     $btnDiagRestore.Size = New-Object System.Drawing.Size(150, 30)
-    $btnDiagRestore.Location = New-Object System.Drawing.Point(10, 145)
+    $btnDiagRestore.Location = New-Object System.Drawing.Point(10, 178)
     $btnDiagRestore.Enabled = $false
     $grpOverrides.Controls.Add($btnDiagRestore)
     $diagTip.SetToolTip($btnDiagRestore, "Remove the override and let this item's power requests once again affect sleep and hibernation behaviour.")
@@ -1570,10 +1570,10 @@ function Show-SleepDiagnosticsDialog {
     $grpOperatingMode.Text = "Operating Mode"
     $grpOperatingMode.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $grpOperatingMode.ForeColor = $BrandPurple
-    $grpOperatingMode.Size = New-Object System.Drawing.Size($colW2, 185)
+    $grpOperatingMode.Size = New-Object System.Drawing.Size($colW2, 218)
     $grpOperatingMode.Location = New-Object System.Drawing.Point($rightX, 396)
     $diagForm.Controls.Add($grpOperatingMode)
-    $diagTip.SetToolTip($grpOperatingMode, "Choose how SAMISH will close an application before sleep or hibernation. This can differ from the global SAMISH operating mode.")
+    $diagTip.SetToolTip($grpOperatingMode, "Choose how SAMISH will close an application before sleep or hibernation. This can differ from the global SAMISH operating mode.`r`n`r`nDo not restart on wake: When checked, SAMISH will close the app before sleep but will NOT reopen it when the system wakes - ideal for media apps like browsers streaming video where auto-restart would be disruptive.`r`n`r`nSelect an application from the Active Blockers list to configure these options.")
 
     $rbGraceful = New-Object System.Windows.Forms.RadioButton
     $rbGraceful.Text = "Graceful (Recommended)"
@@ -1612,6 +1612,24 @@ function Show-SleepDiagnosticsDialog {
     $lblClassicDesc.Location = New-Object System.Drawing.Point(28, 108)
     $grpOperatingMode.Controls.Add($lblClassicDesc)
 
+    $cbNoRestartOnWake = New-Object System.Windows.Forms.CheckBox
+    $cbNoRestartOnWake.Text = "Do not restart this app on wake"
+    $cbNoRestartOnWake.Font = $font
+    $cbNoRestartOnWake.ForeColor = [System.Drawing.SystemColors]::ControlText
+    $cbNoRestartOnWake.AutoSize = $true
+    $cbNoRestartOnWake.Location = New-Object System.Drawing.Point(12, 152)
+    $grpOperatingMode.Controls.Add($cbNoRestartOnWake)
+    $diagTip.SetToolTip($cbNoRestartOnWake, "When checked, SAMISH will still close this app before sleep or hibernation, but will NOT reopen it when the system wakes. Useful for media apps (e.g. a browser streaming video) where auto-restart on wake would be disruptive.")
+
+    $lblNoRestartDesc = New-Object System.Windows.Forms.Label
+    $lblNoRestartDesc.Text = "App closes before sleep, but stays closed on wake."
+    $lblNoRestartDesc.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $lblNoRestartDesc.ForeColor = [System.Drawing.Color]::DimGray
+    $lblNoRestartDesc.AutoSize = $false
+    $lblNoRestartDesc.Size = New-Object System.Drawing.Size(310, 18)
+    $lblNoRestartDesc.Location = New-Object System.Drawing.Point(28, 174)
+    $grpOperatingMode.Controls.Add($lblNoRestartDesc)
+
     # ---- Detail / status bar ----
     $script:lblDiagDetail = New-Object System.Windows.Forms.Label
     $script:lblDiagDetail.Text = "Select an item from the Active Blockers list to see details, or click Scan Blockers."
@@ -1619,7 +1637,7 @@ function Show-SleepDiagnosticsDialog {
     $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
     $script:lblDiagDetail.AutoSize = $false
     $script:lblDiagDetail.Size = New-Object System.Drawing.Size(688, 40)
-    $script:lblDiagDetail.Location = New-Object System.Drawing.Point(16, 595)
+    $script:lblDiagDetail.Location = New-Object System.Drawing.Point(16, 628)
     $diagForm.Controls.Add($script:lblDiagDetail)
 
     # ---- Store references for event handler module ----
@@ -1632,6 +1650,14 @@ function Show-SleepDiagnosticsDialog {
     $script:btnDiagOpenLocation = $btnDiagOpenLocation
     $script:rbDiagGraceful = $rbGraceful
     $script:rbDiagClassic = $rbClassic
+    $script:cbDiagNoRestartOnWake = $cbNoRestartOnWake
+    $script:grpDiagOperatingMode = $grpOperatingMode
+
+    # ---- Set initial greyed-out state for Operating Mode box ----
+    # GroupBox itself stays Enabled so its tooltip remains hoverable.
+    # Only its child controls are disabled, and the title is manually greyed.
+    $grpOperatingMode.ForeColor = [System.Drawing.Color]::Gray
+    foreach ($ctrl in $grpOperatingMode.Controls) { $ctrl.Enabled = $false }
 
     # ---- Delegate wiring to event-handlers module ----
     if (Get-Command Init-SleepDiagnosticsEventHandlers -ErrorAction SilentlyContinue) {

@@ -572,12 +572,70 @@ function Save-MonitoredAppsToConfig {
     }
 }
 
+# ---- Helper: enable/disable Operating Mode box children in Sleep Diagnostics ----
+# Defined at file scope so event handler scriptblocks can always resolve it.
+function Set-OperatingModeBoxState {
+    param([bool]$Enabled)
+
+    if (-not $script:grpDiagOperatingMode) { return }
+
+    foreach ($ctrl in $script:grpDiagOperatingMode.Controls) {
+        $ctrl.Enabled = $Enabled
+    }
+
+    if ($Enabled) {
+        # Kill any previous flash timer before starting a new one (prevents race condition crash)
+        if ($script:diagFlashTimer) {
+            $script:diagFlashTimer.Stop()
+            $script:diagFlashTimer.Dispose()
+            $script:diagFlashTimer = $null
+        }
+
+        # Triple-flash: Cyan -> Purple -> Cyan -> Purple -> Cyan -> Purple (6 ticks @ 180ms each)
+        $script:grpDiagOperatingMode.ForeColor = $BrandCyan
+        $script:grpDiagOperatingMode.Refresh()
+        $script:diagFlashTick = 0
+        $script:diagFlashTimer = New-Object System.Windows.Forms.Timer
+        $script:diagFlashTimer.Interval = 180
+        $script:diagFlashTimer.add_Tick({
+                $script:diagFlashTick++
+                if ($script:diagFlashTick % 2 -eq 0) {
+                    $script:grpDiagOperatingMode.ForeColor = $BrandCyan
+                } else {
+                    $script:grpDiagOperatingMode.ForeColor = $BrandPurple
+                }
+                if ($script:diagFlashTick -ge 5) {
+                    # Ensure we end on purple then clean up
+                    $script:grpDiagOperatingMode.ForeColor = $BrandPurple
+                    if ($script:diagFlashTimer) {
+                        $script:diagFlashTimer.Stop()
+                        $script:diagFlashTimer.Dispose()
+                        $script:diagFlashTimer = $null
+                    }
+                }
+            })
+        $script:diagFlashTimer.Start()
+    }
+    else {
+        # Also kill any running flash timer when disabling
+        if ($script:diagFlashTimer) {
+            $script:diagFlashTimer.Stop()
+            $script:diagFlashTimer.Dispose()
+            $script:diagFlashTimer = $null
+        }
+        $script:grpDiagOperatingMode.ForeColor = [System.Drawing.Color]::Gray
+    }
+}
+
 # ---- Main init (called from Show-SleepDiagnosticsDialog) ----
 
 function Init-SleepDiagnosticsEventHandlers {
 
     # Populate lists on first open
     Update-SleepDiagnosticsLists
+
+    # Guard flag: prevents the two list selection handlers from triggering each other
+    $script:diagListMutex = $false
 
     # ---------- Scan Blockers ----------
     $script:btnDiagScan.add_Click({
@@ -587,6 +645,11 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Active Blockers selection ----------
     $script:listBlockers.add_SelectedIndexChanged({
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            $script:listAutomated.ClearSelected()
+            $script:diagListMutex = $false
+
             $idx = $script:listBlockers.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:ActiveBlockersList.Count)
 
@@ -595,6 +658,7 @@ function Init-SleepDiagnosticsEventHandlers {
 
             if (-not $hasValidItem) {
                 $script:lblDiagDetail.Text = "Select an active blocker to see details."
+                Set-OperatingModeBoxState -Enabled $false
                 return
             }
 
@@ -605,10 +669,17 @@ function Init-SleepDiagnosticsEventHandlers {
             if ($b.BlockerType -eq 'App') {
                 $script:btnDiagAutomate.Enabled = $true
                 $script:btnDiagIgnore.Enabled = $false
+
+                # Light up the Operating Mode box and reset to safe defaults
+                Set-OperatingModeBoxState -Enabled $true
+                if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                if ($script:cbDiagNoRestartOnWake) { $script:cbDiagNoRestartOnWake.Checked = $false }
             }
             else {
                 $script:btnDiagAutomate.Enabled = $false
                 $script:btnDiagIgnore.Enabled = $true
+                # Non-app blockers can't be automated; grey the box back out
+                Set-OperatingModeBoxState -Enabled $false
             }
         })
 
@@ -625,6 +696,11 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Automated Apps selection ----------
     $script:listAutomated.add_SelectedIndexChanged({
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            $script:listBlockers.ClearSelected()
+            $script:diagListMutex = $false
+
             $idx = $script:listAutomated.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count)
             $script:btnDiagStopAuto.Enabled = $hasValidItem
@@ -633,6 +709,22 @@ function Init-SleepDiagnosticsEventHandlers {
                 $app = $script:MonitoredApps[$idx]
                 $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
                 $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
+
+                # Light up the Operating Mode box and sync its controls to this app's saved values
+                Set-OperatingModeBoxState -Enabled $true
+                if ($mode -eq "Classic") {
+                    if ($script:rbDiagClassic) { $script:rbDiagClassic.Checked = $true }
+                }
+                else {
+                    if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                }
+                if ($script:cbDiagNoRestartOnWake) {
+                    $script:cbDiagNoRestartOnWake.Checked = ($app.NoRestartOnWake -eq $true)
+                }
+            }
+            else {
+                # Nothing selected — grey the box back out
+                Set-OperatingModeBoxState -Enabled $false
             }
         })
 
@@ -674,15 +766,23 @@ function Init-SleepDiagnosticsEventHandlers {
             }
 
             $chosenMode = if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) { "Classic" } else { "Graceful" }
+            $noRestart  = ($script:cbDiagNoRestartOnWake -and $script:cbDiagNoRestartOnWake.Checked)
 
             $modeDetail = if ($chosenMode -eq "Classic") {
-                "Classic mode: immediately terminates the app - more reliable, but any unsaved work in that application will be lost."
+                "Mode: Classic  -  Immediately terminates the app. More reliable, but any unsaved work will be lost."
             }
             else {
-                "Graceful mode: asks the app to close cleanly - safer for unsaved work, but may occasionally fail if the app is unresponsive."
+                "Mode: Graceful  -  Asks the app to close cleanly. Safer for unsaved work, but may occasionally fail if unresponsive."
             }
 
-            $msg = "SAMISH will automatically close $($b.ProcessName) before your computer sleeps or hibernates, then restart it when the system wakes.`r`n`r`n$modeDetail`r`n`r`nConfigure automated recovery for $($b.ProcessName) using $chosenMode mode?"
+            $wakeDetail = if ($noRestart) {
+                "On wake: App will be left CLOSED (Do not restart on wake is checked)."
+            }
+            else {
+                "On wake: App will be restarted automatically."
+            }
+
+            $msg = "SAMISH will automatically close $($b.ProcessName) before your computer sleeps or hibernates.`r`n`r`n$modeDetail`r`n`r`n$wakeDetail`r`n`r`nConfigure automated management for $($b.ProcessName) with these settings?"
 
             $choice = [System.Windows.Forms.MessageBox]::Show(
                 $msg,
@@ -693,16 +793,19 @@ function Init-SleepDiagnosticsEventHandlers {
 
             if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
                 $newApp = [ordered]@{
-                    ProcessName    = $b.ProcessName
-                    ExecutablePath = $path
-                    RecoveryMode   = $chosenMode
+                    ProcessName      = $b.ProcessName
+                    ExecutablePath   = $path
+                    RecoveryMode     = $chosenMode
+                    NoRestartOnWake  = $noRestart
                 }
                 $script:MonitoredApps += [pscustomobject]$newApp
                 Save-MonitoredAppsToConfig
                 Update-SleepDiagnosticsLists
-                $script:lblDiagDetail.Text = "$($b.ProcessName) has been added to SAMISH automation ($chosenMode mode)."
+                $wakeStatus = if ($noRestart) { "will NOT restart on wake" } else { "will restart on wake" }
+                $script:lblDiagDetail.Text = "$($b.ProcessName) added to SAMISH automation ($chosenMode mode, $wakeStatus)."
             }
         })
+
 
     # ---------- Ignore Blocker ----------
     $script:btnDiagIgnore.add_Click({
@@ -761,6 +864,11 @@ function Init-SleepDiagnosticsEventHandlers {
                 Save-MonitoredAppsToConfig
                 Update-SleepDiagnosticsLists
                 $script:lblDiagDetail.Text = "$($app.ProcessName) removed from SAMISH automation."
+
+                # No app is selected after removal — grey the Operating Mode box and reset to safe defaults
+                Set-OperatingModeBoxState -Enabled $false
+                if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                if ($script:cbDiagNoRestartOnWake) { $script:cbDiagNoRestartOnWake.Checked = $false }
             }
         })
 
@@ -814,6 +922,43 @@ function Init-SleepDiagnosticsEventHandlers {
                 }
             }
         })
+
+    # ---------- No-Restart-On-Wake live toggle ----------
+    if ($script:cbDiagNoRestartOnWake) {
+        $script:cbDiagNoRestartOnWake.add_CheckedChanged({
+                $idx = $script:listAutomated.SelectedIndex
+                if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
+
+                $app = $script:MonitoredApps[$idx]
+                $app.NoRestartOnWake = $script:cbDiagNoRestartOnWake.Checked
+                $script:MonitoredApps[$idx] = $app
+                Save-MonitoredAppsToConfig
+
+                $status = if ($script:cbDiagNoRestartOnWake.Checked) { "will NOT restart on wake" } else { "will restart on wake" }
+                $script:lblDiagDetail.Text = "$($app.ProcessName) updated: $status."
+            })
+    }
+
+    # ---------- Live-save Graceful/Classic radio (for already-automated apps) ----------
+    $saveRecoveryMode = {
+        $idx = $script:listAutomated.SelectedIndex
+        if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
+
+        # Only act on the radio that was just turned ON (both fire; ignore the one turning OFF)
+        $chosenMode = if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) { "Classic" } else { "Graceful" }
+
+        $app = $script:MonitoredApps[$idx]
+        if ($app.RecoveryMode -eq $chosenMode) { return }  # no change needed
+
+        $app.RecoveryMode = $chosenMode
+        $script:MonitoredApps[$idx] = $app
+        Save-MonitoredAppsToConfig
+
+        $script:lblDiagDetail.Text = "$($app.ProcessName) updated: mode changed to $chosenMode."
+    }
+
+    if ($script:rbDiagGraceful) { $script:rbDiagGraceful.add_CheckedChanged($saveRecoveryMode) }
+    if ($script:rbDiagClassic)  { $script:rbDiagClassic.add_CheckedChanged($saveRecoveryMode) }
 }
 
 
