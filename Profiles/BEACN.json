@@ -1,0 +1,16 @@
+{
+  "id": "BEACN",
+  "displayName": "BEACN",
+  "targets": [
+    {
+      "processName": "BEACN",
+      "defaultExePath": "C:\\Program Files\\BEACN\\BEACN App\\BEACN.exe",
+      "supportsGraceful": true,
+      "supportsClassic": true
+    }
+  ],
+  "defaults": {
+    "GracefulWindowWakeDelayMs": 800,
+    "GracefulShutdownWaitMs": 800
+  }
+}

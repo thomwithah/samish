@@ -1,0 +1,16 @@
+{
+  "id": "DEMO",
+  "displayName": "Demo Device (UI Test)",
+  "targets": [
+    {
+      "processName": "DEMO_PROCESS",
+      "defaultExePath": "C:\\Path\\To\\Demo.exe",
+      "supportsGraceful": true,
+      "supportsClassic": false
+    }
+  ],
+  "defaults": {
+    "GracefulWindowWakeDelayMs": 800,
+    "GracefulShutdownWaitMs": 800
+  }
+}

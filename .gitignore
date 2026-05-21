@@ -1,0 +1,7 @@
+﻿build-tools/
+dist/
+build.bat
+build.ps1
+config.txt
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,78 @@
+SAMISH Source-Available License (Fair-Code Style)
+Version 1.0.3
+
+Copyright (c) 2026 thomwithah
+All rights reserved except as granted below.
+
+Acceptance
+By using, copying, modifying, or distributing this software, you agree to these terms.
+
+Definitions
+"Software" means SAMISH and all files included with it.
+"Licensor" means thomwithah.
+"You" means the individual or entity using the Software.
+"Your Organization" means the organization you work for, including its affiliates under common control.
+"Commercial Use" is defined below.
+
+License Grant (Personal, Noncommercial, and Small Organization Internal Use)
+Subject to the restrictions below, the Licensor grants You a non-exclusive, worldwide, royalty-free right to:
+- use the Software
+- modify the Software
+- create derivative works from the Software
+- distribute the Software under the Free Redistribution rules below
+
+Small Organization Internal Use Exception
+Internal use by Your Organization is permitted at no cost only if BOTH of the following are true:
+1) Your Organization has 10 or fewer total individuals working as employees and contractors, and
+2) Your Organization had 100,000 USD or less total revenue in the prior tax year
+
+If Your Organization exceeds either threshold, then internal business use requires a commercial license.
+
+Free Redistribution (Permitted)
+You may distribute the Software for free, including posting it for free download, as long as all of the following are true:
+- You do not charge money or other consideration for the Software
+- You do not bundle the Software with any paid product, paid service, or paid software offering
+- You include the required notices and do not remove them
+
+Commercial Use (Requires a Paid Commercial License)
+Commercial Use is not permitted under this license.
+Commercial Use includes any use, distribution, or bundling of the Software that supports, enables, or is part of a paid product, paid service, or paid system.
+
+Commercial Use includes, without limitation:
+- bundling the Software into paid software
+- bundling the Software into a paid installer or paid distribution
+- providing the Software as part of a product or service for which payment is required
+- providing the Software in connection with hardware or devices that are sold or leased
+- providing the Software in connection with software required to operate, configure, or enhance hardware or devices that are sold or leased, even if that software is distributed at no charge
+- offering hosted access to the Software for a fee
+
+If you want to use the Software commercially, you must obtain a commercial license from the Licensor.
+
+Required Notices
+You must preserve the following notices in any copy or distribution of the Software:
+- Copyright (c) 2026 thomwithah
+- This license text (or a link to it)
+- Any attribution or license notice included in the Software files
+
+You may add your own notices, but you may not remove or obscure the Licensor's notices.
+
+No Trademark Rights
+This license does not grant any rights to use the Licensor’s names, logos, or trademarks beyond truthful attribution.
+
+No Warranty
+The Software is provided as-is, without warranty of any kind.
+
+Limitation of Liability
+To the maximum extent permitted by law, the Licensor is not liable for damages arising from use of the Software.
+
+Termination
+If you violate these terms, your rights under this license end automatically.
+If you come into compliance and correct the violation within 32 days of written notice from the Licensor, the Licensor may reinstate your rights at the Licensor’s discretion.
+
+Contact
+Contact
+For commercial licensing inquiries:
+https://forms.gle/BYfxQqKgUpYfiyUo8 
+
+Fallback:
+fakerjs+license@gmail.com

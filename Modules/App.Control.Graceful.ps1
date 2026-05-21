@@ -1,0 +1,243 @@
+# ==========================================
+# SAMISH App Control - Graceful Mode
+# ==========================================
+
+# This module attempts a graceful shutdown using window messages.
+# If graceful shutdown fails (no window handle or process still running),
+# it falls back to Classic (force kill) via Invoke-AppStop.
+
+function Invoke-AppStopGraceful {
+    param(
+        [string]$ProcessName = "BEACN",
+        [string]$ConfiguredPath = $null,
+        [int]$WindowWakeDelayMs = 800,
+        [int]$ShutdownWaitMs = 800
+    )
+
+    # Return object contract:
+    # @{
+    #   Stopped = bool
+    #   Method = "Graceful" | "ClassicFallback" | "NotRunning" | "Error"
+    #   WindowRestored = bool
+    #   FallbackUsed = bool
+    #   Error = string
+    # }
+
+    $windowRestored = $false
+
+    # 1) Confirm process running
+    $p = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $p) {
+        return @{
+            Stopped = $false
+            Method = "NotRunning"
+            WindowRestored = $false
+            FallbackUsed = $false
+            Error = ""
+        }
+    }
+
+    $procId = $p.Id
+
+    # 2) Ensure SendMessage is available
+    $sig = @"
+using System;
+using System.Runtime.InteropServices;
+public static class SamishWin32 {
+  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+  public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+"@
+
+    if (-not ([System.Management.Automation.PSTypeName]'SamishWin32').Type) {
+        try {
+            Add-Type -TypeDefinition $sig -Language CSharp -ErrorAction Stop | Out-Null
+        } catch {
+            # If type load fails, we cannot do graceful messaging.
+            if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+                $r = Invoke-AppStop -ProcessName $ProcessName
+                return @{
+                    Stopped = [bool]$r.Stopped
+                    Method = "ClassicFallback"
+                    WindowRestored = $false
+                    FallbackUsed = $true
+                    Error = "Failed to load user32 SendMessage. Fell back to Classic."
+                }
+            }
+            return @{
+                Stopped = $false
+                Method = "Error"
+                WindowRestored = $false
+                FallbackUsed = $false
+                Error = "Failed to load user32 SendMessage and Classic fallback not available."
+            }
+        }
+    }
+
+    # 3) Ensure window handle exists; if tray-only, restore UI
+    try {
+        # Refresh process object by PID to get latest window handle
+        $p = Get-Process -Id $procId -ErrorAction Stop
+    } catch {
+        return @{
+            Stopped = $false
+            Method = "Error"
+            WindowRestored = $false
+            FallbackUsed = $false
+            Error = "Process disappeared while preparing graceful stop."
+        }
+    }
+
+    if ($p.MainWindowHandle -eq 0) {
+
+        # Need executable path to restore UI (same PID behavior expected)
+        $exe = $null
+        if (Get-Command Get-AppExecutablePath -ErrorAction SilentlyContinue) {
+            $info = Get-AppExecutablePath -ProcessName $ProcessName -ConfiguredPath $ConfiguredPath
+            if ($info -and $info.IsValid) { $exe = $info.Path }
+        }
+
+        if (-not $exe) {
+            # Can't restore UI; fall back
+            if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+                $r = Invoke-AppStop -ProcessName $ProcessName
+                return @{
+                    Stopped = [bool]$r.Stopped
+                    Method = "ClassicFallback"
+                    WindowRestored = $false
+                    FallbackUsed = $true
+                    Error = "No window handle and could not resolve executable path. Fell back to Classic."
+                }
+            }
+            return @{
+                Stopped = $false
+                Method = "Error"
+                WindowRestored = $false
+                FallbackUsed = $false
+                Error = "No window handle and could not resolve BEACN path, and Classic fallback not available."
+            }
+        }
+
+        try {
+            # This should restore or open the window for the existing process instance.
+            Start-Process -FilePath $exe | Out-Null
+            $windowRestored = $true
+        } catch {
+            # Restore attempt failed; fall back
+            if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+                $r = Invoke-AppStop -ProcessName $ProcessName
+                return @{
+                    Stopped = [bool]$r.Stopped
+                    Method = "ClassicFallback"
+                    WindowRestored = $false
+                    FallbackUsed = $true
+                    Error = "Failed to restore UI. Fell back to Classic."
+                }
+            }
+            return @{
+                Stopped = $false
+                Method = "Error"
+                WindowRestored = $false
+                FallbackUsed = $false
+                Error = "Failed to restore UI and Classic fallback not available."
+            }
+        }
+
+        Start-Sleep -Milliseconds $WindowWakeDelayMs
+
+        # Refresh handle
+        try {
+            $p = Get-Process -Id $procId -ErrorAction Stop
+        } catch {
+            return @{
+                Stopped = $true
+                Method = "Graceful"
+                WindowRestored = $windowRestored
+                FallbackUsed = $false
+                Error = ""
+            }
+        }
+    }
+
+    # If still no handle, fallback
+    if ($p.MainWindowHandle -eq 0) {
+        if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+            $r = Invoke-AppStop -ProcessName $ProcessName
+            return @{
+                Stopped = [bool]$r.Stopped
+                Method = "ClassicFallback"
+                WindowRestored = $windowRestored
+                FallbackUsed = $true
+                Error = "No window handle after restore attempt. Fell back to Classic."
+            }
+        }
+        return @{
+            Stopped = $false
+            Method = "Error"
+            WindowRestored = $windowRestored
+            FallbackUsed = $false
+            Error = "No window handle after restore attempt and Classic fallback not available."
+        }
+    }
+
+    # 4) Send graceful shutdown messages
+    try {
+        # WM_QUERYENDSESSION = 0x0011
+        # WM_ENDSESSION     = 0x0016
+        [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0011, [IntPtr]::Zero, [IntPtr]::new(1)) | Out-Null
+        [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0016, [IntPtr]::new(1), [IntPtr]::new(1)) | Out-Null
+    } catch {
+        # Messaging failed; fallback
+        if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+            $r = Invoke-AppStop -ProcessName $ProcessName
+            return @{
+                Stopped = [bool]$r.Stopped
+                Method = "ClassicFallback"
+                WindowRestored = $windowRestored
+                FallbackUsed = $true
+                Error = "Failed to send shutdown messages. Fell back to Classic."
+            }
+        }
+        return @{
+            Stopped = $false
+            Method = "Error"
+            WindowRestored = $windowRestored
+            FallbackUsed = $false
+            Error = "Failed to send shutdown messages and Classic fallback not available."
+        }
+    }
+
+    # 5) Wait briefly, then check if process exited
+    Start-Sleep -Milliseconds $ShutdownWaitMs
+
+    $stillRunning = Get-Process -Id $procId -ErrorAction SilentlyContinue
+    if (-not $stillRunning) {
+        return @{
+            Stopped = $true
+            Method = "Graceful"
+            WindowRestored = $windowRestored
+            FallbackUsed = $false
+            Error = ""
+        }
+    }
+
+    # 6) Fallback to Classic
+    if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+        $r = Invoke-AppStop -ProcessName $ProcessName
+        return @{
+            Stopped = [bool]$r.Stopped
+            Method = "ClassicFallback"
+            WindowRestored = $windowRestored
+            FallbackUsed = $true
+            Error = "Graceful shutdown did not exit in time. Fell back to Classic."
+        }
+    }
+
+    return @{
+        Stopped = $false
+        Method = "Error"
+        WindowRestored = $windowRestored
+        FallbackUsed = $false
+        Error = "Graceful shutdown did not exit in time and Classic fallback not available."
+    }
+}
