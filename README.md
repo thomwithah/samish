@@ -15,8 +15,6 @@ Version: 1.0.3
 
 ## TL;DR (for BEACN users)
 
-- Run Setup.bat or Use SAMISH.exe, or run Setup.ps1 as Administrator with all the "Included Folders and Files" from below in the same folder.
-
 If BEACN is preventing your PC from sleeping properly or behaving incorrectly after sleep, run SAMISH in Hidden mode and click Install.
 
 SAMISH will:
