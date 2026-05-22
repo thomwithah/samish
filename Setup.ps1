@@ -279,7 +279,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.0.4"
+$ProductVersion = "v1.0.5"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -315,9 +315,31 @@ if (Test-Path -LiteralPath $ClassicModulePath) {
     . $ClassicModulePath
 }
 
+# App.Control.Common provides Get-AppExecutablePath (used by Operating Mode Tests)
+$CommonModulePath = Join-Path $PackageDir "Modules\App.Control.Common.ps1"
+if (Test-Path -LiteralPath $CommonModulePath) {
+    . $CommonModulePath
+}
+
+# App.Control.Graceful provides Invoke-AppStopGraceful (used by Operating Mode Tests)
+$GracefulModulePath = Join-Path $PackageDir "Modules\App.Control.Graceful.ps1"
+if (Test-Path -LiteralPath $GracefulModulePath) {
+    . $GracefulModulePath
+}
+
 $DiagModulePath = Join-Path $PackageDir "Modules\Diagnostics.Module.ps1"
 if (Test-Path -LiteralPath $DiagModulePath) {
     . $DiagModulePath
+}
+
+# ---------- Log-Always shim (Setup context) ----------
+# App.Control.Graceful and adapter scripts call Log-Always, which the engine
+# defines in its own scope. Provide a lightweight shim here so those modules
+# can run inside Setup without throwing on an undefined function.
+if (-not (Get-Command Log-Always -ErrorAction SilentlyContinue)) {
+    function Log-Always([string]$msg) {
+        Write-SetupLog $msg
+    }
 }
 
 # ---------- Install + Config paths ----------

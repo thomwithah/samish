@@ -227,6 +227,191 @@ $tooltip.SetToolTip($rbOpGraceful,
 $tooltip.SetToolTip($rbOpClassic,
     "Uses power-plan timing and forces shutdown actions.")
 
+# ---------- Operating Mode Tests ----------
+# GroupBox is always Enabled so the tooltip is accessible even when children
+# are disabled. ForeColor is managed dynamically by Update-TestGroupState.
+$testGroup = New-Object System.Windows.Forms.GroupBox
+$testGroup.Text = "Operating Mode Tests"
+$testGroup.Font = $font
+$testGroup.ForeColor = [System.Drawing.Color]::Gray   # greyed until enabled
+$testGroup.Size = New-Object System.Drawing.Size($totalWidth, 115)
+$testGroup.Location = New-Object System.Drawing.Point(18, 0)   # Place-Below will set Y
+$form.Controls.Add($testGroup)
+
+$tooltip.SetToolTip($testGroup,
+    "Test how SAMISH will close and restart your device software or an automated app before sleep occurs.
+
+Select a target from the dropdown, then use the buttons to run a live test.
+
+Tests apply to either the selected device software (from Device Settings) or any app configured in Sleep and Hibernate Diagnostics, but only one at a time.
+
+Test Start verifies the app can be relaunched after a stop test, reproducing what SAMISH does when your system wakes from sleep or hibernate.
+
+This section is available when your device software is running, SAMISH is installed, or automated apps are configured.")
+
+# ----- Test Target label and dropdown -----
+$lblTestTarget = New-Object System.Windows.Forms.Label
+$lblTestTarget.Text = "Test target:"
+$lblTestTarget.AutoSize = $true
+$lblTestTarget.Location = New-Object System.Drawing.Point(15, 30)
+$testGroup.Controls.Add($lblTestTarget)
+
+$script:ddTestTarget = New-Object System.Windows.Forms.ComboBox
+$script:ddTestTarget.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$script:ddTestTarget.Width = 300
+$script:ddTestTarget.Location = New-Object System.Drawing.Point(100, 26)
+$script:ddTestTarget.Enabled = $false
+$testGroup.Controls.Add($script:ddTestTarget)
+
+$tooltip.SetToolTip($script:ddTestTarget,
+    "Select which app to test. Device Software refers to the mixer managed by your selected profile. Automated App entries come from apps configured in Sleep and Hibernate Diagnostics.")
+
+# ----- Test buttons -----
+$script:btnTestGraceful = New-Object System.Windows.Forms.Button
+$script:btnTestGraceful.Text = "Test Graceful Stop"
+$script:btnTestGraceful.Font = $font
+$script:btnTestGraceful.Size = New-Object System.Drawing.Size(160, 30)
+$script:btnTestGraceful.Location = New-Object System.Drawing.Point(15, 70)
+$script:btnTestGraceful.Enabled = $false
+$testGroup.Controls.Add($script:btnTestGraceful)
+
+$tooltip.SetToolTip($script:btnTestGraceful,
+    "Test whether SAMISH can ask this app to close cleanly. Graceful shutdown is safer for unsaved work but may occasionally fail if the app is unresponsive.")
+
+$script:btnTestClassic = New-Object System.Windows.Forms.Button
+$script:btnTestClassic.Text = "Test Classic Stop"
+$script:btnTestClassic.Font = $font
+$script:btnTestClassic.Size = New-Object System.Drawing.Size(160, 30)
+$script:btnTestClassic.Location = New-Object System.Drawing.Point(193, 70)
+$script:btnTestClassic.Enabled = $false
+$testGroup.Controls.Add($script:btnTestClassic)
+
+$tooltip.SetToolTip($script:btnTestClassic,
+    "Test whether SAMISH can force-close this app immediately. More reliable than Graceful, but any unsaved work in that app may be lost.")
+
+$script:btnTestStart = New-Object System.Windows.Forms.Button
+$script:btnTestStart.Text = "Test Start"
+$script:btnTestStart.Font = $font
+$script:btnTestStart.Size = New-Object System.Drawing.Size(120, 30)
+$script:btnTestStart.Location = New-Object System.Drawing.Point(371, 70)
+$script:btnTestStart.Enabled = $false
+$testGroup.Controls.Add($script:btnTestStart)
+
+$tooltip.SetToolTip($script:btnTestStart,
+    "Test whether SAMISH can relaunch this app, reproducing what SAMISH does when your system wakes from sleep or hibernate.")
+
+# ----- Store top-level reference for event handlers -----
+$script:testGroup = $testGroup
+
+# ---- Update-TestGroupState -------------------------------------------
+# Evaluates whether the test box should be enabled based on three conditions:
+#   1. SAMISH scheduled task is installed
+#   2. The selected profile's device software is currently running
+#   3. One or more apps are configured for automation in Sleep Diagnostics
+# Also rebuilds the target dropdown. Called on load, profile switch, and
+# whenever MonitoredApps changes.
+function Update-TestGroupState {
+
+    # --- Evaluate activation conditions ---
+    $isInstalled  = $false
+    $deviceRunning = $false
+    $hasAutomated  = ($script:MonitoredApps -and $script:MonitoredApps.Count -gt 0)
+
+    try { $isInstalled = Test-SamishInstalled } catch {}
+
+    # Resolve the process name from the active profile
+    $profileProcName = $null
+    try {
+        if ($script:ProfileMetaById -and
+            $script:ProfileMetaById.ContainsKey($script:ActiveProfileId)) {
+            $meta = $script:ProfileMetaById[$script:ActiveProfileId]
+            if ($meta.Raw.targets -and $meta.Raw.targets.Count -gt 0) {
+                $profileProcName = [string]$meta.Raw.targets[0].processName
+            }
+        }
+    } catch {}
+
+    if ($profileProcName) {
+        try {
+            $deviceRunning = ($null -ne (Get-Process -Name $profileProcName -ErrorAction SilentlyContinue | Select-Object -First 1))
+        } catch {}
+    }
+
+    $shouldEnable = ($isInstalled -or $hasAutomated -or $deviceRunning)
+
+    # --- Enable or disable child controls ---
+    foreach ($ctrl in $script:testGroup.Controls) {
+        $ctrl.Enabled = $shouldEnable
+    }
+
+    # --- Update GroupBox title color (flash when enabling, grey when disabling) ---
+    if ($shouldEnable) {
+        # Kill any previous flash timer to prevent race conditions
+        if ($script:testGroupFlashTimer) {
+            try { $script:testGroupFlashTimer.Stop(); $script:testGroupFlashTimer.Dispose() } catch {}
+            $script:testGroupFlashTimer = $null
+        }
+
+        # Triple-flash: Cyan -> Purple (6 ticks at 180ms each, ends on BrandPurple)
+        $script:testGroup.ForeColor = $BrandCyan
+        try { $script:testGroup.Refresh() } catch {}
+        $script:testGroupFlashTick = 0
+        $script:testGroupFlashTimer = New-Object System.Windows.Forms.Timer
+        $script:testGroupFlashTimer.Interval = 180
+        $script:testGroupFlashTimer.add_Tick({
+                $script:testGroupFlashTick++
+                if ($script:testGroupFlashTick % 2 -eq 0) {
+                    $script:testGroup.ForeColor = $BrandCyan
+                } else {
+                    $script:testGroup.ForeColor = $BrandPurple
+                }
+                if ($script:testGroupFlashTick -ge 5) {
+                    $script:testGroup.ForeColor = $BrandPurple
+                    try {
+                        if ($script:testGroupFlashTimer) {
+                            $script:testGroupFlashTimer.Stop()
+                            $script:testGroupFlashTimer.Dispose()
+                            $script:testGroupFlashTimer = $null
+                        }
+                    } catch {}
+                }
+            })
+        $script:testGroupFlashTimer.Start()
+    } else {
+        # Kill any running flash timer when disabling
+        if ($script:testGroupFlashTimer) {
+            try { $script:testGroupFlashTimer.Stop(); $script:testGroupFlashTimer.Dispose() } catch {}
+            $script:testGroupFlashTimer = $null
+        }
+        $script:testGroup.ForeColor = [System.Drawing.Color]::Gray
+    }
+
+    # --- Rebuild the target dropdown ---
+    $script:ddTestTarget.Items.Clear()
+
+    # Always add device software entry (even if not currently running)
+    $displayProfileName = $script:ActiveProfileId
+    try {
+        if ($script:ProfileMetaById -and $script:ProfileMetaById.ContainsKey($script:ActiveProfileId)) {
+            $displayProfileName = $script:ProfileMetaById[$script:ActiveProfileId].DisplayName
+        }
+    } catch {}
+    $script:ddTestTarget.Items.Add("Device Software: $displayProfileName") | Out-Null
+
+    # Add one entry per automated app
+    if ($script:MonitoredApps) {
+        foreach ($app in $script:MonitoredApps) {
+            if ($app -and $app.ProcessName) {
+                $script:ddTestTarget.Items.Add("Automated App: $($app.ProcessName)") | Out-Null
+            }
+        }
+    }
+
+    if ($script:ddTestTarget.Items.Count -gt 0) {
+        $script:ddTestTarget.SelectedIndex = 0
+    }
+}
+
 # ---------- General Settings ----------
 $cfgGroup = New-Object System.Windows.Forms.GroupBox
 $cfgGroup.Text = "General Settings"
@@ -503,6 +688,12 @@ function Build-ProfilesUI {
                             $ctl.Checked = ($tagId -eq $script:ActiveProfileId)
                         }
                     }
+
+                    # Keep the test group dropdown and enabled state in sync
+                    # when the user switches profiles.
+                    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+                        try { Update-TestGroupState } catch {}
+                    }
                 })
 
             $y += 28
@@ -531,8 +722,14 @@ function Build-ProfilesUI {
     }
 }
 
-# Build profiles UI on launch
+# Build profiles UI on launch, then set initial test group state.
 Build-ProfilesUI
+
+# Initialise test group state after profiles are loaded so the dropdown
+# reflects the correct device software name from the start.
+if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+    try { Update-TestGroupState } catch {}
+}
 
 # ---------- Status / Activity ----------
 $statusGroup = New-Object System.Windows.Forms.GroupBox
@@ -970,12 +1167,14 @@ function Apply-UIFromConfigIfPresent {
             ($cfg.PSObject.Properties.Name -contains "CustomHotkeyVirtualKey")
         ) {
             $vk = [int]$cfg.CustomHotkeyVirtualKey
+            $friendlyKey = $null
             try {
-                $tbCustomKey.Text = ([System.Windows.Forms.Keys]$vk).ToString()
+                $friendlyKey = ([System.Windows.Forms.Keys]$vk).ToString()
             }
             catch {
-                $tbCustomKey.Text = ("0x{0:X}" -f $vk)
+                $friendlyKey = "0x{0:X}" -f $vk
             }
+            $tbCustomKey.Text = $friendlyKey
         }
 
         # --- Apply enable/disable states WITHOUT clobbering values ---
@@ -986,11 +1185,15 @@ function Apply-UIFromConfigIfPresent {
             $cbTray.Enabled = $true
         }
 
-        if ($ddHotkey.SelectedItem -and $ddHotkey.SelectedItem.ToString() -eq "Custom") {
-            $tbCustomKey.Enabled = $true
+        $isCustomHotkey = $false
+        if ($ddHotkey.SelectedItem) {
+            $isCustomHotkey = ($ddHotkey.SelectedItem.ToString() -eq "Custom")
         }
-        else {
-            $tbCustomKey.Enabled = $false
+        $tbCustomKey.Enabled = $isCustomHotkey
+
+        # Refresh the test group now that MonitoredApps and profile data are loaded.
+        if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+            Update-TestGroupState
         }
     }
     catch {
@@ -1340,7 +1543,9 @@ $tooltip.SetToolTip($btnInstall, "Install or update SAMISH using the selected se
 $tooltip.SetToolTip($btnUninstall, "Remove SAMISH scheduled tasks and stop it from running.")
 
 # ---------- Apply Place-Below stacking ----------
-Place-Below $modeGroup    $cfgGroup    12
+# testGroup sits between the side-by-side mode boxes and General Settings.
+Place-Below $modeGroup    $testGroup   12
+Place-Below $testGroup    $cfgGroup    12
 Place-Below $cfgGroup     $deviceGroup 12
 Place-Below $deviceGroup  $statusGroup 12
 Place-Below $statusGroup  $toolsGroup  12
@@ -1371,6 +1576,10 @@ foreach ($grp in @($modeGroup, $opGroup, $cfgGroup, $deviceGroup, $statusGroup, 
     $grp.ForeColor = $BrandPurple
     Reset-MainFormChildControls $grp
 }
+
+# Style the dynamic test group box and reset its child control forecolors to match others
+$testGroup.Font = $boldFont
+Reset-MainFormChildControls $testGroup
 
 # ---------- Bottom Metadata ----------
 $bottomMetadata = New-Object System.Windows.Forms.Label

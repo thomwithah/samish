@@ -10,8 +10,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.4"
-$ReleaseDate   = "2026-05-03"
+$ScriptVersion = "v1.0.5"
+$ReleaseDate   = "2026-05-22"
 
 # ---------- PATH RESOLUTION ----------
 $PackageDir = $PSScriptRoot
@@ -512,7 +512,7 @@ if ($EnableTrayIcon) {
     $script:icon.Visible = $true
 
     # Note: NotifyIcon.Text has a short length limit
-    $script:icon.Text = "SAMISH v1.0.4"
+    $script:icon.Text = "SAMISH v1.0.5"
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
