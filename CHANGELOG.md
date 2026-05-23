@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Non-Blocking Tray/Hotkey Toggle**: Removed the strict 1-second rate limit on toggle actions, allowing state toggles, tray icon swaps, and context menu updates to occur instantly.
 - **Debounced Notifications & Event Logs**: Deferred heavy blocking IPC operations (ShowBalloonTip notifications and Windows Event Log writes) to a debounced queue that only fires after 800ms of toggle inactivity, preventing thread locking.
 - **Cached Hotkey Label**: Cached the tray context menu hotkey suffix at startup to avoid repeated assembly load overhead on toggle actions.
+- **Real-Time UI Operating Mode Sync**: Linked event handlers to the main screen's Operating Mode radio buttons to immediately update the in-memory `$script:OperatingMode` state when changed.
+- **Dynamic App Mode Tags**: Configured the automated apps list box and diagnostics detail label to automatically recalculate and display active/inherited mode tags (e.g., `[Graceful]` or `[Classic]`) in real-time when the global operating mode is toggled.
+- **Immediate Test Target Resolution**: Updated the test target resolution routine to query the active UI operating mode selection directly, ensuring "Stop Test" and "Start Test" run behavior matches the current on-screen radio states immediately without needing to save to disk or reinstall first.
 
 ## [1.0.9] (2026-05-23)
 

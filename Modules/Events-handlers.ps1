@@ -730,7 +730,8 @@ function Complete-SleepDiagnosticsListsUpdate {
     # ---- Automated Apps ----
     if ($script:MonitoredApps) {
         foreach ($app in $script:MonitoredApps) {
-            $modeTag = if ($app.RecoveryMode) { " [$($app.RecoveryMode)]" } else { "" }
+            $effectiveMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+            $modeTag = " [$effectiveMode]"
             $script:listAutomated.Items.Add("$($app.ProcessName)$modeTag") | Out-Null
         }
     }
@@ -1114,7 +1115,7 @@ function Init-SleepDiagnosticsEventHandlers {
             $script:btnDiagOpenLocation.Enabled = $hasValidItem
             if ($hasValidItem) {
                 $app = $script:MonitoredApps[$idx]
-                $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
+                $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
                 $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
 
                 $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
@@ -2076,3 +2077,51 @@ $script:btnTestStop.add_Click({
             Write-SetupLog "Operating Mode Test (Stop): $errMsg"
         }
     })
+
+# ---- Live Sync operating mode updates for automated apps display ----
+function Update-AutomatedAppsListDisplay {
+    if (-not $script:listAutomated -or -not $script:MonitoredApps) { return }
+
+    # Sync selection to restore it after update
+    $selectedIndex = $script:listAutomated.SelectedIndex
+
+    $script:diagListMutex = $true
+    try {
+        $script:listAutomated.Items.Clear()
+        foreach ($app in $script:MonitoredApps) {
+            $effectiveMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+            $modeTag = " [$effectiveMode]"
+            $script:listAutomated.Items.Add("$($app.ProcessName)$modeTag") | Out-Null
+        }
+
+        if ($script:listAutomated.Items.Count -eq 0) {
+            $script:listAutomated.Items.Add("(No apps automated by SAMISH yet)") | Out-Null
+        } else {
+            if ($selectedIndex -ge 0 -and $selectedIndex -lt $script:listAutomated.Items.Count) {
+                $script:listAutomated.SelectedIndex = $selectedIndex
+            }
+        }
+    }
+    catch {}
+    finally {
+        $script:diagListMutex = $false
+    }
+}
+
+$syncOperatingMode = {
+    $script:OperatingMode = if ($rbOpClassic.Checked) { "Classic" } else { "Graceful" }
+    Update-AutomatedAppsListDisplay
+    
+    # Also update details label if an app is selected
+    if ($script:listAutomated -and $script:lblDiagDetail) {
+        $idx = $script:listAutomated.SelectedIndex
+        if ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count) {
+            $app = $script:MonitoredApps[$idx]
+            $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+            $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
+        }
+    }
+}
+
+if ($rbOpGraceful) { $rbOpGraceful.add_CheckedChanged($syncOperatingMode) }
+if ($rbOpClassic) { $rbOpClassic.add_CheckedChanged($syncOperatingMode) }
