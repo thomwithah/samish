@@ -86,6 +86,20 @@ function Get-ProfileSelectionFromConfig {
     }
 }
 
+function Get-HotkeySuffix {
+    if (-not $EnableHotkey) { return "" }
+    $keyName = $HotkeyMode
+    if ($HotkeyMode -eq "Custom" -and $CustomHotkeyVirtualKey) {
+        try {
+            Add-Type -AssemblyName System.Windows.Forms
+            $keyName = [string][System.Windows.Forms.Keys]$CustomHotkeyVirtualKey
+        } catch {
+            $keyName = "Custom"
+        }
+    }
+    return " ($keyName)"
+}
+
 # ---------- CONFIG DEFAULTS (legacy, still supported) ----------
 # These will be overridden by config.json (if present) and later by Setup UI.
 $TargetExePath     = "C:\Program Files\BEACN\BEACN App\BEACN.exe"
@@ -1147,20 +1161,6 @@ public class SamishWin32 {
             try { $script:icon.ShowBalloonTip(1200,"SAMISH",$text,[System.Windows.Forms.ToolTipIcon]::Info) } catch {}
         }
         Log-Always $text
-    }
-
-    function Get-HotkeySuffix {
-        if (-not $EnableHotkey) { return "" }
-        $keyName = $HotkeyMode
-        if ($HotkeyMode -eq "Custom" -and $CustomHotkeyVirtualKey) {
-            try {
-                Add-Type -AssemblyName System.Windows.Forms
-                $keyName = [string][System.Windows.Forms.Keys]$CustomHotkeyVirtualKey
-            } catch {
-                $keyName = "Custom"
-            }
-        }
-        return " ($keyName)"
     }
 
     function Set-HelperEnabled([bool]$enabledNow, [string]$source) {
