@@ -281,6 +281,7 @@ $btnInstall.add_Click({
                 -HotkeyMode:$hkMode `
                 -CustomHotkeyVirtualKey:$vk `
                 -OperatingMode:$operatingMode `
+                -SetupPath:$script:SetupExecutablePath `
                 -ActiveProfileId $script:ActiveProfileId `
                 -ProfilesEnabled $script:ProfilesEnabled
 

@@ -10,8 +10,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.7"
-$ReleaseDate   = "2026-05-22"
+$ScriptVersion = "v1.0.8"
+$ReleaseDate   = "2026-05-23"
 
 # ---------- PATH RESOLUTION ----------
 $PackageDir = $PSScriptRoot
@@ -994,18 +994,143 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.0.7"
+        $script:icon.Text = "SAMISH v1.0.8"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
+        
+        $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
+        $settingsItem.Text = "Open Settings"
+        
         $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $toggleItem.Text = "Disable helper"
+        
         $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $exitItem.Text = "Exit"
+        
+        [void]$menu.Items.Add($settingsItem)
+        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         [void]$menu.Items.Add($toggleItem)
         [void]$menu.Items.Add($exitItem)
+        
         $script:icon.ContextMenuStrip = $menu
 
         $script:MenuToggleItem = $toggleItem
+
+        $settingsItem.add_Click({
+            $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
+            try {
+                Add-Content -LiteralPath $logPath -Value "=== Clicked Open Settings at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ErrorAction SilentlyContinue
+                
+                $isSetupRunning = $false
+                try {
+                    $mutex = [System.Threading.Mutex]::OpenExisting("Global\SAMISH_Setup_UI")
+                    if ($mutex) {
+                        $isSetupRunning = $true
+                        $mutex.Dispose()
+                        Add-Content -LiteralPath $logPath -Value "Mutex Global\SAMISH_Setup_UI exists." -ErrorAction SilentlyContinue
+                    }
+                } catch [System.Threading.WaitHandleCannotBeOpenedException] {
+                    Add-Content -LiteralPath $logPath -Value "Mutex does not exist." -ErrorAction SilentlyContinue
+                } catch {
+                    Add-Content -LiteralPath $logPath -Value "Mutex exception: $($_.Exception.GetType().FullName) - $($_.Exception.Message)" -ErrorAction SilentlyContinue
+                }
+
+                if (-not ("SamishWin32" -as [type])) {
+                    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class SamishWin32 {
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr FindWindow(IntPtr lpClassName, string lpWindowName);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+}
+'@
+                }
+
+                # Direct window check fallback
+                $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH - Setup")
+                Add-Content -LiteralPath $logPath -Value "FindWindow('SAMISH - Setup') returned: $hwnd" -ErrorAction SilentlyContinue
+                if ($hwnd -eq [IntPtr]::Zero) {
+                    $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH Setup")
+                    Add-Content -LiteralPath $logPath -Value "Fallback FindWindow('SAMISH Setup') returned: $hwnd" -ErrorAction SilentlyContinue
+                }
+
+                if ($hwnd -ne [IntPtr]::Zero) {
+                    $isSetupRunning = $true
+                }
+
+                Add-Content -LiteralPath $logPath -Value "Effective isSetupRunning: $isSetupRunning" -ErrorAction SilentlyContinue
+
+                if ($isSetupRunning) {
+                    if ($hwnd -ne [IntPtr]::Zero) {
+                        Add-Content -LiteralPath $logPath -Value "Attempting window restore & focus (SW_RESTORE=9)..." -ErrorAction SilentlyContinue
+                        $showRes = [SamishWin32]::ShowWindow($hwnd, 9)
+                        $foreRes = [SamishWin32]::SetForegroundWindow($hwnd)
+                        Add-Content -LiteralPath $logPath -Value "ShowWindow result: $showRes, SetForegroundWindow result: $foreRes" -ErrorAction SilentlyContinue
+                        
+                        # Fallback for OS foreground lock: toggle topmost to force focus
+                        if (-not $foreRes) {
+                            Add-Content -LiteralPath $logPath -Value "SetForegroundWindow returned false. Triggering SetWindowPos topmost bypass..." -ErrorAction SilentlyContinue
+                            [void][SamishWin32]::ShowWindow($hwnd, 5) # SW_SHOW
+                            [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-1, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_TOPMOST, SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
+                            [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-2, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_NOTOPMOST
+                            $foreRes2 = [SamishWin32]::SetForegroundWindow($hwnd)
+                            Add-Content -LiteralPath $logPath -Value "Bypass completed. SetForegroundWindow retry result: $foreRes2" -ErrorAction SilentlyContinue
+                        }
+                    } else {
+                        Add-Content -LiteralPath $logPath -Value "isSetupRunning is true, but Hwnd is Zero. Showing balloon tip." -ErrorAction SilentlyContinue
+                        if ($null -ne $script:icon) {
+                            $script:icon.ShowBalloonTip(3000, "SAMISH Settings", "The SAMISH settings window is already open.", [System.Windows.Forms.ToolTipIcon]::Info)
+                        }
+                    }
+                    return
+                }
+
+                Add-Content -LiteralPath $logPath -Value "Setup is not running. Launching new instance..." -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $ConfigPath) {
+                    $cfgRaw = Get-Content -LiteralPath $ConfigPath -Raw
+                    if (-not [string]::IsNullOrWhiteSpace($cfgRaw)) {
+                        $cfg = $cfgRaw | ConvertFrom-Json
+                        if ($cfg -and $cfg.PSObject.Properties.Name -contains "SetupPath") {
+                            $setupPath = [string]$cfg.SetupPath
+                            if (-not [string]::IsNullOrWhiteSpace($setupPath) -and (Test-Path -LiteralPath $setupPath)) {
+                                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                                if ($setupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
+                                    $psi.FileName = "powershell.exe"
+                                    $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$setupPath`""
+                                } else {
+                                    $psi.FileName = $setupPath
+                                    $psi.Arguments = ""
+                                }
+                                $psi.UseShellExecute = $true
+                                [System.Diagnostics.Process]::Start($psi) | Out-Null
+                                Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
+                                return
+                            }
+                        }
+                    }
+                }
+                
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Settings application not found. Please run Setup.exe manually.",
+                    "SAMISH Settings",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                ) | Out-Null
+            }
+            catch {
+                Add-Content -LiteralPath $logPath -Value "Outer catch error: $_" -ErrorAction SilentlyContinue
+                Log-Always "Failed to open settings: $($_.Exception.Message)"
+            }
+        })
 
         $toggleItem.add_Click({
             Set-HelperEnabled (-not $script:TrayEnabled) "TRAY MENU"

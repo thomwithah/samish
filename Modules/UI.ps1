@@ -44,7 +44,7 @@ if ($EnableTrayIcon) {
     $script:icon.Icon = if ($script:IconActive) { $script:IconActive } else { [System.Drawing.SystemIcons]::Application }
     $script:icon.Visible = $true
 
-    $script:icon.Text = "SAMISH v1.0.7"
+    $script:icon.Text = "SAMISH v1.0.8"
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1592,7 +1592,7 @@ $btnUninstall.Location = New-Object System.Drawing.Point(188, 0)
 $form.Controls.Add($btnUninstall)
 
 $tooltip.SetToolTip($btnInstall, "Install or update SAMISH using the selected settings.")
-$tooltip.SetToolTip($btnUninstall, "Remove SAMISH scheduled tasks and stop it from running.")
+$tooltip.SetToolTip($btnUninstall, "Remove SAMISH. To temporarily stop SAMISH from launching on boot, click Uninstall. You will have the option to save your profiles and configuration settings to be automatically reapplied on reinstall.")
 
 # ---------- Apply Place-Below stacking ----------
 # testGroup sits between the side-by-side mode boxes and General Settings.

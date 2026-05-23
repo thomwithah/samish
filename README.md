@@ -4,7 +4,7 @@ Created by thomwithah
 
 A lightweight helper that restores normal Windows sleep behavior for streaming audio hardware.
 
-Version: 1.0.7
+Version: 1.0.8
 
 ---
 

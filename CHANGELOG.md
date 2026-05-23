@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] (2026-05-23)
+
+### Added
+- **Tray Settings Foreground Focus**: Added an "Open Settings" option to the system tray context menu. Implemented robust window handle retrieval and focus logic using Win32 API calls (`FindWindow`, `ShowWindow`, and a `SetWindowPos` topmost bypass) to automatically restore and bring the existing Setup window to the foreground, preventing multiple overlapping instances.
+- **Uninstall Tooltip Clarity**: Updated the Uninstall button tooltip in the Setup UI to clearly communicate that user profiles and configuration settings can be preserved and automatically reapplied upon reinstalling.
+
 ## [1.0.7] (2026-05-22)
 
 ### Added

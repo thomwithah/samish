@@ -1,6 +1,6 @@
 SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 Created by thomwithah
-Version: 1.0.7
+Version: 1.0.8
 
 A lightweight helper that restores normal Windows sleep behavior for streaming audio hardware.
 

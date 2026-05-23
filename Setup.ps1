@@ -1,7 +1,7 @@
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.0.7
+# Version: 1.0.8
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -134,6 +134,11 @@ function Ensure-AdminAtStartup {
     exit
 }
 Ensure-AdminAtStartup
+
+$script:SetupExecutablePath = $PSCommandPath
+if (-not $script:SetupExecutablePath) {
+    $script:SetupExecutablePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+}
 
 # ---------- SINGLE INSTANCE GUARD ----------
 function Ensure-SingleInstance {
@@ -292,7 +297,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.0.7"
+$ProductVersion = "v1.0.8"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -746,6 +751,7 @@ function Write-ConfigJson {
         [string]$HotkeyMode,
         [int]$CustomHotkeyVirtualKey,
         [string]$OperatingMode,
+        [string]$SetupPath,
 
         [string]$ActiveProfileId = "BEACN",
         [string[]]$ProfilesEnabled = @("BEACN")
@@ -796,6 +802,7 @@ function Write-ConfigJson {
         HotkeyMode             = $HotkeyMode
         CustomHotkeyVirtualKey = $CustomHotkeyVirtualKey
         OperatingMode          = $OperatingMode
+        SetupPath              = $SetupPath
         LogFile                = $StandardLogFileTemplate
         ActiveProfileId        = $ActiveProfileId
         ProfilesEnabled        = @($ProfilesEnabled)
@@ -1463,7 +1470,8 @@ function Invoke-CliInstallRoute {
         -EnableHotkey:$([bool]$EnableHotkey) `
         -HotkeyMode:$HotkeyMode `
         -CustomHotkeyVirtualKey:$vk `
-        -OperatingMode:$OperatingMode
+        -OperatingMode:$OperatingMode `
+        -SetupPath:$script:SetupExecutablePath
 
     Write-CliLine "Installing Scheduled Task..."
     Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
