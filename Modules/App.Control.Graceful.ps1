@@ -15,26 +15,14 @@ function Invoke-AppStopGraceful {
     )
 
     # Return object contract:
-    # @{
-    #   Stopped = bool
-    #   Method = "Graceful" | "ClassicFallback" | "NotRunning" | "Error"
-    #   WindowRestored = bool
-    #   FallbackUsed = bool
-    #   Error = string
-    # }
+    # AppStopResult
 
     $windowRestored = $false
 
     # 1) Confirm process running
     $p = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $p) {
-        return @{
-            Stopped = $false
-            Method = "NotRunning"
-            WindowRestored = $false
-            FallbackUsed = $false
-            Error = ""
-        }
+        return [AppStopResult]::new($false, "NotRunning", "NotRunning", $false, $false, "")
     }
 
     $procId = $p.Id
@@ -56,21 +44,16 @@ public static class SamishWin32 {
             # If type load fails, we cannot do graceful messaging.
             if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
                 $r = Invoke-AppStop -ProcessName $ProcessName
-                return @{
-                    Stopped = [bool]$r.Stopped
-                    Method = "ClassicFallback"
-                    WindowRestored = $false
-                    FallbackUsed = $true
-                    Error = "Failed to load user32 SendMessage. Fell back to Classic."
-                }
+                return [AppStopResult]::new(
+                    [bool]$r.Stopped,
+                    $r.Status,
+                    "ClassicFallback",
+                    $false,
+                    $true,
+                    "Failed to load user32 SendMessage. Fell back to Classic."
+                )
             }
-            return @{
-                Stopped = $false
-                Method = "Error"
-                WindowRestored = $false
-                FallbackUsed = $false
-                Error = "Failed to load user32 SendMessage and Classic fallback not available."
-            }
+            return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Failed to load user32 SendMessage and Classic fallback not available.")
         }
     }
 
@@ -79,13 +62,7 @@ public static class SamishWin32 {
         # Refresh process object by PID to get latest window handle
         $p = Get-Process -Id $procId -ErrorAction Stop
     } catch {
-        return @{
-            Stopped = $false
-            Method = "Error"
-            WindowRestored = $false
-            FallbackUsed = $false
-            Error = "Process disappeared while preparing graceful stop."
-        }
+        return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Process disappeared while preparing graceful stop.")
     }
 
     if ($p.MainWindowHandle -eq 0) {
@@ -101,21 +78,16 @@ public static class SamishWin32 {
             # Can't restore UI; fall back
             if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
                 $r = Invoke-AppStop -ProcessName $ProcessName
-                return @{
-                    Stopped = [bool]$r.Stopped
-                    Method = "ClassicFallback"
-                    WindowRestored = $false
-                    FallbackUsed = $true
-                    Error = "No window handle and could not resolve executable path. Fell back to Classic."
-                }
+                return [AppStopResult]::new(
+                    [bool]$r.Stopped,
+                    $r.Status,
+                    "ClassicFallback",
+                    $false,
+                    $true,
+                    "No window handle and could not resolve executable path. Fell back to Classic."
+                )
             }
-            return @{
-                Stopped = $false
-                Method = "Error"
-                WindowRestored = $false
-                FallbackUsed = $false
-                Error = "No window handle and could not resolve BEACN path, and Classic fallback not available."
-            }
+            return [AppStopResult]::new($false, "Error", "Error", $false, $false, "No window handle and could not resolve BEACN path, and Classic fallback not available.")
         }
 
         try {
@@ -126,21 +98,16 @@ public static class SamishWin32 {
             # Restore attempt failed; fall back
             if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
                 $r = Invoke-AppStop -ProcessName $ProcessName
-                return @{
-                    Stopped = [bool]$r.Stopped
-                    Method = "ClassicFallback"
-                    WindowRestored = $false
-                    FallbackUsed = $true
-                    Error = "Failed to restore UI. Fell back to Classic."
-                }
+                return [AppStopResult]::new(
+                    [bool]$r.Stopped,
+                    $r.Status,
+                    "ClassicFallback",
+                    $false,
+                    $true,
+                    "Failed to restore UI. Fell back to Classic."
+                )
             }
-            return @{
-                Stopped = $false
-                Method = "Error"
-                WindowRestored = $false
-                FallbackUsed = $false
-                Error = "Failed to restore UI and Classic fallback not available."
-            }
+            return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Failed to restore UI and Classic fallback not available.")
         }
 
         Start-Sleep -Milliseconds $WindowWakeDelayMs
@@ -149,13 +116,7 @@ public static class SamishWin32 {
         try {
             $p = Get-Process -Id $procId -ErrorAction Stop
         } catch {
-            return @{
-                Stopped = $true
-                Method = "Graceful"
-                WindowRestored = $windowRestored
-                FallbackUsed = $false
-                Error = ""
-            }
+            return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
         }
     }
 
@@ -163,21 +124,16 @@ public static class SamishWin32 {
     if ($p.MainWindowHandle -eq 0) {
         if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
             $r = Invoke-AppStop -ProcessName $ProcessName
-            return @{
-                Stopped = [bool]$r.Stopped
-                Method = "ClassicFallback"
-                WindowRestored = $windowRestored
-                FallbackUsed = $true
-                Error = "No window handle after restore attempt. Fell back to Classic."
-            }
+            return [AppStopResult]::new(
+                [bool]$r.Stopped,
+                $r.Status,
+                "ClassicFallback",
+                $windowRestored,
+                $true,
+                "No window handle after restore attempt. Fell back to Classic."
+            )
         }
-        return @{
-            Stopped = $false
-            Method = "Error"
-            WindowRestored = $windowRestored
-            FallbackUsed = $false
-            Error = "No window handle after restore attempt and Classic fallback not available."
-        }
+        return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "No window handle after restore attempt and Classic fallback not available.")
     }
 
     # 4) Send graceful shutdown messages
@@ -190,21 +146,16 @@ public static class SamishWin32 {
         # Messaging failed; fallback
         if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
             $r = Invoke-AppStop -ProcessName $ProcessName
-            return @{
-                Stopped = [bool]$r.Stopped
-                Method = "ClassicFallback"
-                WindowRestored = $windowRestored
-                FallbackUsed = $true
-                Error = "Failed to send shutdown messages. Fell back to Classic."
-            }
+            return [AppStopResult]::new(
+                [bool]$r.Stopped,
+                $r.Status,
+                "ClassicFallback",
+                $windowRestored,
+                $true,
+                "Failed to send shutdown messages. Fell back to Classic."
+            )
         }
-        return @{
-            Stopped = $false
-            Method = "Error"
-            WindowRestored = $windowRestored
-            FallbackUsed = $false
-            Error = "Failed to send shutdown messages and Classic fallback not available."
-        }
+        return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Failed to send shutdown messages and Classic fallback not available.")
     }
 
     # 5) Wait briefly, then check if process exited
@@ -212,32 +163,21 @@ public static class SamishWin32 {
 
     $stillRunning = Get-Process -Id $procId -ErrorAction SilentlyContinue
     if (-not $stillRunning) {
-        return @{
-            Stopped = $true
-            Method = "Graceful"
-            WindowRestored = $windowRestored
-            FallbackUsed = $false
-            Error = ""
-        }
+        return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
     }
 
     # 6) Fallback to Classic
     if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
         $r = Invoke-AppStop -ProcessName $ProcessName
-        return @{
-            Stopped = [bool]$r.Stopped
-            Method = "ClassicFallback"
-            WindowRestored = $windowRestored
-            FallbackUsed = $true
-            Error = "Graceful shutdown did not exit in time. Fell back to Classic."
-        }
+        return [AppStopResult]::new(
+            [bool]$r.Stopped,
+            $r.Status,
+            "ClassicFallback",
+            $windowRestored,
+            $true,
+            "Graceful shutdown did not exit in time. Fell back to Classic."
+        )
     }
 
-    return @{
-        Stopped = $false
-        Method = "Error"
-        WindowRestored = $windowRestored
-        FallbackUsed = $false
-        Error = "Graceful shutdown did not exit in time and Classic fallback not available."
-    }
+    return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Graceful shutdown did not exit in time and Classic fallback not available.")
 }

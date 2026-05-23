@@ -285,6 +285,7 @@ $btnInstall.add_Click({
                 -ProfilesEnabled $script:ProfilesEnabled
 
             Set-StatusText("Installing...")
+            Register-SamishEventSource
 
             Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
             Delete-Task -TaskNameWithSlash $TaskInteractive | Out-Null
@@ -443,6 +444,17 @@ $btnUninstall.add_Click({
             # Remove any legacy Startup shortcut
             Remove-StartupShortcut
 
+            # Remove Event Log Source
+            try {
+                if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\SAMISH") {
+                    [System.Diagnostics.EventLog]::DeleteEventSource("SAMISH")
+                    Write-SetupLog "Unregistered SAMISH Windows Event Log source."
+                }
+            }
+            catch {
+                Write-SetupLog "WARNING: Failed to unregister SAMISH Event Log source: $($_.Exception.Message)"
+            }
+
             Set-StatusText("Uninstall complete.`r`nStopped $stoppedCount running instance(s).")
             Write-SetupLog "Uninstall complete."
 
@@ -498,30 +510,204 @@ $btnSleepDiag.add_Click({
 
 # ---- Helpers ------------------------------------------------
 
-function Update-SleepDiagnosticsLists {
+function Wait-UwpAsync {
+    param(
+        [Parameter(Mandatory = $true)]
+        $AsyncOp,
+        [Parameter(Mandatory = $true)]
+        [Type]$ResultType
+    )
+    try {
+        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
+        $asTaskMethods = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" }
+        $asTaskMethod = $asTaskMethods | Where-Object {
+            $params = $_.GetParameters()
+            $params.Count -eq 1 -and $params[0].ParameterType.Name -eq 'IAsyncOperation`1'
+        }
+        if (-not $asTaskMethod) { return $null }
+        $genericMethod = $asTaskMethod.MakeGenericMethod($ResultType)
+        $task = $genericMethod.Invoke($null, @($AsyncOp))
+        $task.Wait()
+        return $task.Result
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-SmtcSessionForProcess {
+    param([string]$ProcessName)
+    if ([string]::IsNullOrWhiteSpace($ProcessName)) { return $null }
+    try {
+        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
+        $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
+        $asyncOp = $smtcType::RequestAsync()
+        $manager = Wait-UwpAsync -AsyncOp $asyncOp -ResultType ($smtcType)
+        if (-not $manager) { return $null }
+        $sessions = $manager.GetSessions()
+        foreach ($session in $sessions) {
+            $sourceApp = $session.SourceAppUserModelId
+            if (-not $sourceApp) { continue }
+            $cleanName = $sourceApp
+            if ($cleanName -match "([^\\]+)\.exe$") {
+                $cleanName = $Matches[1]
+            }
+            elseif ($cleanName -match "^([^\!]+)\!") {
+                $cleanName = $Matches[1]
+            }
+            if ($cleanName -match "^Spotify") { $cleanName = "spotify" }
+            elseif ($cleanName -match "Chrome") { $cleanName = "chrome" }
+            elseif ($cleanName -match "Edge") { $cleanName = "msedge" }
+            elseif ($cleanName -match "Firefox") { $cleanName = "firefox" }
+
+            if ($cleanName.ToLower() -eq $ProcessName.ToLower()) {
+                return $session
+            }
+        }
+    }
+    catch {}
+    return $null
+}
+
+function Get-SmtcPlaybackStatus {
+    param([string]$ProcessName)
+    $session = Get-SmtcSessionForProcess -ProcessName $ProcessName
+    if (-not $session) { return 0 }
+    try {
+        $playbackInfo = $session.GetPlaybackInfo()
+        if ($playbackInfo) {
+            return [int]$playbackInfo.PlaybackStatus
+        }
+    }
+    catch {}
+    return 0
+}
+
+function Invoke-SmtcActionForProcess {
+    param(
+        [string]$ProcessName,
+        [string]$Action
+    )
+    $session = Get-SmtcSessionForProcess -ProcessName $ProcessName
+    if (-not $session) { return $false }
+    try {
+        if ($Action -eq "Pause") {
+            $asyncOp = $session.TryPauseAsync()
+            return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
+        }
+        elseif ($Action -eq "Play") {
+            $asyncOp = $session.TryPlayAsync()
+            return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
+        }
+    }
+    catch {}
+    return $false
+}
+
+function Flash-DiagnosticsStatus {
+    param([string]$Message)
+
+    if (-not $script:lblDiagDetail) { return }
+
+    # Kill any previous flash timer
+    if ($script:lblDiagDetailFlashTimer) {
+        try {
+            $script:lblDiagDetailFlashTimer.Stop()
+            $script:lblDiagDetailFlashTimer.Dispose()
+        } catch {}
+        $script:lblDiagDetailFlashTimer = $null
+    }
+
+    $script:lblDiagDetail.Text = $Message
+    $script:lblDiagDetail.ForeColor = $script:BrandCyan
+    
+    $script:lblDiagDetailFlashTick = 0
+    $script:lblDiagDetailFlashTimer = New-Object System.Windows.Forms.Timer
+    $script:lblDiagDetailFlashTimer.Interval = 180
+    $script:lblDiagDetailFlashTimer.add_Tick({
+        $script:lblDiagDetailFlashTick++
+        if ($script:lblDiagDetailFlashTick % 2 -eq 0) {
+            $script:lblDiagDetail.ForeColor = $script:BrandCyan
+        } else {
+            $script:lblDiagDetail.ForeColor = $script:BrandPurple
+        }
+
+        # 6 full cycles (12 color changes total)
+        if ($script:lblDiagDetailFlashTick -ge 12) {
+            try {
+                if ($script:lblDiagDetailFlashTimer) {
+                    $script:lblDiagDetailFlashTimer.Stop()
+                    $script:lblDiagDetailFlashTimer.Dispose()
+                    $script:lblDiagDetailFlashTimer = $null
+                }
+            } catch {}
+
+            # Restore the appropriate resting color based on selection
+            $restingColor = [System.Drawing.Color]::DimGray
+            if ($script:listBlockers -and $script:listBlockers.SelectedIndex -ge 0) {
+                $idx = $script:listBlockers.SelectedIndex
+                if ($script:ActiveBlockersList -and $idx -lt $script:ActiveBlockersList.Count) {
+                    $b = $script:ActiveBlockersList[$idx]
+                    if ($b -and $b.IsNotBlocking) {
+                        $restingColor = $script:BrandPurple
+                    }
+                }
+            }
+            $script:lblDiagDetail.ForeColor = $restingColor
+        }
+    })
+    $script:lblDiagDetailFlashTimer.Start()
+}
+
+function Complete-SleepDiagnosticsListsUpdate {
+    param([hashtable]$SyncState)
+
     $script:listBlockers.Items.Clear()
     $script:listOverrides.Items.Clear()
     $script:listAutomated.Items.Clear()
 
     # ---- Active Blockers ----
     $script:ActiveBlockersList = @()
-    try {
-        $blockers = Get-ActiveSleepBlockers
-        foreach ($b in $blockers) {
-            # BEACN is already natively managed by SAMISH - skip from the list
-            if ($b.ProcessName -like "*BEACN*" -or $b.DisplayName -like "*BEACN*") { continue }
-            $script:ActiveBlockersList += $b
-            $icon = switch ($b.BlockerType) {
-                'App' { "[App]" }
-                'Driver' { "[Driver]" }
-                'Service' { "[Service]" }
-                default { "[?]" }
-            }
-            $script:listBlockers.Items.Add("$icon $($b.DisplayName)") | Out-Null
-        }
+    if ($SyncState.Error) {
+        $script:lblDiagDetail.Text = "Error scanning blockers: $($SyncState.Error)"
     }
-    catch {
-        $script:lblDiagDetail.Text = "Error scanning blockers: $($_.Exception.Message)"
+    else {
+        if ($SyncState.Blockers) {
+            $realBlockers = @()
+            $nonBlockers = @()
+            foreach ($b in $SyncState.Blockers) {
+                if ($b.ProcessName -like "*BEACN*" -or $b.DisplayName -like "*BEACN*") { continue }
+                if ($b.IsNotBlocking -eq $true) {
+                    $nonBlockers += $b
+                }
+                else {
+                    $realBlockers += $b
+                }
+            }
+
+            $sortedReal = $realBlockers | Sort-Object DisplayName
+            $sortedNon = $nonBlockers | Sort-Object DisplayName
+
+            $finalBlockers = @()
+            if ($sortedReal) { $finalBlockers += $sortedReal }
+            if ($sortedNon) { $finalBlockers += $sortedNon }
+
+            foreach ($b in $finalBlockers) {
+                $script:ActiveBlockersList += $b
+                $icon = if ($b.IsNotBlocking -eq $true) {
+                    "[App (Not Blocking)]"
+                }
+                else {
+                    switch ($b.BlockerType) {
+                        'App' { "[App]" }
+                        'Driver' { "[Driver]" }
+                        'Service' { "[Service]" }
+                        default { "[?]" }
+                    }
+                }
+                $script:listBlockers.Items.Add("$icon $($b.DisplayName)") | Out-Null
+            }
+        }
     }
     if ($script:listBlockers.Items.Count -eq 0) {
         $script:listBlockers.Items.Add("(No active blockers found - your system can sleep!)") | Out-Null
@@ -529,16 +715,13 @@ function Update-SleepDiagnosticsLists {
 
     # ---- System Overrides ----
     $script:SystemOverridesList = @()
-    try {
-        $overrides = Get-SystemOverrides
-        foreach ($ov in $overrides) {
-            # Skip BEACN overrides that SAMISH manages
+    if ($SyncState.Overrides) {
+        foreach ($ov in $SyncState.Overrides) {
             if ($ov.Name -like "*BEACN*") { continue }
             $script:SystemOverridesList += $ov
             $script:listOverrides.Items.Add($ov.DisplayLabel) | Out-Null
         }
     }
-    catch {}
     if ($script:listOverrides.Items.Count -eq 0) {
         $script:listOverrides.Items.Add("(No custom overrides configured)") | Out-Null
     }
@@ -555,6 +738,76 @@ function Update-SleepDiagnosticsLists {
     }
 }
 
+function Update-SleepDiagnosticsListsAsync {
+    $script:listBlockers.Items.Clear()
+    $script:listOverrides.Items.Clear()
+    $script:listAutomated.Items.Clear()
+    $script:listBlockers.Items.Add("(Scanning for active blockers in background...)") | Out-Null
+    $script:listOverrides.Items.Add("(Scanning for overrides...)") | Out-Null
+    $script:listAutomated.Items.Add("(Scanning automated apps...)") | Out-Null
+
+    $script:lblDiagDetail.Text = "Scanning system blockers in background... Please wait."
+    $script:btnDiagScan.Enabled = $false
+
+    $script:DiagSyncState = [hashtable]::Synchronized(@{
+            "DiagModulePath" = $DiagModulePath
+            "Blockers"       = $null
+            "Overrides"      = $null
+            "Error"          = $null
+            "Complete"       = $false
+        })
+
+    $script:DiagRunspace = [runspacefactory]::CreateRunspace()
+    $script:DiagRunspace.ApartmentState = "STA"
+    $script:DiagRunspace.ThreadOptions = "ReuseThread"
+    $script:DiagRunspace.Open()
+    $script:DiagRunspace.SessionStateProxy.SetVariable("SyncState", $script:DiagSyncState)
+
+    $script:DiagPowerShell = [powershell]::Create()
+    $script:DiagPowerShell.Runspace = $script:DiagRunspace
+
+    $script:DiagPowerShell.AddScript({
+            try {
+                if (Test-Path -LiteralPath $SyncState.DiagModulePath) {
+                    . $SyncState.DiagModulePath
+                }
+                $SyncState.Blockers = Get-ActiveSleepBlockers
+                $SyncState.Overrides = Get-SystemOverrides
+            }
+            catch {
+                $SyncState.Error = $_.Exception.Message
+            }
+            finally {
+                $SyncState.Complete = $true
+            }
+        }) | Out-Null
+
+    $script:DiagAsyncResult = $script:DiagPowerShell.BeginInvoke()
+
+    $script:DiagTimer = New-Object System.Windows.Forms.Timer
+    $script:DiagTimer.Interval = 100
+    $script:DiagTimer.add_Tick({
+            if ($script:DiagSyncState.Complete) {
+                $script:DiagTimer.Stop()
+                $script:DiagTimer.Dispose()
+                $script:DiagTimer = $null
+
+                try {
+                    $null = $script:DiagPowerShell.EndInvoke($script:DiagAsyncResult)
+                }
+                catch {}
+                $script:DiagPowerShell.Dispose()
+                $script:DiagRunspace.Close()
+                $script:DiagRunspace.Dispose()
+
+                Complete-SleepDiagnosticsListsUpdate -SyncState $script:DiagSyncState
+                $script:lblDiagDetail.Text = "Scan complete - $(Get-Date -Format 'HH:mm:ss')."
+                $script:btnDiagScan.Enabled = $true
+            }
+        })
+    $script:DiagTimer.Start()
+}
+
 function Save-MonitoredAppsToConfig {
     Ensure-InstallFolder
     try {
@@ -564,7 +817,12 @@ function Save-MonitoredAppsToConfig {
         }
         $cfg.MonitoredApps = $script:MonitoredApps
         $json = $cfg | ConvertTo-Json -Depth 6
-        Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+        if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {
+            Save-ContentAtomic -Path $ConfigPath -Content $json
+        }
+        else {
+            Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+        }
         Write-SetupLog "Saved MonitoredApps config update."
     }
     catch {
@@ -601,7 +859,8 @@ function Set-OperatingModeBoxState {
                 $script:diagFlashTick++
                 if ($script:diagFlashTick % 2 -eq 0) {
                     $script:grpDiagOperatingMode.ForeColor = $BrandCyan
-                } else {
+                }
+                else {
                     $script:grpDiagOperatingMode.ForeColor = $BrandPurple
                 }
                 if ($script:diagFlashTick -ge 5) {
@@ -627,20 +886,152 @@ function Set-OperatingModeBoxState {
     }
 }
 
+function Populate-OnWakeActionDropdown {
+    param(
+        [string]$beforeSleepMode,
+        [string]$selectedValue
+    )
+
+    if (-not $script:ddDiagOnWakeAction) { return }
+
+    $script:ddDiagOnWakeAction.Items.Clear()
+
+    if ($beforeSleepMode -eq "PauseMedia") {
+        $script:ddDiagOnWakeAction.Items.Add("Smart Restore (Restore previous state)") | Out-Null
+        $script:ddDiagOnWakeAction.Items.Add("Always Play") | Out-Null
+        $script:ddDiagOnWakeAction.Items.Add("Always Pause") | Out-Null
+
+        if ($script:diagTip) {
+            $script:diagTip.SetToolTip($script:ddDiagOnWakeAction, "Configure media playback on wake: Smart Restore plays if it was playing before sleep; Always Play forces playback; Always Pause leaves media paused.")
+        }
+    }
+    else {
+        $script:ddDiagOnWakeAction.Items.Add("Smart Restore (Restore previous state)") | Out-Null
+        $script:ddDiagOnWakeAction.Items.Add("Reopen Only (Do Not Play)") | Out-Null
+        $script:ddDiagOnWakeAction.Items.Add("Always Play") | Out-Null
+        $script:ddDiagOnWakeAction.Items.Add("Keep Closed") | Out-Null
+
+        if ($script:diagTip) {
+            $script:diagTip.SetToolTip($script:ddDiagOnWakeAction, "Configure application recovery on wake: Smart Restore restarts the app and resumes playback if it was playing; Always Play restarts and plays; Keep Closed leaves it closed; Reopen Only restarts the app but leaves media paused.")
+        }
+    }
+
+    $index = 0
+    if ($beforeSleepMode -eq "PauseMedia") {
+        $index = switch ($selectedValue) {
+            "Smart" { 0 }
+            "Play" { 1 }
+            "Pause" { 2 }
+            default { 0 }
+        }
+    }
+    else {
+        $index = switch ($selectedValue) {
+            "Smart" { 0 }
+            "ReopenNoPlay" { 1 }
+            "Play" { 2 }
+            "KeepClosed" { 3 }
+            default { 0 }
+        }
+    }
+
+    if ($script:ddDiagOnWakeAction.Items.Count -gt $index) {
+        $script:ddDiagOnWakeAction.SelectedIndex = $index
+    }
+}
+
+function Get-OnWakeActionFromDropdown {
+    param([string]$beforeSleepMode)
+
+    if (-not $script:ddDiagOnWakeAction -or $script:ddDiagOnWakeAction.SelectedIndex -lt 0) {
+        return "Smart"
+    }
+
+    $idx = $script:ddDiagOnWakeAction.SelectedIndex
+    if ($beforeSleepMode -eq "PauseMedia") {
+        $result = switch ($idx) {
+            0 { "Smart" }
+            1 { "Play" }
+            2 { "Pause" }
+            default { "Smart" }
+        }
+        return $result
+    }
+    else {
+        $result = switch ($idx) {
+            0 { "Smart" }
+            1 { "ReopenNoPlay" }
+            2 { "Play" }
+            3 { "KeepClosed" }
+            default { "Smart" }
+        }
+        return $result
+    }
+}
+
 # ---- Main init (called from Show-SleepDiagnosticsDialog) ----
 
 function Init-SleepDiagnosticsEventHandlers {
 
     # Populate lists on first open
-    Update-SleepDiagnosticsLists
+    Update-SleepDiagnosticsListsAsync
+
+    # ---------- DrawItem event for listBlockers (OwnerDrawFixed) ----------
+    if ($script:listBlockers) {
+        $script:listBlockers.add_DrawItem({
+            param($sender, $e)
+            if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
+
+            $itemText = $sender.Items[$e.Index].ToString()
+            $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+
+            # Background color selection
+            if ($isHighlighted) {
+                $brushBack = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(60, 0, 90)) # Deep purple
+                $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+                $brushBack.Dispose()
+            } else {
+                $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
+                $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+                $brushBack.Dispose()
+            }
+
+            # Foreground color selection
+            $foreColor = $sender.ForeColor
+            $isNonBlocker = $false
+            if ($script:ActiveBlockersList -and $e.Index -lt $script:ActiveBlockersList.Count) {
+                $b = $script:ActiveBlockersList[$e.Index]
+                if ($b -and $b.IsNotBlocking) {
+                    $isNonBlocker = $true
+                    $foreColor = $script:BrandPurple
+                }
+            }
+
+            if ($isHighlighted -and -not $isNonBlocker) {
+                $foreColor = [System.Drawing.Color]::White
+            }
+
+            $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
+            $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+            
+            $textFormat = New-Object System.Drawing.StringFormat
+            $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+            $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
+            
+            $brushFore.Dispose()
+            $textFormat.Dispose()
+
+            $e.DrawFocusRectangle()
+        })
+    }
 
     # Guard flag: prevents the two list selection handlers from triggering each other
     $script:diagListMutex = $false
 
     # ---------- Scan Blockers ----------
     $script:btnDiagScan.add_Click({
-            Update-SleepDiagnosticsLists
-            $script:lblDiagDetail.Text = "Scan complete - $(Get-Date -Format 'HH:mm:ss')."
+            Update-SleepDiagnosticsListsAsync
         })
 
     # ---------- Active Blockers selection ----------
@@ -658,12 +1049,20 @@ function Init-SleepDiagnosticsEventHandlers {
 
             if (-not $hasValidItem) {
                 $script:lblDiagDetail.Text = "Select an active blocker to see details."
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
                 Set-OperatingModeBoxState -Enabled $false
                 return
             }
 
             $b = $script:ActiveBlockersList[$idx]
             $script:lblDiagDetail.Text = "[$($b.BlockerType)]  $($b.DisplayName)`r`nSection: $($b.Section)    Reason: $($b.Reason)"
+
+            if ($b.IsNotBlocking -eq $true) {
+                $script:lblDiagDetail.ForeColor = $script:BrandPurple
+            }
+            else {
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+            }
 
             # Enable buttons based on type - mutually exclusive
             if ($b.BlockerType -eq 'App') {
@@ -672,8 +1071,14 @@ function Init-SleepDiagnosticsEventHandlers {
 
                 # Light up the Operating Mode box and reset to safe defaults
                 Set-OperatingModeBoxState -Enabled $true
-                if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
-                if ($script:cbDiagNoRestartOnWake) { $script:cbDiagNoRestartOnWake.Checked = $false }
+                $script:diagSyncingControls = $true
+                try {
+                    if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                    Populate-OnWakeActionDropdown -beforeSleepMode "Graceful" -selectedValue "Smart"
+                }
+                finally {
+                    $script:diagSyncingControls = $false
+                }
             }
             else {
                 $script:btnDiagAutomate.Enabled = $false
@@ -691,6 +1096,7 @@ function Init-SleepDiagnosticsEventHandlers {
             if ($hasValidItem) {
                 $ov = $script:SystemOverridesList[$idx]
                 $script:lblDiagDetail.Text = "Ignored: [$($ov.OverrideType)]  $($ov.Name)    Requests overridden: $($ov.Requests)"
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
             }
         })
 
@@ -708,26 +1114,36 @@ function Init-SleepDiagnosticsEventHandlers {
             if ($hasValidItem) {
                 $app = $script:MonitoredApps[$idx]
                 $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
+                $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
+
                 $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
 
                 # Light up the Operating Mode box and sync its controls to this app's saved values
                 Set-OperatingModeBoxState -Enabled $true
-                if ($mode -eq "Classic") {
-                    if ($script:rbDiagClassic) { $script:rbDiagClassic.Checked = $true }
+                $script:diagSyncingControls = $true
+                try {
+                    if ($mode -eq "Classic") {
+                        if ($script:rbDiagClassic) { $script:rbDiagClassic.Checked = $true }
+                    }
+                    elseif ($mode -eq "PauseMedia") {
+                        if ($script:rbDiagPauseMedia) { $script:rbDiagPauseMedia.Checked = $true }
+                    }
+                    else {
+                        if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                    }
+
+                    Populate-OnWakeActionDropdown -beforeSleepMode $mode -selectedValue $onWake
                 }
-                else {
-                    if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
-                }
-                if ($script:cbDiagNoRestartOnWake) {
-                    $script:cbDiagNoRestartOnWake.Checked = ($app.NoRestartOnWake -eq $true)
+                finally {
+                    $script:diagSyncingControls = $false
                 }
             }
             else {
-                # Nothing selected — grey the box back out
+                # Nothing selected - grey the box back out
                 Set-OperatingModeBoxState -Enabled $false
             }
         })
-
     # ---------- Automate App ----------
     $script:btnDiagAutomate.add_Click({
             $idx = $script:listBlockers.SelectedIndex
@@ -754,62 +1170,144 @@ function Init-SleepDiagnosticsEventHandlers {
                 return
             }
 
-            $path = Resolve-ProcessExecutablePath -ProcessName $b.ProcessName -ExecutableName $b.ExecutableName
-            if (-not $path) {
-                [System.Windows.Forms.MessageBox]::Show(
-                    "SAMISH could not find the executable for $($b.ProcessName).`r`nMake sure the application is running and try again.",
-                    "SAMISH - Path Not Found",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Error
-                )
-                return
-            }
+            $script:btnDiagAutomate.Enabled = $false
+            $script:lblDiagDetail.Text = "Searching for executable path for $($b.ProcessName) in background... Please wait."
 
-            $chosenMode = if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) { "Classic" } else { "Graceful" }
-            $noRestart  = ($script:cbDiagNoRestartOnWake -and $script:cbDiagNoRestartOnWake.Checked)
+            $script:PathSyncState = [hashtable]::Synchronized(@{
+                    "DiagModulePath" = $DiagModulePath
+                    "ProcessName"    = $b.ProcessName
+                    "ExecutableName" = $b.ExecutableName
+                    "Path"           = $null
+                    "Complete"       = $false
+                })
 
-            $modeDetail = if ($chosenMode -eq "Classic") {
-                "Mode: Classic  -  Immediately terminates the app. More reliable, but any unsaved work will be lost."
-            }
-            else {
-                "Mode: Graceful  -  Asks the app to close cleanly. Safer for unsaved work, but may occasionally fail if unresponsive."
-            }
+            $script:PathRunspace = [runspacefactory]::CreateRunspace()
+            $script:PathRunspace.ApartmentState = "STA"
+            $script:PathRunspace.ThreadOptions = "ReuseThread"
+            $script:PathRunspace.Open()
+            $script:PathRunspace.SessionStateProxy.SetVariable("SyncState", $script:PathSyncState)
 
-            $wakeDetail = if ($noRestart) {
-                "On wake: App will be left CLOSED (Do not restart on wake is checked)."
-            }
-            else {
-                "On wake: App will be restarted automatically."
-            }
+            $script:PathPowerShell = [powershell]::Create()
+            $script:PathPowerShell.Runspace = $script:PathRunspace
 
-            $msg = "SAMISH will automatically close $($b.ProcessName) before your computer sleeps or hibernates.`r`n`r`n$modeDetail`r`n`r`n$wakeDetail`r`n`r`nConfigure automated management for $($b.ProcessName) with these settings?"
+            $script:PathPowerShell.AddScript({
+                    try {
+                        if (Test-Path -LiteralPath $SyncState.DiagModulePath) {
+                            . $SyncState.DiagModulePath
+                        }
+                        $SyncState.Path = Resolve-ProcessExecutablePath -ProcessName $SyncState.ProcessName -ExecutableName $SyncState.ExecutableName
+                    }
+                    catch {}
+                    finally {
+                        $SyncState.Complete = $true
+                    }
+                }) | Out-Null
 
-            $choice = [System.Windows.Forms.MessageBox]::Show(
-                $msg,
-                "SAMISH - Confirm Automation",
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Question
-            )
+            $script:PathAsyncResult = $script:PathPowerShell.BeginInvoke()
 
-            if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
-                $newApp = [ordered]@{
-                    ProcessName      = $b.ProcessName
-                    ExecutablePath   = $path
-                    RecoveryMode     = $chosenMode
-                    NoRestartOnWake  = $noRestart
-                }
-                $script:MonitoredApps += [pscustomobject]$newApp
-                Save-MonitoredAppsToConfig
-                # Refresh the test group dropdown so the new app appears immediately.
-                if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
-                    try { Update-TestGroupState } catch {}
-                }
-                Update-SleepDiagnosticsLists
-                $wakeStatus = if ($noRestart) { "will NOT restart on wake" } else { "will restart on wake" }
-                $script:lblDiagDetail.Text = "$($b.ProcessName) added to SAMISH automation ($chosenMode mode, $wakeStatus)."
-            }
+            $script:PathTimer = New-Object System.Windows.Forms.Timer
+            $script:PathTimer.Interval = 100
+            $script:PathTimer.add_Tick({
+                    if ($script:PathSyncState.Complete) {
+                        $script:PathTimer.Stop()
+                        $script:PathTimer.Dispose()
+                        $script:PathTimer = $null
+
+                        try {
+                            $null = $script:PathPowerShell.EndInvoke($script:PathAsyncResult)
+                        }
+                        catch {}
+                        $script:PathPowerShell.Dispose()
+                        $script:PathRunspace.Close()
+                        $script:PathRunspace.Dispose()
+
+                        $script:btnDiagAutomate.Enabled = $true
+
+                        $path = $script:PathSyncState.Path
+                        $procName = $script:PathSyncState.ProcessName
+                        $execName = $script:PathSyncState.ExecutableName
+
+                        if (-not $path) {
+                            $script:lblDiagDetail.Text = "Automatic search failed. Please manually locate the executable for $procName."
+                        
+                            Add-Type -AssemblyName System.Windows.Forms
+                            $dialog = New-Object System.Windows.Forms.OpenFileDialog
+                            $dialog.Title = "Locate the executable for: $procName"
+                            $dialog.Filter = "Executable Files (*.exe)|*.exe"
+                            $dialog.FileName = $execName
+                            $dialog.InitialDirectory = $env:ProgramFiles
+
+                            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                                if (Test-Path -LiteralPath $dialog.FileName) {
+                                    $path = $dialog.FileName
+                                }
+                            }
+                        }
+
+                        if (-not $path) {
+                            $script:lblDiagDetail.Text = "Automation cancelled: Executable path not found."
+                            return
+                        }
+
+                        $chosenMode = "Graceful"
+                        if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) {
+                            $chosenMode = "Classic"
+                        }
+                        elseif ($script:rbDiagPauseMedia -and $script:rbDiagPauseMedia.Checked) {
+                            $chosenMode = "PauseMedia"
+                        }
+
+                        $onWake = Get-OnWakeActionFromDropdown -beforeSleepMode $chosenMode
+
+                        $modeDetail = if ($chosenMode -eq "Classic") {
+                            "Before Sleep: Close App (Classic) (immediately terminates the app. More reliable, but any unsaved work will be lost)."
+                        }
+                        elseif ($chosenMode -eq "PauseMedia") {
+                            "Before Sleep: Pause Media Only (pauses media playback via WinRT SMTC instead of closing the app)."
+                        }
+                        else {
+                            "Before Sleep: Close App (Graceful) (asks the app to close cleanly. Safer for unsaved work, but may occasionally fail if unresponsive)."
+                        }
+
+                        $wakeDetail = switch ($onWake) {
+                            "Play" { "On Wake: Always Play (forces media playback to start)." }
+                            "Pause" { "On Wake: Always Pause (keeps media playback paused)." }
+                            "KeepClosed" { "On Wake: Keep Closed (does not reopen the app on wake)." }
+                            "ReopenNoPlay" { "On Wake: Reopen Only (reopens the app on wake but keeps media paused)." }
+                            default { "On Wake: Smart Restore (restores previous state before sleep)." }
+                        }
+
+                        $msg = "SAMISH will automatically manage $procName when your computer transitions to sleep and wake.`r`n`r`n$modeDetail`r`n`r`n$wakeDetail`r`n`r`nConfigure automated management for $procName with these settings?"
+
+                        $choice = [System.Windows.Forms.MessageBox]::Show(
+                            $msg,
+                            "SAMISH - Confirm Automation",
+                            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                            [System.Windows.Forms.MessageBoxIcon]::Question
+                        )
+
+                        if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
+                            $newApp = [ordered]@{
+                                ProcessName    = $procName
+                                ExecutablePath = $path
+                                RecoveryMode   = $chosenMode
+                                OnWakeAction   = $onWake
+                            }
+                            $script:MonitoredApps += [pscustomobject]$newApp
+                            Save-MonitoredAppsToConfig
+                            if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+                                try { Update-TestGroupState } catch {}
+                            }
+                            Update-SleepDiagnosticsListsAsync
+                            $script:lblDiagDetail.Text = "$procName added to SAMISH automation ($chosenMode mode, On Wake Action: $onWake)."
+                        }
+                        else {
+                            $script:lblDiagDetail.Text = "Automation configuration cancelled."
+                        }
+                    }
+                })
+            $script:PathTimer.Start()
         })
-
 
     # ---------- Ignore Blocker ----------
     $script:btnDiagIgnore.add_Click({
@@ -835,7 +1333,7 @@ function Init-SleepDiagnosticsEventHandlers {
                 try {
                     $requests = @($b.Section)
                     Add-SystemOverride -BlockerType $callerType -Name $b.RawEntry -Requests $requests
-                    Update-SleepDiagnosticsLists
+                    Update-SleepDiagnosticsListsAsync
                     $script:lblDiagDetail.Text = "Blocker '$($b.DisplayName)' is now ignored - it will not prevent sleep or hibernation."
                 }
                 catch {
@@ -866,17 +1364,16 @@ function Init-SleepDiagnosticsEventHandlers {
             if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
                 $script:MonitoredApps = @($script:MonitoredApps | Where-Object { $_.ProcessName -ne $app.ProcessName })
                 Save-MonitoredAppsToConfig
-                # Refresh the test group dropdown so the removed app disappears immediately.
                 if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
                     try { Update-TestGroupState } catch {}
                 }
-                Update-SleepDiagnosticsLists
+                Update-SleepDiagnosticsListsAsync
                 $script:lblDiagDetail.Text = "$($app.ProcessName) removed from SAMISH automation."
 
                 # No app is selected after removal -- grey the Operating Mode box and reset to safe defaults
                 Set-OperatingModeBoxState -Enabled $false
                 if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
-                if ($script:cbDiagNoRestartOnWake) { $script:cbDiagNoRestartOnWake.Checked = $false }
+                if ($script:ddDiagOnWakeAction) { $script:ddDiagOnWakeAction.Items.Clear() }
             }
         })
 
@@ -917,7 +1414,7 @@ function Init-SleepDiagnosticsEventHandlers {
             if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
                 try {
                     Remove-SystemOverride -BlockerType $ov.OverrideType -Name $ov.Name
-                    Update-SleepDiagnosticsLists
+                    Update-SleepDiagnosticsListsAsync
                     $script:lblDiagDetail.Text = "Override removed - '$($ov.Name)' may now affect sleep and hibernation."
                 }
                 catch {
@@ -931,47 +1428,71 @@ function Init-SleepDiagnosticsEventHandlers {
             }
         })
 
-    # ---------- No-Restart-On-Wake live toggle ----------
-    if ($script:cbDiagNoRestartOnWake) {
-        $script:cbDiagNoRestartOnWake.add_CheckedChanged({
-                $idx = $script:listAutomated.SelectedIndex
-                if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
-
-                $app = $script:MonitoredApps[$idx]
-                $app.NoRestartOnWake = $script:cbDiagNoRestartOnWake.Checked
-                $script:MonitoredApps[$idx] = $app
-                Save-MonitoredAppsToConfig
-
-                $status = if ($script:cbDiagNoRestartOnWake.Checked) { "will NOT restart on wake" } else { "will restart on wake" }
-                $script:lblDiagDetail.Text = "$($app.ProcessName) updated: $status."
-            })
-    }
-
-    # ---------- Live-save Graceful/Classic radio (for already-automated apps) ----------
+    # ---------- Live-save Operating Mode options (for already-automated apps) ----------
     $saveRecoveryMode = {
+        if ($script:diagSyncingControls) { return }
+
         $idx = $script:listAutomated.SelectedIndex
         if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
 
-        # Only act on the radio that was just turned ON (both fire; ignore the one turning OFF)
-        $chosenMode = if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) { "Classic" } else { "Graceful" }
+        $chosenMode = "Graceful"
+        if ($script:rbDiagClassic -and $script:rbDiagClassic.Checked) {
+            $chosenMode = "Classic"
+        }
+        elseif ($script:rbDiagPauseMedia -and $script:rbDiagPauseMedia.Checked) {
+            $chosenMode = "PauseMedia"
+        }
 
         $app = $script:MonitoredApps[$idx]
-        if ($app.RecoveryMode -eq $chosenMode) { return }  # no change needed
+        if ($app.RecoveryMode -eq $chosenMode) { return }
+
+        # Sync the dropdown options based on new RecoveryMode selection
+        $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
+        $script:diagSyncingControls = $true
+        try {
+            Populate-OnWakeActionDropdown -beforeSleepMode $chosenMode -selectedValue $onWake
+        }
+        finally {
+            $script:diagSyncingControls = $false
+        }
+
+        $newOnWake = Get-OnWakeActionFromDropdown -beforeSleepMode $chosenMode
 
         $app.RecoveryMode = $chosenMode
+        $app.OnWakeAction = $newOnWake
         $script:MonitoredApps[$idx] = $app
         Save-MonitoredAppsToConfig
 
-        $script:lblDiagDetail.Text = "$($app.ProcessName) updated: mode changed to $chosenMode."
+        Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $chosenMode ($newOnWake on wake)."
     }
 
     if ($script:rbDiagGraceful) { $script:rbDiagGraceful.add_CheckedChanged($saveRecoveryMode) }
-    if ($script:rbDiagClassic)  { $script:rbDiagClassic.add_CheckedChanged($saveRecoveryMode) }
+    if ($script:rbDiagClassic) { $script:rbDiagClassic.add_CheckedChanged($saveRecoveryMode) }
+    if ($script:rbDiagPauseMedia) { $script:rbDiagPauseMedia.add_CheckedChanged($saveRecoveryMode) }
+
+    # ---------- Live-save On Wake Action dropdown ----------
+    if ($script:ddDiagOnWakeAction) {
+        $script:ddDiagOnWakeAction.add_SelectedIndexChanged({
+            if ($script:diagSyncingControls) { return }
+
+            $idx = $script:listAutomated.SelectedIndex
+            if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
+
+            $app = $script:MonitoredApps[$idx]
+            $chosenMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
+            $newOnWake = Get-OnWakeActionFromDropdown -beforeSleepMode $chosenMode
+
+            if ($app.OnWakeAction -eq $newOnWake) { return }
+
+            $app.OnWakeAction = $newOnWake
+            $script:MonitoredApps[$idx] = $app
+            Save-MonitoredAppsToConfig
+
+            Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $chosenMode ($newOnWake on wake)."
+        })
+    }
 }
 
-
-
-# ============================================================
 # Operating Mode Tests -- Event Wiring
 # ============================================================
 
@@ -999,10 +1520,10 @@ function Resolve-TestTarget {
         # ---- Device Software target ----
         if ($selected -like "Device Software:*") {
 
-            $procName     = ""
-            $configPath   = ""
-            $regSearch    = ""
-            $displayName  = $selected
+            $procName = ""
+            $configPath = ""
+            $regSearch = ""
+            $displayName = $selected
             $gracefulWake = 800
             $gracefulWait = 800
 
@@ -1015,9 +1536,9 @@ function Resolve-TestTarget {
 
                     if ($meta.Raw.targets -and $meta.Raw.targets.Count -gt 0) {
                         $t = $meta.Raw.targets[0]
-                        $procName   = [string]$t.processName
+                        $procName = [string]$t.processName
                         $configPath = if ($t.PSObject.Properties["defaultExePath"]) { [string]$t.defaultExePath } else { "" }
-                        $regSearch  = if ($t.PSObject.Properties["registrySearchString"]) { [string]$t.registrySearchString } else { $procName }
+                        $regSearch = if ($t.PSObject.Properties["registrySearchString"]) { [string]$t.registrySearchString } else { $procName }
                     }
 
                     # Pull timing defaults from the profile if present
@@ -1073,6 +1594,8 @@ function Resolve-TestTarget {
                 DisplayName       = $displayName
                 WindowWakeDelayMs = $gracefulWake
                 ShutdownWaitMs    = $gracefulWait
+                BeforeSleepMode   = $script:OperatingMode
+                OnWakeAction      = "Smart"
             }
         }
 
@@ -1101,15 +1624,34 @@ function Resolve-TestTarget {
 
             $exePath = if ($app.PSObject.Properties["ExecutablePath"]) { [string]$app.ExecutablePath } else { "" }
 
+            # Resolve path using Get-AppExecutablePath helper
+            $resolvedPath = $exePath
+            if (Get-Command Get-AppExecutablePath -ErrorAction SilentlyContinue) {
+                try {
+                    $pathResult = Get-AppExecutablePath -ProcessName $app.ProcessName -ConfiguredPath $exePath
+                    if ($pathResult -and $pathResult.IsValid) {
+                        $resolvedPath = $pathResult.Path
+                    }
+                }
+                catch {
+                    Write-SetupLog "Resolve-TestTarget: Get-AppExecutablePath threw for Automated App: $($_.Exception.Message)"
+                }
+            }
+
+            $beforeSleepMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+            $onWakeAction = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
+
             return [pscustomobject]@{
                 Valid             = $true
                 Error             = ""
                 IsDeviceSoftware  = $false
                 ProcessName       = $app.ProcessName
-                ConfiguredPath    = $exePath
+                ConfiguredPath    = $resolvedPath
                 DisplayName       = $app.ProcessName
                 WindowWakeDelayMs = 800
                 ShutdownWaitMs    = 800
+                BeforeSleepMode   = $beforeSleepMode
+                OnWakeAction      = $onWakeAction
             }
         }
 
@@ -1142,227 +1684,394 @@ function Resolve-TestTarget {
 
 # ---- Test Graceful Stop -------------------------------------
 $script:btnTestGraceful.add_Click({
-    try {
-        $target = Resolve-TestTarget
+        try {
+            $target = Resolve-TestTarget
 
-        if (-not $target.Valid) {
-            $msg = "Cannot run test: $($target.Error)"
+            if (-not $target.Valid) {
+                $msg = "Cannot run test: $($target.Error)"
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Graceful): $msg"
+                return
+            }
+
+            # Check whether the app is currently running before calling Graceful stop.
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $proc) {
+                $msg = "$($target.DisplayName) is not currently running. Nothing to stop."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Graceful): $msg"
+                return
+            }
+
+            Set-StatusText "Running Graceful Stop test on $($target.DisplayName)..."
+            Write-SetupLog "Operating Mode Test (Graceful): starting test on $($target.DisplayName) (process: $($target.ProcessName))"
+
+            if (-not (Get-Command Invoke-AppStopGraceful -ErrorAction SilentlyContinue)) {
+                $msg = "Invoke-AppStopGraceful is not available in this session. The Graceful module may not have loaded."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Graceful): $msg"
+                return
+            }
+
+            $r = Invoke-AppStopGraceful `
+                -ProcessName       $target.ProcessName `
+                -ConfiguredPath    $target.ConfiguredPath `
+                -WindowWakeDelayMs $target.WindowWakeDelayMs `
+                -ShutdownWaitMs    $target.ShutdownWaitMs
+
+            # Build a human-readable result line.
+            $method = if ($r -and $r.Method) { [string]$r.Method } else { "Unknown" }
+            $stopped = ($r -and $r.Stopped -eq $true)
+            $errTxt = if ($r -and $r.Error) { [string]$r.Error } else { "" }
+
+            if ($stopped) {
+                $msg = "Graceful Stop test PASSED for $($target.DisplayName). Method: $method."
+            }
+            else {
+                $msg = "Graceful Stop test did not confirm a clean stop for $($target.DisplayName). Method: $method."
+                if ($errTxt) { $msg += " $errTxt" }
+            }
+
+            # Informational note when the SAMISH engine is installed (no blocking).
+            if (Test-SamishInstalled) {
+                $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
+            }
+
             Set-StatusText $msg
             Write-SetupLog "Operating Mode Test (Graceful): $msg"
-            return
         }
-
-        # Check whether the app is currently running before calling Graceful stop.
-        $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $proc) {
-            $msg = "$($target.DisplayName) is not currently running. Nothing to stop."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Graceful): $msg"
-            return
+        catch {
+            $errMsg = "Graceful Stop test encountered an unexpected error: $($_.Exception.Message)"
+            Set-StatusText $errMsg
+            Write-SetupLog "Operating Mode Test (Graceful): $errMsg"
         }
-
-        Set-StatusText "Running Graceful Stop test on $($target.DisplayName)..."
-        Write-SetupLog "Operating Mode Test (Graceful): starting test on $($target.DisplayName) (process: $($target.ProcessName))"
-
-        if (-not (Get-Command Invoke-AppStopGraceful -ErrorAction SilentlyContinue)) {
-            $msg = "Invoke-AppStopGraceful is not available in this session. The Graceful module may not have loaded."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Graceful): $msg"
-            return
-        }
-
-        $r = Invoke-AppStopGraceful `
-            -ProcessName       $target.ProcessName `
-            -ConfiguredPath    $target.ConfiguredPath `
-            -WindowWakeDelayMs $target.WindowWakeDelayMs `
-            -ShutdownWaitMs    $target.ShutdownWaitMs
-
-        # Build a human-readable result line.
-        $method  = if ($r -and $r.Method) { [string]$r.Method } else { "Unknown" }
-        $stopped = ($r -and $r.Stopped -eq $true)
-        $errTxt  = if ($r -and $r.Error)  { [string]$r.Error  } else { "" }
-
-        if ($stopped) {
-            $msg = "Graceful Stop test PASSED for $($target.DisplayName). Method: $method."
-        }
-        else {
-            $msg = "Graceful Stop test did not confirm a clean stop for $($target.DisplayName). Method: $method."
-            if ($errTxt) { $msg += " $errTxt" }
-        }
-
-        # Informational note when the SAMISH engine is installed (no blocking).
-        if (Test-SamishInstalled) {
-            $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
-        }
-
-        Set-StatusText $msg
-        Write-SetupLog "Operating Mode Test (Graceful): $msg"
-    }
-    catch {
-        $errMsg = "Graceful Stop test encountered an unexpected error: $($_.Exception.Message)"
-        Set-StatusText $errMsg
-        Write-SetupLog "Operating Mode Test (Graceful): $errMsg"
-    }
-})
+    })
 
 # ---- Test Classic Stop --------------------------------------
 $script:btnTestClassic.add_Click({
-    try {
-        $target = Resolve-TestTarget
+        try {
+            $target = Resolve-TestTarget
 
-        if (-not $target.Valid) {
-            $msg = "Cannot run test: $($target.Error)"
+            if (-not $target.Valid) {
+                $msg = "Cannot run test: $($target.Error)"
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Classic): $msg"
+                return
+            }
+
+            # Check whether the app is currently running before calling Classic stop.
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $proc) {
+                $msg = "$($target.DisplayName) is not currently running. Nothing to stop."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Classic): $msg"
+                return
+            }
+
+            Set-StatusText "Running Classic Stop test on $($target.DisplayName)..."
+            Write-SetupLog "Operating Mode Test (Classic): starting test on $($target.DisplayName) (process: $($target.ProcessName))"
+
+            if (-not (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue)) {
+                $msg = "Invoke-AppStop is not available in this session. The Classic module may not have loaded."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Classic): $msg"
+                return
+            }
+
+            $r = Invoke-AppStop -ProcessName $target.ProcessName
+
+            $stopped = ($r -and $r.Stopped -eq $true)
+            $status = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
+
+            if ($stopped) {
+                $msg = "Classic Stop test PASSED for $($target.DisplayName). Status: $status."
+            }
+            else {
+                $msg = "Classic Stop test did not confirm a stop for $($target.DisplayName). Status: $status."
+            }
+
+            # Informational note when the SAMISH engine is installed (no blocking).
+            if (Test-SamishInstalled) {
+                $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
+            }
+
             Set-StatusText $msg
             Write-SetupLog "Operating Mode Test (Classic): $msg"
-            return
         }
-
-        # Check whether the app is currently running before calling Classic stop.
-        $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $proc) {
-            $msg = "$($target.DisplayName) is not currently running. Nothing to stop."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Classic): $msg"
-            return
+        catch {
+            $errMsg = "Classic Stop test encountered an unexpected error: $($_.Exception.Message)"
+            Set-StatusText $errMsg
+            Write-SetupLog "Operating Mode Test (Classic): $errMsg"
         }
+    })
 
-        Set-StatusText "Running Classic Stop test on $($target.DisplayName)..."
-        Write-SetupLog "Operating Mode Test (Classic): starting test on $($target.DisplayName) (process: $($target.ProcessName))"
-
-        if (-not (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue)) {
-            $msg = "Invoke-AppStop is not available in this session. The Classic module may not have loaded."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Classic): $msg"
-            return
-        }
-
-        $r = Invoke-AppStop -ProcessName $target.ProcessName
-
-        $stopped = ($r -and $r.Stopped -eq $true)
-        $status  = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
-
-        if ($stopped) {
-            $msg = "Classic Stop test PASSED for $($target.DisplayName). Status: $status."
-        }
-        else {
-            $msg = "Classic Stop test did not confirm a stop for $($target.DisplayName). Status: $status."
-        }
-
-        # Informational note when the SAMISH engine is installed (no blocking).
-        if (Test-SamishInstalled) {
-            $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
-        }
-
-        Set-StatusText $msg
-        Write-SetupLog "Operating Mode Test (Classic): $msg"
-    }
-    catch {
-        $errMsg = "Classic Stop test encountered an unexpected error: $($_.Exception.Message)"
-        Set-StatusText $errMsg
-        Write-SetupLog "Operating Mode Test (Classic): $errMsg"
-    }
-})
-
-# ---- Test Start ---------------------------------------------
+# ---- Start Test ----------------------------------------------
 $script:btnTestStart.add_Click({
-    try {
-        $target = Resolve-TestTarget
+        try {
+            $target = Resolve-TestTarget
 
-        if (-not $target.Valid) {
-            $msg = "Cannot run test: $($target.Error)"
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Start): $msg"
-            return
-        }
-
-        # Surface an 'already running' state clearly rather than silently doing nothing.
-        $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($proc) {
-            $msg = "$($target.DisplayName) is already running. Use a stop test first, then Test Start to verify it relaunches."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Start): $msg"
-            return
-        }
-
-        # A valid executable path is required to start the app.
-        # Show a warning dialog (consistent with other path-not-found cases) rather
-        # than only writing to the Status Box, since the user needs to know they
-        # cannot proceed without fixing the path.
-        if (-not $target.ConfiguredPath -or -not (Test-Path -LiteralPath $target.ConfiguredPath -ErrorAction SilentlyContinue)) {
-            $pathMsg = "SAMISH could not locate the executable for $($target.DisplayName)."
-            if ($target.ConfiguredPath) {
-                $pathMsg += "`r`n`r`nPath tried: $($target.ConfiguredPath)"
+            if (-not $target.Valid) {
+                $msg = "Cannot run test: $($target.Error)"
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Start): $msg"
+                return
             }
-            $pathMsg += "`r`n`r`nIf the application is currently installed, try launching it once so SAMISH can detect it, then re-run the Start test."
-            Write-SetupLog "Operating Mode Test (Start): path not found for $($target.DisplayName). Path tried: $($target.ConfiguredPath)"
-            try {
-                Show-WarningDialog -Title "SAMISH - Test Start: Path Not Found" -Message $pathMsg
-            }
-            catch {
-                Set-StatusText $pathMsg
-            }
-            return
-        }
 
-        Set-StatusText "Running Start test for $($target.DisplayName)..."
-        Write-SetupLog "Operating Mode Test (Start): starting test for $($target.DisplayName) (process: $($target.ProcessName), path: $($target.ConfiguredPath))"
-
-        if (-not (Get-Command Invoke-AppStart -ErrorAction SilentlyContinue)) {
-            $msg = "Invoke-AppStart is not available in this session. The Classic module may not have loaded."
-            Set-StatusText $msg
-            Write-SetupLog "Operating Mode Test (Start): $msg"
-            return
-        }
-
-        $r = Invoke-AppStart -ProcessName $target.ProcessName -ExePath $target.ConfiguredPath
-
-        $started = ($r -and $r.Started -eq $true)
-        $status  = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
-        $method  = if ($r -and $r.Method) { [string]$r.Method } else { "" }
-        $trace   = if ($r -and $r.Log) { [string]$r.Log } else { "" }
-
-        if ($started) {
-            $msg = "Start test PASSED for $($target.DisplayName). Status: $status"
-            if ($method) { $msg += " (Method: $method)" }
-            $msg += "."
-
-            if ($method -ne "Direct" -and $trace) {
-                $msg += "`r`n`r`nDiagnostic Trace:"
-                foreach ($step in $trace.Split(";")) {
-                    $trimmed = $step.Trim()
-                    if ($trimmed) { $msg += "`r`n- $trimmed" }
+            # If configured for PauseMedia and already running, we test playback resumption directly
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($proc) {
+                if ($target.BeforeSleepMode -eq "PauseMedia") {
+                    Set-StatusText "Relaunch not required ($($target.DisplayName) is running). Testing Media Play action..."
+                    $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
+                    if ($resumed) {
+                        $msg = "Start Test PASSED for $($target.DisplayName) (Media Play command succeeded)."
+                    } else {
+                        $msg = "Start Test did not confirm playback for $($target.DisplayName) (SMTC play command failed or no session found)."
+                    }
+                    Set-StatusText $msg
+                    Write-SetupLog "Operating Mode Test (Start): $msg"
+                    return
+                }
+                else {
+                    $msg = "$($target.DisplayName) is already running. Click 'Stop Test' first, then click 'Start Test' to verify it relaunches."
+                    Set-StatusText $msg
+                    Write-SetupLog "Operating Mode Test (Start): $msg"
+                    return
                 }
             }
-        }
-        elseif ($status -eq "AlreadyRunning") {
-            # Race condition: process appeared between the check above and Invoke-AppStart.
-            $msg = "$($target.DisplayName) started (or was already running) by the time the launch command fired. Status: $status."
-        }
-        elseif ($status -eq "PathInvalid") {
-            $msg = "Start test could not launch $($target.DisplayName). The executable path was not found or is invalid."
-        }
-        else {
-            $msg = "Start test did not confirm a launch for $($target.DisplayName). Status: $status."
-            if ($trace) {
-                $msg += "`r`n`r`nDiagnostic Trace:"
-                foreach ($step in $trace.Split(";")) {
-                    $trimmed = $step.Trim()
-                    if ($trimmed) { $msg += "`r`n- $trimmed" }
+
+            # A valid executable path is required to start the app.
+            if (-not $target.ConfiguredPath -or -not (Test-Path -LiteralPath $target.ConfiguredPath -ErrorAction SilentlyContinue)) {
+                $pathMsg = "SAMISH could not locate the executable for $($target.DisplayName)."
+                if ($target.ConfiguredPath) {
+                    $pathMsg += "`r`n`r`nPath tried: $($target.ConfiguredPath)"
+                }
+                $pathMsg += "`r`n`r`nIf the application is currently installed, try launching it once so SAMISH can detect it, then re-run the Start test."
+                Write-SetupLog "Operating Mode Test (Start): path not found for $($target.DisplayName). Path tried: $($target.ConfiguredPath)"
+                try {
+                    Show-WarningDialog -Title "SAMISH - Start Test: Path Not Found" -Message $pathMsg
+                }
+                catch {
+                    Set-StatusText $pathMsg
+                }
+                return
+            }
+
+            $infoMsg = "Running Start Test for $($target.DisplayName)..."
+            if ($target.OnWakeAction -eq "Smart") {
+                $smartNote = "Since the Start Test button runs in an ad-hoc test context (outside of actual system sleep/wake transitions), it does not have a real pre-sleep state. For the test, if the wake action is configured as Smart Restore, the test will assume the app was playing and attempt playback restoration."
+                $infoMsg = "$smartNote`r`n`r`nRunning Start Test (Smart Restore: assuming pre-sleep playback state was playing) for $($target.DisplayName)..."
+                Write-SetupLog "Operating Mode Test (Start): $smartNote"
+            }
+            Set-StatusText $infoMsg
+            Write-SetupLog "Operating Mode Test (Start): starting test for $($target.DisplayName) (process: $($target.ProcessName), path: $($target.ConfiguredPath))"
+
+            if (-not (Get-Command Invoke-AppStart -ErrorAction SilentlyContinue)) {
+                $msg = "Invoke-AppStart is not available in this session. The Classic module may not have loaded."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Start): $msg"
+                return
+            }
+
+            $r = Invoke-AppStart -ProcessName $target.ProcessName -ExePath $target.ConfiguredPath
+
+            $started = ($r -and $r.Started -eq $true)
+            $status = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
+            $method = if ($r -and $r.Method) { [string]$r.Method } else { "" }
+            $trace = if ($r -and $r.Log) { [string]$r.Log } else { "" }
+
+            if ($started) {
+                $msg = "Start Test PASSED for $($target.DisplayName). Status: $status"
+                if ($method) { $msg += " (Method: $method)" }
+                $msg += "."
+
+                # If the app has Media Control, try to send the Play command to complete the wake test
+                $shouldPlay = ($target.OnWakeAction -eq "Play" -or $target.OnWakeAction -eq "Smart")
+                if ($shouldPlay) {
+                    Write-SetupLog "Operating Mode Test (Start): polling SMTC session to send Play command (up to 15 seconds, retrying every 250 ms)."
+                    $sessionFound = $false
+                    $playConfirmed = $false
+                    $processCrashed = $false
+
+                    for ($i = 0; $i -lt 60; $i++) {
+                        # Early Exit: Check if process is still running
+                        $currentProc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if (-not $currentProc) {
+                            $processCrashed = $true
+                            break
+                        }
+
+                        $session = Get-SmtcSessionForProcess -ProcessName $target.ProcessName
+                        if ($session) {
+                            $sessionFound = $true
+                            
+                            # Send Play command
+                            $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
+                            
+                            # Sleep for 250 ms to allow playback state to transition
+                            Start-Sleep -Milliseconds 250
+                            
+                            # Verify playback state
+                            $statusVal = Get-SmtcPlaybackStatus -ProcessName $target.ProcessName
+                            if ($statusVal -eq 4) {
+                                $playConfirmed = $true
+                                break
+                            }
+                        }
+                        else {
+                            # Wait 250 ms before checking again
+                            Start-Sleep -Milliseconds 250
+                        }
+                    }
+
+                    $loops = if ($i -ge 60) { 60 } else { $i + 1 }
+                    $elapsedMs = $loops * 250
+                    $timeString = if ($elapsedMs -lt 1000) { "$elapsedMs ms" } else { "$([math]::Round($elapsedMs / 1000, 2)) seconds" }
+
+                    if ($processCrashed) {
+                        $msg += " Media play failed because the application process exited or crashed during startup."
+                    }
+                    elseif ($playConfirmed) {
+                        $logMsg = "Media Control Confirmed via SMTC after $loops loops ($timeString)."
+                        Write-SetupLog "Operating Mode Test (Start): $logMsg"
+                        $msg += " $logMsg"
+                    }
+                    elseif ($sessionFound) {
+                        $msg += " Media play command sent but playback state could not be confirmed within 15 seconds ($loops loops tried)."
+                    }
+                    else {
+                        $msg += " Warning: SMTC session not found within 15 seconds to resume playback ($loops loops tried)."
+                    }
+                }
+
+                if ($method -ne "Direct" -and $trace) {
+                    $msg += "`r`n`r`nDiagnostic Trace:"
+                    foreach ($step in $trace.Split(";")) {
+                        $trimmed = $step.Trim()
+                        if ($trimmed) { $msg += "`r`n- $trimmed" }
+                    }
                 }
             }
-        }
+            elseif ($status -eq "AlreadyRunning") {
+                $msg = "$($target.DisplayName) started (or was already running) by the time the launch command fired. Status: $status."
+            }
+            elseif ($status -eq "PathInvalid") {
+                $msg = "Start Test could not launch $($target.DisplayName). The executable path was not found or is invalid."
+            }
+            else {
+                $msg = "Start Test did not confirm a launch for $($target.DisplayName). Status: $status."
+                if ($trace) {
+                    $msg += "`r`n`r`nDiagnostic Trace:"
+                    foreach ($step in $trace.Split(";")) {
+                        $trimmed = $step.Trim()
+                        if ($trimmed) { $msg += "`r`n- $trimmed" }
+                    }
+                }
+            }
 
-        # Informational note when the SAMISH engine is installed (no blocking).
-        if (Test-SamishInstalled) {
-            $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
-        }
+            # Retain the Smart Restore note in the final status bar message if applicable (prepended for logical/chronological flow)
+            if ($target.OnWakeAction -eq "Smart") {
+                $msg = "Note: Since the Start Test button runs in an ad-hoc test context (outside of actual system sleep/wake transitions), it does not have a real pre-sleep state. For the test, if the wake action is configured as Smart Restore, the test will assume the app was playing and attempt playback restoration.`r`n`r`n$msg"
+            }
 
-        Set-StatusText $msg
-        Write-SetupLog "Operating Mode Test (Start): $msg"
-    }
-    catch {
-        $errMsg = "Start test encountered an unexpected error: $($_.Exception.Message)"
-        Set-StatusText $errMsg
-        Write-SetupLog "Operating Mode Test (Start): $errMsg"
-    }
-})
+            # Informational note when the SAMISH engine is installed (no blocking).
+            if (Test-SamishInstalled) {
+                $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
+            }
+
+            Set-StatusText $msg
+            Write-SetupLog "Operating Mode Test (Start): $msg"
+        }
+        catch {
+            $errMsg = "Start Test encountered an unexpected error: $($_.Exception.Message)"
+            Set-StatusText $errMsg
+            Write-SetupLog "Operating Mode Test (Start): $errMsg"
+        }
+    })
+
+# ---- Stop Test -----------------------------------------------
+$script:btnTestStop.add_Click({
+        try {
+            $target = Resolve-TestTarget
+
+            if (-not $target.Valid) {
+                $msg = "Cannot run test: $($target.Error)"
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Stop): $msg"
+                return
+            }
+
+            # App must be running to test stop/pause actions
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $proc) {
+                $msg = "$($target.DisplayName) is not currently running. Nothing to stop."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Stop): $msg"
+                return
+            }
+
+            # Run the configured before-sleep stop/pause action
+            $mode = $target.BeforeSleepMode
+            Set-StatusText "Running Stop Test ($mode) on $($target.DisplayName)..."
+            Write-SetupLog "Operating Mode Test (Stop): starting stop test ($mode) on $($target.DisplayName)"
+
+            if ($mode -eq "PauseMedia") {
+                $paused = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Pause"
+                if ($paused) {
+                    $msg = "Stop Test PASSED for $($target.DisplayName) (Media successfully paused)."
+                } else {
+                    $msg = "Stop Test did not confirm media pause for $($target.DisplayName) (SMTC pause command failed or no session found)."
+                }
+            }
+            elseif ($mode -eq "Graceful") {
+                if (-not (Get-Command Invoke-AppStopGraceful -ErrorAction SilentlyContinue)) {
+                    $msg = "Invoke-AppStopGraceful is not available in this session. The Graceful module may not have loaded."
+                    Set-StatusText $msg
+                    return
+                }
+                $r = Invoke-AppStopGraceful `
+                    -ProcessName       $target.ProcessName `
+                    -ConfiguredPath    $target.ConfiguredPath `
+                    -WindowWakeDelayMs $target.WindowWakeDelayMs `
+                    -ShutdownWaitMs    $target.ShutdownWaitMs
+                $method = if ($r -and $r.Method) { [string]$r.Method } else { "Unknown" }
+                $stopped = ($r -and $r.Stopped -eq $true)
+                $errTxt = if ($r -and $r.Error) { [string]$r.Error } else { "" }
+                if ($stopped) {
+                    $msg = "Stop Test PASSED for $($target.DisplayName) (Graceful close succeeded via $method)."
+                } else {
+                    $msg = "Stop Test did not confirm a clean stop for $($target.DisplayName). Method: $method."
+                    if ($errTxt) { $msg += " $errTxt" }
+                }
+            }
+            else {
+                # Classic mode fallback
+                if (-not (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue)) {
+                    $msg = "Invoke-AppStop is not available in this session. The Classic module may not have loaded."
+                    Set-StatusText $msg
+                    return
+                }
+                $r = Invoke-AppStop -ProcessName $target.ProcessName
+                $stopped = ($r -and $r.Stopped -eq $true)
+                $status = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
+                if ($stopped) {
+                    $msg = "Stop Test PASSED for $($target.DisplayName) (Classic close succeeded. Status: $status)."
+                } else {
+                    $msg = "Stop Test did not confirm a stop for $($target.DisplayName). Status: $status."
+                }
+            }
+
+            # Informational note when the SAMISH engine is installed (no blocking).
+            if (Test-SamishInstalled) {
+                $msg += "`r`n`r`nNote: SAMISH engine is installed and running. Tests are safe during active use. The engine only triggers when your system has been idle for an extended period."
+            }
+
+            Set-StatusText $msg
+            Write-SetupLog "Operating Mode Test (Stop): $msg"
+        }
+        catch {
+            $errMsg = "Stop Test encountered an unexpected error: $($_.Exception.Message)"
+            Set-StatusText $errMsg
+            Write-SetupLog "Operating Mode Test (Stop): $errMsg"
+        }
+    })

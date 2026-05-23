@@ -16,25 +16,16 @@ function Invoke-AppStop {
         try {
             $p | Stop-Process -Force -ErrorAction SilentlyContinue
 
-            return @{
-                Stopped = $true
-                Status  = "Stopped"
-            }
+            return [AppStopResult]::new($true, "Stopped", "Classic", $false, $false, "")
         }
         catch {
-            return @{
-                Stopped = $false
-                Status  = "Error"
-            }
+            return [AppStopResult]::new($false, "Error", "Classic", $false, $false, $_.Exception.Message)
         }
     }
 
     Write-Host "DEBUG: No process matched for name fragment: $ProcessName"
 
-    return @{
-        Stopped = $false
-        Status  = "NotRunning"
-    }
+    return [AppStopResult]::new($false, "NotRunning", "Classic", $false, $false, "")
 }
 
 
@@ -46,11 +37,7 @@ function Invoke-AppStart {
 
     # 1. Check if process is already running
     if (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue) {
-        return @{
-            Started = $false
-            Status  = "AlreadyRunning"
-            Log     = "Process $ProcessName is already running"
-        }
+        return [AppStartResult]::new($false, "AlreadyRunning", "", "Process $ProcessName is already running")
     }
 
     $logTrace = [System.Collections.Generic.List[string]]::new()
@@ -74,12 +61,7 @@ function Invoke-AppStart {
             $workingDir = Split-Path -Parent $ExePath
             $null = Start-Process -FilePath $ExePath -WorkingDirectory $workingDir -PassThru -ErrorAction Stop
             if (&$VerifyActive -name $ProcessName) {
-                return @{
-                    Started = $true
-                    Status  = "Started"
-                    Method  = "Direct"
-                    Log     = $logTrace -join "; "
-                }
+                return [AppStartResult]::new($true, "Started", "Direct", ($logTrace -join "; "))
             } else {
                 $logTrace.Add("Direct launch spawned process, but it did not appear in memory within 3 seconds")
             }
@@ -106,12 +88,7 @@ function Invoke-AppStart {
                 $logTrace.Add("Found execution alias at $aliasPath, launching")
                 $null = Start-Process -FilePath $aliasPath -WorkingDirectory (Split-Path $aliasPath) -PassThru -ErrorAction Stop
                 if (&$VerifyActive -name $ProcessName) {
-                    return @{
-                        Started = $true
-                        Status  = "Started"
-                        Method  = "ExecutionAlias"
-                        Log     = $logTrace -join "; "
-                    }
+                    return [AppStartResult]::new($true, "Started", "ExecutionAlias", ($logTrace -join "; "))
                 } else {
                     $logTrace.Add("Alias launch spawned process, but it did not appear in memory within 3 seconds")
                 }
@@ -131,12 +108,7 @@ function Invoke-AppStart {
         try {
             $null = Start-Process "cmd.exe" -ArgumentList "/c start `"`" `"$ExePath`"" -WindowStyle Hidden -PassThru -ErrorAction Stop
             if (&$VerifyActive -name $ProcessName) {
-                return @{
-                    Started = $true
-                    Status  = "Started"
-                    Method  = "ShellStart"
-                    Log     = $logTrace -join "; "
-                }
+                return [AppStartResult]::new($true, "Started", "ShellStart", ($logTrace -join "; "))
             } else {
                 $logTrace.Add("Shell launch executed, but process did not appear in memory within 3 seconds")
             }
@@ -152,12 +124,7 @@ function Invoke-AppStart {
         try {
             $null = Start-Process "spotify:" -PassThru -ErrorAction Stop
             if (&$VerifyActive -name $ProcessName) {
-                return @{
-                    Started = $true
-                    Status  = "Started"
-                    Method  = "ProtocolHandler"
-                    Log     = $logTrace -join "; "
-                }
+                return [AppStartResult]::new($true, "Started", "ProtocolHandler", ($logTrace -join "; "))
             } else {
                 $logTrace.Add("Protocol handler launched, but process did not appear in memory within 3 seconds")
             }
@@ -168,9 +135,5 @@ function Invoke-AppStart {
     }
 
     # 6. All attempts failed
-    return @{
-        Started = $false
-        Status  = "Failed"
-        Log     = $logTrace -join "; "
-    }
+    return [AppStartResult]::new($false, "Failed", "", ($logTrace -join "; "))
 }

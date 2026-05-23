@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH Sleep & Hibernate Diagnostics Module
 # ==========================================
 
@@ -6,8 +6,8 @@ function Get-ActiveSleepBlockers {
     # Runs powercfg /requests and parses ALL active sleep/hibernate blockers.
     # Returns an array of blocker custom objects (Apps, Drivers, Services).
 
-    $lines = powercfg /requests 2>$null
-    if (-not $lines) { return @() }
+    $rawLines = powercfg /requests 2>$null
+    $lines = if ($rawLines) { @($rawLines) } else { @() }
 
     $blockers      = @()
     $currentSection = "UNKNOWN"  # powercfg output section (DISPLAY, SYSTEM, etc.)
@@ -90,6 +90,109 @@ function Get-ActiveSleepBlockers {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    # Discover common browser/media apps that are running but might not be blocking sleep
+    $discoveredApps = @()
+    $commonApps = @("chrome", "msedge", "firefox", "spotify", "vlc", "itunes")
+    foreach ($appName in $commonApps) {
+        $procs = Get-Process -Name $appName -ErrorAction SilentlyContinue
+        if ($procs) {
+            $proc = $procs[0]
+            $displayName = $proc.ProcessName
+            $dispName = switch ($displayName.ToLower()) {
+                "chrome" { "Google Chrome" }
+                "msedge" { "Microsoft Edge" }
+                "firefox" { "Firefox" }
+                "spotify" { "Spotify" }
+                "vlc" { "VLC Media Player" }
+                "itunes" { "iTunes" }
+                default { $displayName }
+            }
+            $discoveredApps += [pscustomobject]@{
+                ProcessName    = $proc.ProcessName
+                DisplayName    = $dispName
+                ExecutableName = "$($proc.ProcessName).exe"
+                Reason         = "Not actively blocking sleep (idle)."
+            }
+        }
+    }
+
+    # Query active WinRT SMTC session sources
+    try {
+        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
+        $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
+        $asTaskMethods = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" }
+        $asyncOp = $smtcType::RequestAsync()
+        $asTaskMethod = $asTaskMethods | Where-Object {
+            $params = $_.GetParameters()
+            $params.Count -eq 1 -and $params[0].ParameterType.Name -eq 'IAsyncOperation`1'
+        }
+        # Double backtick for PowerShell string escaping of the generic class name in AsTask matching
+        $genericMethod = $asTaskMethod.MakeGenericMethod($smtcType)
+        $task = $genericMethod.Invoke($null, @($asyncOp))
+        $task.Wait()
+        $manager = $task.Result
+        if ($manager) {
+            $sessions = $manager.GetSessions()
+            foreach ($session in $sessions) {
+                $sourceApp = $session.SourceAppUserModelId
+                if ($sourceApp) {
+                    $cleanName = $sourceApp
+                    if ($cleanName -match "([^\\]+)\.exe$") {
+                        $cleanName = $Matches[1]
+                    }
+                    elseif ($cleanName -match "^([^\!]+)\!") {
+                        $cleanName = $Matches[1]
+                    }
+                    if ($cleanName -match "^Spotify") { $cleanName = "spotify" }
+                    elseif ($cleanName -match "Chrome") { $cleanName = "chrome" }
+                    elseif ($cleanName -match "Edge") { $cleanName = "msedge" }
+                    elseif ($cleanName -match "Firefox") { $cleanName = "firefox" }
+
+                    $procs = Get-Process -Name $cleanName -ErrorAction SilentlyContinue
+                    if ($procs) {
+                        $proc = $procs[0]
+                        if (-not ($discoveredApps | Where-Object { $_.ProcessName.ToLower() -eq $cleanName.ToLower() })) {
+                            $dispName = switch ($cleanName.ToLower()) {
+                                "chrome" { "Google Chrome" }
+                                "msedge" { "Microsoft Edge" }
+                                "firefox" { "Firefox" }
+                                "spotify" { "Spotify" }
+                                "vlc" { "VLC Media Player" }
+                                "itunes" { "iTunes" }
+                                default { $proc.ProcessName }
+                            }
+                            $discoveredApps += [pscustomobject]@{
+                                ProcessName    = $proc.ProcessName
+                                DisplayName    = $dispName
+                                ExecutableName = "$($proc.ProcessName).exe"
+                                Reason         = "Not actively blocking sleep (idle)."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch {}
+
+    # Append non-blocking discovered apps to the blockers list if not already present
+    foreach ($app in $discoveredApps) {
+        $existing = $blockers | Where-Object { $_.ProcessName -eq $app.ProcessName -and $_.BlockerType -eq "App" }
+        if (-not $existing) {
+            $blockers += [pscustomobject]@{
+                BlockerType    = "App"
+                DisplayName    = $app.DisplayName
+                ProcessName    = $app.ProcessName
+                ExecutableName = $app.ExecutableName
+                Section        = "NONE"
+                Reason         = $app.Reason
+                RawEntry       = $app.ExecutableName
+                BlockerKey     = $app.ProcessName
+                IsNotBlocking  = $true
             }
         }
     }

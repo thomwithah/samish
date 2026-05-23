@@ -1,7 +1,7 @@
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.0.4
+# Version: 1.0.7
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -205,6 +205,19 @@ function Complete-SamishSetupUi {
     }
     catch { }
 
+    # Dispose script-level GDI resources
+    try {
+        if ($script:MainFormGdiResources) {
+            foreach ($res in $script:MainFormGdiResources) {
+                if ($res) {
+                    try { $res.Dispose() } catch {}
+                }
+            }
+            $script:MainFormGdiResources.Clear()
+        }
+    }
+    catch { }
+
     # 4) OPTIONAL debug trace (never shows a MessageBox)
     # Enable by setting environment variable: SAMISH_SETUP_DEBUG=1
     if ($env:SAMISH_SETUP_DEBUG -eq "1") {
@@ -279,7 +292,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.0.5"
+$ProductVersion = "v1.0.7"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -384,7 +397,64 @@ function Get-ConfigEnableLogging {
     return $false
 }
 
-# ----- Logging helpers -----
+# Windows Event Log Helper
+function Register-SamishEventSource {
+    try {
+        if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\SAMISH")) {
+            [System.Diagnostics.EventLog]::CreateEventSource("SAMISH", "Application")
+            Write-SetupLog "Registered SAMISH as a Windows Event Log source."
+        }
+    }
+    catch {
+        Write-SetupLog "WARNING: Failed to register SAMISH as an Event Log source: $($_.Exception.Message)"
+    }
+}
+
+# Logging helpers
+function Rotate-LogFileIfNeeded {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return }
+
+        $fileItem = Get-Item -LiteralPath $Path
+        # 5MB = 5 * 1024 * 1024 = 5242880 bytes
+        if ($fileItem.Length -le 5242880) { return }
+
+        $dir = Split-Path -Parent $Path
+        $name = Split-Path -Leaf $Path
+        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($name)
+        $ext = [System.IO.Path]::GetExtension($name)
+
+        $rotatedPath = $null
+        for ($i = 1; $i -le 100; $i++) {
+            $testName = "$baseName.$i$ext"
+            $testPath = Join-Path $dir $testName
+            if (-not (Test-Path -LiteralPath $testPath)) {
+                $rotatedPath = $testPath
+                break
+            }
+        }
+
+        if (-not $rotatedPath) {
+            $rotatedPath = Join-Path $dir "$baseName.100$ext"
+            if (Test-Path -LiteralPath $rotatedPath) {
+                Remove-Item -LiteralPath $rotatedPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        if ($rotatedPath) {
+            [System.IO.File]::Move($Path, $rotatedPath)
+        }
+    }
+    catch {
+        # Fail silently
+    }
+}
+
 function Write-SetupLog {
     param([string]$text)
 
@@ -398,6 +468,7 @@ function Write-SetupLog {
     if (-not $enabled) { return }
 
     try {
+        Rotate-LogFileIfNeeded -Path $StandardLogFile
         Add-Content -Path $StandardLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $text"
     }
     catch {}
@@ -420,6 +491,7 @@ function Write-SetupLogBlock {
     if (-not $enabled) { return }
 
     try {
+        Rotate-LogFileIfNeeded -Path $StandardLogFile
         Add-Content -Path $StandardLogFile -Value (
             "`r`n==== " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + " ====`r`n" +
             $textBlock + "`r`n"
@@ -699,6 +771,23 @@ function Write-ConfigJson {
         catch {}
     }
 
+    # Migrate old config flags in MonitoredApps to OnWakeAction
+    if ($monitoredApps) {
+        $monitoredApps = @(foreach ($app in $monitoredApps) {
+            if ($null -eq $app.PSObject.Properties['OnWakeAction']) {
+                $onWake = "Smart"
+                if ($app.PSObject.Properties['NoRestartOnWake'] -and $app.NoRestartOnWake) {
+                    $onWake = "KeepClosed"
+                }
+                elseif ($app.PSObject.Properties['ForcePlayOnWake'] -and $app.ForcePlayOnWake) {
+                    $onWake = "Play"
+                }
+                $app | Add-Member -MemberType NoteProperty -Name "OnWakeAction" -Value $onWake -Force
+            }
+            $app
+        })
+    }
+
     $cfg = [ordered]@{
         EnableLogging          = $EnableLogging
         LogEverySeconds        = $LogEverySeconds
@@ -714,7 +803,11 @@ function Write-ConfigJson {
     }
 
     $json = $cfg | ConvertTo-Json -Depth 6
-    Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+    if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {
+        Save-ContentAtomic -Path $ConfigPath -Content $json
+    } else {
+        Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+    }
 }
 
 # ----- Log file selection helpers -----
@@ -809,7 +902,13 @@ function Enter-LiveLogMode {
     # Dark â€œliveâ€ theme
     $statusBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
     $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
-    $statusBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    if (-not $script:LiveLogFont) {
+        $script:LiveLogFont = New-Object System.Drawing.Font("Consolas", 9)
+        if ($script:MainFormGdiResources) {
+            $script:MainFormGdiResources.Add($script:LiveLogFont)
+        }
+    }
+    $statusBox.Font = $script:LiveLogFont
 
     $statusBox.Clear()
     $statusBox.AppendText("LIVE LOG (press Live Log again to exit)`r`n`r`n")
@@ -1331,6 +1430,9 @@ function Invoke-CliInstallRoute {
 
     Write-CliLine "Syncing runtime files to %APPDATA%\SAMISH..."
     Sync-SamishRuntimeFiles
+
+    Write-CliLine "Registering Windows Event Log source..."
+    Register-SamishEventSource
 
     $vk = 0x91
     if ($EnableHotkey) {
