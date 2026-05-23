@@ -730,9 +730,8 @@ function Complete-SleepDiagnosticsListsUpdate {
     # ---- Automated Apps ----
     if ($script:MonitoredApps) {
         foreach ($app in $script:MonitoredApps) {
-            $effectiveMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
-            $modeTag = " [$effectiveMode]"
-            $script:listAutomated.Items.Add("$($app.ProcessName)$modeTag") | Out-Null
+            $label = Get-AutomatedAppDisplayLabel -app $app
+            $script:listAutomated.Items.Add($label) | Out-Null
         }
     }
     if ($script:listAutomated.Items.Count -eq 0) {
@@ -1117,8 +1116,9 @@ function Init-SleepDiagnosticsEventHandlers {
                 $app = $script:MonitoredApps[$idx]
                 $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
                 $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
-
-                $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
+                $displayMode = if ($mode -eq "PauseMedia") { "Keep App Open" } else { $mode }
+ 
+                $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $displayMode`r`nPath: $($app.ExecutablePath)"
                 $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
 
                 # Light up the Operating Mode box and sync its controls to this app's saved values
@@ -1464,8 +1464,18 @@ function Init-SleepDiagnosticsEventHandlers {
         $app.OnWakeAction = $newOnWake
         $script:MonitoredApps[$idx] = $app
         Save-MonitoredAppsToConfig
+        Update-AutomatedAppsListDisplay
 
-        Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $chosenMode ($newOnWake on wake)."
+        $displayChosen = if ($chosenMode -eq "PauseMedia") { "Keep App Open" } else { $chosenMode }
+        $displayOnWake = switch ($newOnWake) {
+            "Smart"       { "Smart Restore" }
+            "Play"        { "Always Play" }
+            "Pause"       { "Always Pause" }
+            "KeepClosed"  { "Keep Closed" }
+            "ReopenOnly"  { "Reopen Only" }
+            default       { $newOnWake }
+        }
+        Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
     }
 
     if ($script:rbDiagGraceful) { $script:rbDiagGraceful.add_CheckedChanged($saveRecoveryMode) }
@@ -1489,8 +1499,18 @@ function Init-SleepDiagnosticsEventHandlers {
             $app.OnWakeAction = $newOnWake
             $script:MonitoredApps[$idx] = $app
             Save-MonitoredAppsToConfig
-
-            Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $chosenMode ($newOnWake on wake)."
+            Update-AutomatedAppsListDisplay
+ 
+            $displayChosen = if ($chosenMode -eq "PauseMedia") { "Keep App Open" } else { $chosenMode }
+            $displayOnWake = switch ($newOnWake) {
+                "Smart"       { "Smart Restore" }
+                "Play"        { "Always Play" }
+                "Pause"       { "Always Pause" }
+                "KeepClosed"  { "Keep Closed" }
+                "ReopenOnly"  { "Reopen Only" }
+                default       { $newOnWake }
+            }
+            Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
         })
     }
 }
@@ -2078,6 +2098,29 @@ $script:btnTestStop.add_Click({
         }
     })
 
+# ---- Helper to format automated app label with friendly Before Sleep and On Wake Actions ----
+function Get-AutomatedAppDisplayLabel {
+    param(
+        [Parameter(Mandatory = $true)]
+        $app
+    )
+
+    $sleepMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+    if ($sleepMode -eq "PauseMedia") { $sleepMode = "Keep App Open" }
+
+    $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
+    $onWakeLabel = switch ($onWake) {
+        "Smart"       { "Smart" }
+        "Play"        { "Play" }
+        "Pause"       { "Pause" }
+        "KeepClosed"  { "Keep Closed" }
+        "ReopenOnly"  { "Reopen Only" }
+        default       { $onWake }
+    }
+
+    return "$($app.ProcessName) [$sleepMode - $onWakeLabel]"
+}
+
 # ---- Live Sync operating mode updates for automated apps display ----
 function Update-AutomatedAppsListDisplay {
     if (-not $script:listAutomated -or -not $script:MonitoredApps) { return }
@@ -2089,9 +2132,8 @@ function Update-AutomatedAppsListDisplay {
     try {
         $script:listAutomated.Items.Clear()
         foreach ($app in $script:MonitoredApps) {
-            $effectiveMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
-            $modeTag = " [$effectiveMode]"
-            $script:listAutomated.Items.Add("$($app.ProcessName)$modeTag") | Out-Null
+            $label = Get-AutomatedAppDisplayLabel -app $app
+            $script:listAutomated.Items.Add($label) | Out-Null
         }
 
         if ($script:listAutomated.Items.Count -eq 0) {
@@ -2118,7 +2160,8 @@ $syncOperatingMode = {
         if ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count) {
             $app = $script:MonitoredApps[$idx]
             $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
-            $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $mode`r`nPath: $($app.ExecutablePath)"
+            $displayMode = if ($mode -eq "PauseMedia") { "Keep App Open" } else { $mode }
+            $script:lblDiagDetail.Text = "Automated: $($app.ProcessName)    Mode: $displayMode`r`nPath: $($app.ExecutablePath)"
         }
     }
 }

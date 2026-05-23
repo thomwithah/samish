@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Debounced Notifications & Event Logs**: Deferred heavy blocking IPC operations (ShowBalloonTip notifications and Windows Event Log writes) to a debounced queue that only fires after 800ms of toggle inactivity, preventing thread locking.
 - **Cached Hotkey Label**: Cached the tray context menu hotkey suffix at startup to avoid repeated assembly load overhead on toggle actions.
 - **Real-Time UI Operating Mode Sync**: Linked event handlers to the main screen's Operating Mode radio buttons to immediately update the in-memory `$script:OperatingMode` state when changed.
-- **Dynamic App Mode Tags**: Configured the automated apps list box and diagnostics detail label to automatically recalculate and display active/inherited mode tags (e.g., `[Graceful]` or `[Classic]`) in real-time when the global operating mode is toggled.
+- **Dynamic App Mode Tags**: Configured the automated apps list box to display active/inherited mode tags in a clean, hyphenated `[Before Sleep - On Wake]` format (e.g. `[Keep App Open - Smart]`), dynamically recalculating and updating the list items in real-time when any global or app-specific operating mode options are toggled.
+- **Renamed Media Mode Display Label**: Replaced `"Pause Media"` or `"PauseMedia"` display strings with `"Keep App Open"` inside the automated apps list box and diagnostics detail label to match the text on the corresponding radio buttons.
 - **Immediate Test Target Resolution**: Updated the test target resolution routine to query the active UI operating mode selection directly, ensuring "Stop Test" and "Start Test" run behavior matches the current on-screen radio states immediately without needing to save to disk or reinstall first.
 
 ## [1.0.9] (2026-05-23)
