@@ -10,7 +10,9 @@ Version: 1.0.7
 
 ## How to Run / Install
 
-- Run Setup.bat or Use SAMISH.exe, or run Setup.ps1 as Administrator with all the "Included Folders and Files" from below in the same folder.
+- Run Setup.bat or Use Setup.exe, or run Setup.ps1 as Administrator with all the "Included Folders and Files" from below in the same folder. 
+- Alternatively, you can use the SAMISH_Setup_vX.X.X.exe to install. This will extract all the files needed to a folder and launch the SAMISH GUI. 
+- Note: Although the .exe installers make installtion easy expect antivirus software to flag them. 
 
 
 ## TL;DR (for BEACN users)
