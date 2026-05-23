@@ -44,7 +44,7 @@ if ($EnableTrayIcon) {
     $script:icon.Icon = if ($script:IconActive) { $script:IconActive } else { [System.Drawing.SystemIcons]::Application }
     $script:icon.Visible = $true
 
-    $script:icon.Text = "SAMISH v1.0.10"
+    $script:icon.Text = "SAMISH v1.0.9"
 
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem

@@ -10,7 +10,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.10"
+$ScriptVersion = "v1.0.9"
 $ReleaseDate   = "2026-05-23"
 
 # ---------- PATH RESOLUTION ----------
@@ -1013,7 +1013,7 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.0.10"
+        $script:icon.Text = "SAMISH v1.0.9"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1169,7 +1169,7 @@ public class SamishWin32 {
 
     function Set-HelperEnabled([bool]$enabledNow, [string]$source) {
         $script:TrayEnabled = $enabledNow
-        $script:LastToggleTime = Get-Date
+        $script:LastToggleTime = [DateTime]::UtcNow
 
         try {
             if ($null -ne $script:MenuToggleItem) {
@@ -1193,7 +1193,7 @@ public class SamishWin32 {
 
     function Check-PendingNotification {
         if ($null -ne $script:PendingNotificationSource) {
-            $elapsedMs = ((Get-Date) - $script:LastToggleTime).TotalMilliseconds
+            $elapsedMs = ([DateTime]::UtcNow - $script:LastToggleTime).TotalMilliseconds
             if ($elapsedMs -ge 800) {
                 $source = $script:PendingNotificationSource
                 $state = $script:PendingNotificationState
@@ -1251,7 +1251,6 @@ public static class KeyState {
         # Process GUI messages (DoEvents), hotkey polling, and pending notifications even when disabled,
         # while bypassing main loop logic (idle and app checks).
         if ($script:TrayEnabled -eq $false) {
-            Start-Sleep -Milliseconds 100
             if ($EnableTrayIcon) {
                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
             }
@@ -1263,6 +1262,7 @@ public static class KeyState {
                 $script:LastKeyDown = $isDown
             }
             Check-PendingNotification
+            Start-Sleep -Milliseconds 100
             continue
         }
 
@@ -1351,14 +1351,11 @@ public static class KeyState {
         # even when the main loop interval is several seconds.
         $sleptMs = 0
         while ($sleptMs -lt $sleepMs) {
-            Start-Sleep -Milliseconds 100
-            $sleptMs += 100
-
             if ($EnableTrayIcon) {
                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
             }
 
-            if ($script:ExitRequested) {
+            if ($script:ExitRequested -or $script:TrayEnabled -eq $false) {
                 break
             }
 
@@ -1370,6 +1367,9 @@ public static class KeyState {
                 $script:LastKeyDown = $isDown
             }
             Check-PendingNotification
+
+            Start-Sleep -Milliseconds 100
+            $sleptMs += 100
         }
     }
 }
