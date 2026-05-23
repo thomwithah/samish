@@ -10,7 +10,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.8"
+$ScriptVersion = "v1.0.9"
 $ReleaseDate   = "2026-05-23"
 
 # ---------- PATH RESOLUTION ----------
@@ -994,15 +994,16 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.0.8"
+        $script:icon.Text = "SAMISH v1.0.9"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
         $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $settingsItem.Text = "Open Settings"
         
+        $suffix = Get-HotkeySuffix
         $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
-        $toggleItem.Text = "Disable helper"
+        $toggleItem.Text = "Disable helper$suffix"
         
         $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $exitItem.Text = "Exit"
@@ -1148,12 +1149,34 @@ public class SamishWin32 {
         Log-Always $text
     }
 
+    function Get-HotkeySuffix {
+        if (-not $EnableHotkey) { return "" }
+        $keyName = $HotkeyMode
+        if ($HotkeyMode -eq "Custom" -and $CustomHotkeyVirtualKey) {
+            try {
+                Add-Type -AssemblyName System.Windows.Forms
+                $keyName = [string][System.Windows.Forms.Keys]$CustomHotkeyVirtualKey
+            } catch {
+                $keyName = "Custom"
+            }
+        }
+        return " ($keyName)"
+    }
+
     function Set-HelperEnabled([bool]$enabledNow, [string]$source) {
+        # Debounce/throttle check to prevent freezing when hotkey or tray menu is clicked rapidly
+        $now = Get-Date
+        if ($script:LastToggleTime -and ($now - $script:LastToggleTime).TotalMilliseconds -lt 1000) {
+            return
+        }
+        $script:LastToggleTime = $now
+
         $script:TrayEnabled = $enabledNow
 
         try {
             if ($null -ne $script:MenuToggleItem) {
-                $script:MenuToggleItem.Text = if ($enabledNow) { "Disable helper" } else { "Enable helper" }
+                $suffix = Get-HotkeySuffix
+                $script:MenuToggleItem.Text = if ($enabledNow) { "Disable helper$suffix" } else { "Enable helper$suffix" }
             }
             if ($null -ne $script:icon) {
                 if ($enabledNow) {

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] (2026-05-23)
+
+### Added
+- **Hotkey & Tray Action Debouncing**: Added a 1-second rate-limiting (debounce) check inside the helper toggle logic to prevent background thread hangs and tray icon freezes caused by rapid, repeated hotkey presses or menu clicks flooding the Windows Explorer and Event Log IPC channels.
+- **Tray Menu Hotkey Display**: Added the active hotkey label (e.g., `ScrollLock` or custom key name like `F8`) next to the "Enable/Disable helper" option in the system tray context menu for better user visibility.
+
 ## [1.0.8] (2026-05-23)
 
 ### Added
