@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] (2026-05-23)
+
+### Changed
+- **Non-Blocking Tray/Hotkey Toggle**: Removed the strict 1-second rate limit on toggle actions, allowing state toggles, tray icon swaps, and context menu updates to occur instantly.
+- **Debounced Notifications & Event Logs**: Deferred heavy blocking IPC operations (ShowBalloonTip notifications and Windows Event Log writes) to a debounced queue that only fires after 800ms of toggle inactivity, preventing thread locking.
+- **Cached Hotkey Label**: Cached the tray context menu hotkey suffix at startup to avoid repeated assembly load overhead on toggle actions.
+
 ## [1.0.9] (2026-05-23)
 
 ### Added

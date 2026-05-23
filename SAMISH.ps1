@@ -10,7 +10,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.9"
+$ScriptVersion = "v1.0.10"
 $ReleaseDate   = "2026-05-23"
 
 # ---------- PATH RESOLUTION ----------
@@ -128,6 +128,8 @@ $CustomHotkeyVirtualKey = 0x76
 
 # Load optional config file overrides
 Apply-ConfigFromFile
+
+$script:HotkeySuffix = Get-HotkeySuffix
 
 # ---------- POWER PLAN COMMON (shared read utilities) ----------
 $PowerPlanCommonPath = Join-Path $PackageDir "Modules\PowerPlan.Read.Common.ps1"
@@ -338,6 +340,9 @@ try {
 
 $script:mutex = $null
 $script:ExitRequested = $false
+$script:PendingNotificationSource = $null
+$script:PendingNotificationState = $null
+$script:LastToggleTime = $null
 $createdNew = $false
 
 # Choose scope:
@@ -1008,16 +1013,15 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.0.9"
+        $script:icon.Text = "SAMISH v1.0.10"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
         $settingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $settingsItem.Text = "Open Settings"
         
-        $suffix = Get-HotkeySuffix
         $toggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
-        $toggleItem.Text = "Disable helper$suffix"
+        $toggleItem.Text = "Disable helper$script:HotkeySuffix"
         
         $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
         $exitItem.Text = "Exit"
@@ -1164,19 +1168,12 @@ public class SamishWin32 {
     }
 
     function Set-HelperEnabled([bool]$enabledNow, [string]$source) {
-        # Debounce/throttle check to prevent freezing when hotkey or tray menu is clicked rapidly
-        $now = Get-Date
-        if ($script:LastToggleTime -and ($now - $script:LastToggleTime).TotalMilliseconds -lt 1000) {
-            return
-        }
-        $script:LastToggleTime = $now
-
         $script:TrayEnabled = $enabledNow
+        $script:LastToggleTime = Get-Date
 
         try {
             if ($null -ne $script:MenuToggleItem) {
-                $suffix = Get-HotkeySuffix
-                $script:MenuToggleItem.Text = if ($enabledNow) { "Disable helper$suffix" } else { "Enable helper$suffix" }
+                $script:MenuToggleItem.Text = if ($enabledNow) { "Disable helper$script:HotkeySuffix" } else { "Enable helper$script:HotkeySuffix" }
             }
             if ($null -ne $script:icon) {
                 if ($enabledNow) {
@@ -1189,8 +1186,24 @@ public class SamishWin32 {
 
         $stateStr = if ($enabledNow) { "ENABLED" } else { "DISABLED" }
         Log-Always ("STATE CHANGED -> " + $stateStr)
-        Notify ("$source -> " + $stateStr)
-        Write-EventLogEntry -Message "Helper state changed to $stateStr by $source." -EntryType "Information" -EventId 102
+
+        $script:PendingNotificationSource = $source
+        $script:PendingNotificationState = $enabledNow
+    }
+
+    function Check-PendingNotification {
+        if ($null -ne $script:PendingNotificationSource) {
+            $elapsedMs = ((Get-Date) - $script:LastToggleTime).TotalMilliseconds
+            if ($elapsedMs -ge 800) {
+                $source = $script:PendingNotificationSource
+                $state = $script:PendingNotificationState
+                $script:PendingNotificationSource = $null # Clear first to prevent re-entry / duplicate checks
+
+                $stateStr = if ($state) { "ENABLED" } else { "DISABLED" }
+                Notify ("$source -> " + $stateStr)
+                Write-EventLogEntry -Message "Helper state changed to $stateStr by $source." -EntryType "Information" -EventId 102
+            }
+        }
     }
 
     # HOTKEY (Polling-based)
@@ -1235,10 +1248,21 @@ public static class KeyState {
         }
 
         # DISABLED SHORT-CIRCUIT
-        # Hotkey + tray DoEvents are now handled every 100ms inside the chunked sleep below.
-        # When tray is disabled and helper is off, burn through the remaining interval quickly.
-        if ($EnableTrayIcon -and ($script:TrayEnabled -eq $false)) {
+        # Process GUI messages (DoEvents), hotkey polling, and pending notifications even when disabled,
+        # while bypassing main loop logic (idle and app checks).
+        if ($script:TrayEnabled -eq $false) {
             Start-Sleep -Milliseconds 100
+            if ($EnableTrayIcon) {
+                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+            }
+            if ($EnableHotkey) {
+                $isDown = ([KeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                if ($isDown -and -not $script:LastKeyDown) {
+                    Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
+                }
+                $script:LastKeyDown = $isDown
+            }
+            Check-PendingNotification
             continue
         }
 
@@ -1345,6 +1369,7 @@ public static class KeyState {
                 }
                 $script:LastKeyDown = $isDown
             }
+            Check-PendingNotification
         }
     }
 }
