@@ -10,7 +10,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.0.10"
+$ScriptVersion = "v1.2.1"
 $ReleaseDate   = "2026-05-23"
 
 # ---------- PATH RESOLUTION ----------
@@ -1013,7 +1013,7 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.0.10"
+        $script:icon.Text = "SAMISH v1.1.0"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         

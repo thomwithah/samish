@@ -1,5 +1,67 @@
 # ---------- UI wiring ----------
 
+# ---------- Custom DrawItem event for ComboBoxes (SAMISH Cyan Highlight) ----------
+$comboDrawItem = {
+    param($sender, $e)
+    if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
+
+    $itemText = $sender.Items[$e.Index].ToString()
+    $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+
+    if ($isHighlighted) {
+        $brushBack = New-Object System.Drawing.SolidBrush($BrandCyan) # SAMISH Cyan/Blue
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+    else {
+        $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+
+    $foreColor = if ($isHighlighted) { [System.Drawing.Color]::Black } else { $sender.ForeColor }
+    $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
+    
+    $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+    $textFormat = New-Object System.Drawing.StringFormat
+    $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+    $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
+
+    $brushFore.Dispose()
+    $textFormat.Dispose()
+    $e.DrawFocusRectangle()
+}
+
+if ($ddLogInterval) { $ddLogInterval.add_DrawItem($comboDrawItem) }
+if ($ddHotkey) { $ddHotkey.add_DrawItem($comboDrawItem) }
+if ($ddOnWakeAction) { $ddOnWakeAction.add_DrawItem($comboDrawItem) }
+if ($ddTestTarget) { $ddTestTarget.add_DrawItem($comboDrawItem) }
+
+# ---------- Custom Focus Borders for TextBoxes ----------
+if ($cfgGroup -and $tbLogCustom -and $tbCustomKey) {
+    $cfgGroup.add_Paint({
+        param($sender, $e)
+        if ($tbLogCustom -and $tbLogCustom.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbLogCustom.Location.X - 1, $tbLogCustom.Location.Y - 1, $tbLogCustom.Width + 1, $tbLogCustom.Height + 1)
+            $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
+            $e.Graphics.DrawRectangle($pen, $rect)
+            $pen.Dispose()
+        }
+        if ($tbCustomKey -and $tbCustomKey.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbCustomKey.Location.X - 1, $tbCustomKey.Location.Y - 1, $tbCustomKey.Width + 1, $tbCustomKey.Height + 1)
+            $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
+            $e.Graphics.DrawRectangle($pen, $rect)
+            $pen.Dispose()
+        }
+    })
+
+    $tbLogCustom.add_GotFocus({ $cfgGroup.Invalidate() })
+    $tbLogCustom.add_LostFocus({ $cfgGroup.Invalidate() })
+    $tbCustomKey.add_GotFocus({ $cfgGroup.Invalidate() })
+    $tbCustomKey.add_LostFocus({ $cfgGroup.Invalidate() })
+}
+
 # --- Mode toggles ---
 $rbHidden.add_CheckedChanged({
         if ($script:IsApplyingConfig) { return }
@@ -117,40 +179,6 @@ $btnOpenLog.add_Click({
         }
     })
 
-$btnLiveLog.add_Click({
-        if ($script:IsLiveLogMode) {
-            Exit-LiveLogMode
-        }
-        else {
-            Enter-LiveLogMode
-        }
-    })
-
-$script:DeferredStatusText = $null
-
-function Set-StatusText([string]$text) {
-
-    # If live log is active, do NOT overwrite the live log display.
-    # Instead, buffer the update for restoration when Live Log exits.
-    if ($script:IsLiveLogMode) {
-
-        $script:DeferredStatusLatest = $text
-
-        # Store a small queue (helpful if multiple actions happen during Live Log)
-        $script:DeferredStatusUpdates += $text
-
-        # Hard cap queue to avoid runaway memory in long sessions
-        if ($script:DeferredStatusUpdates.Count -gt 25) {
-            $script:DeferredStatusUpdates = $script:DeferredStatusUpdates[-25..-1]
-        }
-
-        return
-    }
-
-    # Normal behavior
-    $statusBox.Text = $text
-    $statusBox.Refresh()
-}
 
 # --- Clean Reset (restarts installed mode) ---
 $btnCleanReset.add_Click({
@@ -541,7 +569,7 @@ function Get-SmtcSessionForProcess {
     if ([string]::IsNullOrWhiteSpace($ProcessName)) { return $null }
     try {
         [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
-        $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
+        $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
         $asyncOp = $smtcType::RequestAsync()
         $manager = Wait-UwpAsync -AsyncOp $asyncOp -ResultType ($smtcType)
         if (-not $manager) { return $null }
@@ -615,7 +643,8 @@ function Flash-DiagnosticsStatus {
         try {
             $script:lblDiagDetailFlashTimer.Stop()
             $script:lblDiagDetailFlashTimer.Dispose()
-        } catch {}
+        }
+        catch {}
         $script:lblDiagDetailFlashTimer = $null
     }
 
@@ -626,37 +655,39 @@ function Flash-DiagnosticsStatus {
     $script:lblDiagDetailFlashTimer = New-Object System.Windows.Forms.Timer
     $script:lblDiagDetailFlashTimer.Interval = 180
     $script:lblDiagDetailFlashTimer.add_Tick({
-        $script:lblDiagDetailFlashTick++
-        if ($script:lblDiagDetailFlashTick % 2 -eq 0) {
-            $script:lblDiagDetail.ForeColor = $script:BrandCyan
-        } else {
-            $script:lblDiagDetail.ForeColor = $script:BrandPurple
-        }
+            $script:lblDiagDetailFlashTick++
+            if ($script:lblDiagDetailFlashTick % 2 -eq 0) {
+                $script:lblDiagDetail.ForeColor = $script:BrandCyan
+            }
+            else {
+                $script:lblDiagDetail.ForeColor = $script:BrandPurple
+            }
 
-        # 6 full cycles (12 color changes total)
-        if ($script:lblDiagDetailFlashTick -ge 12) {
-            try {
-                if ($script:lblDiagDetailFlashTimer) {
-                    $script:lblDiagDetailFlashTimer.Stop()
-                    $script:lblDiagDetailFlashTimer.Dispose()
-                    $script:lblDiagDetailFlashTimer = $null
-                }
-            } catch {}
-
-            # Restore the appropriate resting color based on selection
-            $restingColor = [System.Drawing.Color]::DimGray
-            if ($script:listBlockers -and $script:listBlockers.SelectedIndex -ge 0) {
-                $idx = $script:listBlockers.SelectedIndex
-                if ($script:ActiveBlockersList -and $idx -lt $script:ActiveBlockersList.Count) {
-                    $b = $script:ActiveBlockersList[$idx]
-                    if ($b -and $b.IsNotBlocking) {
-                        $restingColor = $script:BrandPurple
+            # 6 full cycles (12 color changes total)
+            if ($script:lblDiagDetailFlashTick -ge 12) {
+                try {
+                    if ($script:lblDiagDetailFlashTimer) {
+                        $script:lblDiagDetailFlashTimer.Stop()
+                        $script:lblDiagDetailFlashTimer.Dispose()
+                        $script:lblDiagDetailFlashTimer = $null
                     }
                 }
+                catch {}
+
+                # Restore the appropriate resting color based on selection
+                $restingColor = [System.Drawing.Color]::DimGray
+                if ($script:listBlockers -and $script:listBlockers.SelectedIndex -ge 0) {
+                    $idx = $script:listBlockers.SelectedIndex
+                    if ($script:ActiveBlockersList -and $idx -lt $script:ActiveBlockersList.Count) {
+                        $b = $script:ActiveBlockersList[$idx]
+                        if ($b -and $b.IsNotBlocking) {
+                            $restingColor = $script:BrandPurple
+                        }
+                    }
+                }
+                $script:lblDiagDetail.ForeColor = $restingColor
             }
-            $script:lblDiagDetail.ForeColor = $restingColor
-        }
-    })
+        })
     $script:lblDiagDetailFlashTimer.Start()
 }
 
@@ -666,6 +697,17 @@ function Complete-SleepDiagnosticsListsUpdate {
     $script:listBlockers.Items.Clear()
     $script:listOverrides.Items.Clear()
     $script:listAutomated.Items.Clear()
+
+    # Disable buttons until selection is made
+    if ($script:btnDiagAutomate) {
+        $script:btnDiagAutomate.Enabled = $false
+        $script:btnDiagAutomate.Text = "Add to Automated Apps"
+    }
+    if ($script:btnDiagIgnore) { $script:btnDiagIgnore.Enabled = $false }
+    if ($script:btnDiagRestore) { $script:btnDiagRestore.Enabled = $false }
+    if ($script:btnDiagStopAuto) { $script:btnDiagStopAuto.Enabled = $false }
+    if ($script:btnDiagOpenLocation) { $script:btnDiagOpenLocation.Enabled = $false }
+    Set-OperatingModeBoxState -Enabled $false
 
     # ---- Active Blockers ----
     $script:ActiveBlockersList = @()
@@ -850,7 +892,7 @@ function Set-OperatingModeBoxState {
             $script:diagFlashTimer = $null
         }
 
-        # Triple-flash: Cyan -> Purple -> Cyan -> Purple -> Cyan -> Purple (6 ticks @ 180ms each)
+        # Triple-flash: Cyan -> ControlText (6 ticks @ 180ms each)
         $script:grpDiagOperatingMode.ForeColor = $BrandCyan
         $script:grpDiagOperatingMode.Refresh()
         $script:diagFlashTick = 0
@@ -862,11 +904,11 @@ function Set-OperatingModeBoxState {
                     $script:grpDiagOperatingMode.ForeColor = $BrandCyan
                 }
                 else {
-                    $script:grpDiagOperatingMode.ForeColor = $BrandPurple
+                    $script:grpDiagOperatingMode.ForeColor = [System.Drawing.SystemColors]::ControlText
                 }
                 if ($script:diagFlashTick -ge 5) {
-                    # Ensure we end on purple then clean up
-                    $script:grpDiagOperatingMode.ForeColor = $BrandPurple
+                    # Ensure we end on ControlText then clean up
+                    $script:grpDiagOperatingMode.ForeColor = [System.Drawing.SystemColors]::ControlText
                     if ($script:diagFlashTimer) {
                         $script:diagFlashTimer.Stop()
                         $script:diagFlashTimer.Dispose()
@@ -977,55 +1019,61 @@ function Init-SleepDiagnosticsEventHandlers {
     # Populate lists on first open
     Update-SleepDiagnosticsListsAsync
 
-    # ---------- DrawItem event for listBlockers (OwnerDrawFixed) ----------
-    if ($script:listBlockers) {
-        $script:listBlockers.add_DrawItem({
-            param($sender, $e)
-            if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
+    # ---------- DrawItem event for Page 2 ListBoxes (OwnerDrawFixed) ----------
+    $lbDrawItem = {
+        param($sender, $e)
+        if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
 
-            $itemText = $sender.Items[$e.Index].ToString()
-            $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+        $itemText = $sender.Items[$e.Index].ToString()
+        $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
 
-            # Background color selection
-            if ($isHighlighted) {
-                $brushBack = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(60, 0, 90)) # Deep purple
-                $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-                $brushBack.Dispose()
-            } else {
-                $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
-                $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-                $brushBack.Dispose()
-            }
+        # Background color selection
+        if ($isHighlighted) {
+            $brushBack = New-Object System.Drawing.SolidBrush($BrandCyan) # SAMISH Cyan/Blue
+            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+            $brushBack.Dispose()
+        }
+        else {
+            $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
+            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+            $brushBack.Dispose()
+        }
 
-            # Foreground color selection
-            $foreColor = $sender.ForeColor
-            $isNonBlocker = $false
-            if ($script:ActiveBlockersList -and $e.Index -lt $script:ActiveBlockersList.Count) {
-                $b = $script:ActiveBlockersList[$e.Index]
-                if ($b -and $b.IsNotBlocking) {
-                    $isNonBlocker = $true
-                    $foreColor = $script:BrandPurple
+        # Foreground color selection
+        $foreColor = $sender.ForeColor
+        if ($isHighlighted) {
+            $foreColor = [System.Drawing.Color]::Black # Black text on Cyan highlight
+        }
+        else {
+            # Active blockers non-blocker styling
+            if ($sender -eq $script:listBlockers) {
+                if ($script:ActiveBlockersList -and $e.Index -lt $script:ActiveBlockersList.Count) {
+                    $b = $script:ActiveBlockersList[$e.Index]
+                    if ($b -and $b.IsNotBlocking) {
+                        $foreColor = $BrandPurple
+                    }
                 }
             }
+        }
 
-            if ($isHighlighted -and -not $isNonBlocker) {
-                $foreColor = [System.Drawing.Color]::White
-            }
+        $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
+        $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+    
+        $textFormat = New-Object System.Drawing.StringFormat
+        $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
 
-            $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
-            $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
-            
-            $textFormat = New-Object System.Drawing.StringFormat
-            $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
+    
+        $brushFore.Dispose()
+        $textFormat.Dispose()
 
-            $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
-            
-            $brushFore.Dispose()
-            $textFormat.Dispose()
-
-            $e.DrawFocusRectangle()
-        })
+        $e.DrawFocusRectangle()
     }
+
+    if ($script:listBlockers) { $script:listBlockers.add_DrawItem($lbDrawItem) }
+    if ($script:listOverrides) { $script:listOverrides.add_DrawItem($lbDrawItem) }
+    if ($script:listAutomated) { $script:listAutomated.add_DrawItem($lbDrawItem) }
+    if ($script:listArmedDevices) { $script:listArmedDevices.add_DrawItem($lbDrawItem) }
 
     # Guard flag: prevents the two list selection handlers from triggering each other
     $script:diagListMutex = $false
@@ -1046,6 +1094,7 @@ function Init-SleepDiagnosticsEventHandlers {
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:ActiveBlockersList.Count)
 
             $script:btnDiagAutomate.Enabled = $false
+            $script:btnDiagAutomate.Text = "Add to Automated Apps"
             $script:btnDiagIgnore.Enabled = $false
 
             if (-not $hasValidItem) {
@@ -1067,22 +1116,58 @@ function Init-SleepDiagnosticsEventHandlers {
 
             # Enable buttons based on type - mutually exclusive
             if ($b.BlockerType -eq 'App') {
-                $script:btnDiagAutomate.Enabled = $true
                 $script:btnDiagIgnore.Enabled = $false
 
-                # Light up the Operating Mode box and reset to safe defaults
-                Set-OperatingModeBoxState -Enabled $true
-                $script:diagSyncingControls = $true
-                try {
-                    if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
-                    Populate-OnWakeActionDropdown -beforeSleepMode "Graceful" -selectedValue "Smart"
+                # Check if already automated
+                $alreadyAutomated = $false
+                if ($script:MonitoredApps) {
+                    $alreadyAutomated = [bool]($script:MonitoredApps | Where-Object { $_.ProcessName -eq $b.ProcessName })
                 }
-                finally {
-                    $script:diagSyncingControls = $false
+
+                if ($alreadyAutomated) {
+                    $script:btnDiagAutomate.Enabled = $false
+                    $script:btnDiagAutomate.Text = "Already Automated"
+                    # Still enable the Operating Mode box so they can view/edit the config
+                    # Find the automated app's config to sync
+                    $app = $script:MonitoredApps | Where-Object { $_.ProcessName -eq $b.ProcessName } | Select-Object -First 1
+                    $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
+                    $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
+                    Set-OperatingModeBoxState -Enabled $true
+                    $script:diagSyncingControls = $true
+                    try {
+                        if ($mode -eq "Classic") {
+                            if ($script:rbDiagClassic) { $script:rbDiagClassic.Checked = $true }
+                        }
+                        elseif ($mode -eq "PauseMedia") {
+                            if ($script:rbDiagPauseMedia) { $script:rbDiagPauseMedia.Checked = $true }
+                        }
+                        else {
+                            if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                        }
+                        Populate-OnWakeActionDropdown -beforeSleepMode $mode -selectedValue $onWake
+                    }
+                    finally {
+                        $script:diagSyncingControls = $false
+                    }
+                }
+                else {
+                    $script:btnDiagAutomate.Enabled = $true
+                    $script:btnDiagAutomate.Text = "Add to Automated Apps"
+                    # Light up the Operating Mode box and reset to safe defaults
+                    Set-OperatingModeBoxState -Enabled $true
+                    $script:diagSyncingControls = $true
+                    try {
+                        if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
+                        Populate-OnWakeActionDropdown -beforeSleepMode "Graceful" -selectedValue "Smart"
+                    }
+                    finally {
+                        $script:diagSyncingControls = $false
+                    }
                 }
             }
             else {
                 $script:btnDiagAutomate.Enabled = $false
+                $script:btnDiagAutomate.Text = "Add to Automated Apps"
                 $script:btnDiagIgnore.Enabled = $true
                 # Non-app blockers can't be automated; grey the box back out
                 Set-OperatingModeBoxState -Enabled $false
@@ -1468,12 +1553,12 @@ function Init-SleepDiagnosticsEventHandlers {
 
         $displayChosen = if ($chosenMode -eq "PauseMedia") { "Keep App Open" } else { $chosenMode }
         $displayOnWake = switch ($newOnWake) {
-            "Smart"       { "Smart Restore" }
-            "Play"        { "Always Play" }
-            "Pause"       { "Always Pause" }
-            "KeepClosed"  { "Keep Closed" }
-            "ReopenOnly"  { "Reopen Only" }
-            default       { $newOnWake }
+            "Smart" { "Smart Restore" }
+            "Play" { "Always Play" }
+            "Pause" { "Always Pause" }
+            "KeepClosed" { "Keep Closed" }
+            "ReopenOnly" { "Reopen Only" }
+            default { $newOnWake }
         }
         Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
     }
@@ -1485,33 +1570,33 @@ function Init-SleepDiagnosticsEventHandlers {
     # ---------- Live-save On Wake Action dropdown ----------
     if ($script:ddDiagOnWakeAction) {
         $script:ddDiagOnWakeAction.add_SelectedIndexChanged({
-            if ($script:diagSyncingControls) { return }
+                if ($script:diagSyncingControls) { return }
 
-            $idx = $script:listAutomated.SelectedIndex
-            if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
+                $idx = $script:listAutomated.SelectedIndex
+                if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) { return }
 
-            $app = $script:MonitoredApps[$idx]
-            $chosenMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
-            $newOnWake = Get-OnWakeActionFromDropdown -beforeSleepMode $chosenMode
+                $app = $script:MonitoredApps[$idx]
+                $chosenMode = if ($app.RecoveryMode) { $app.RecoveryMode } else { "Graceful" }
+                $newOnWake = Get-OnWakeActionFromDropdown -beforeSleepMode $chosenMode
 
-            if ($app.OnWakeAction -eq $newOnWake) { return }
+                if ($app.OnWakeAction -eq $newOnWake) { return }
 
-            $app.OnWakeAction = $newOnWake
-            $script:MonitoredApps[$idx] = $app
-            Save-MonitoredAppsToConfig
-            Update-AutomatedAppsListDisplay
+                $app.OnWakeAction = $newOnWake
+                $script:MonitoredApps[$idx] = $app
+                Save-MonitoredAppsToConfig
+                Update-AutomatedAppsListDisplay
  
-            $displayChosen = if ($chosenMode -eq "PauseMedia") { "Keep App Open" } else { $chosenMode }
-            $displayOnWake = switch ($newOnWake) {
-                "Smart"       { "Smart Restore" }
-                "Play"        { "Always Play" }
-                "Pause"       { "Always Pause" }
-                "KeepClosed"  { "Keep Closed" }
-                "ReopenOnly"  { "Reopen Only" }
-                default       { $newOnWake }
-            }
-            Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
-        })
+                $displayChosen = if ($chosenMode -eq "PauseMedia") { "Keep App Open" } else { $chosenMode }
+                $displayOnWake = switch ($newOnWake) {
+                    "Smart" { "Smart Restore" }
+                    "Play" { "Always Play" }
+                    "Pause" { "Always Pause" }
+                    "KeepClosed" { "Keep Closed" }
+                    "ReopenOnly" { "Reopen Only" }
+                    default { $newOnWake }
+                }
+                Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
+            })
     }
 }
 
@@ -1847,7 +1932,8 @@ $script:btnTestStart.add_Click({
                     $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
                     if ($resumed) {
                         $msg = "Start Test PASSED for $($target.DisplayName) (Media Play command succeeded)."
-                    } else {
+                    }
+                    else {
                         $msg = "Start Test did not confirm playback for $($target.DisplayName) (SMTC play command failed or no session found)."
                     }
                     Set-StatusText $msg
@@ -2041,7 +2127,8 @@ $script:btnTestStop.add_Click({
                 $paused = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Pause"
                 if ($paused) {
                     $msg = "Stop Test PASSED for $($target.DisplayName) (Media successfully paused)."
-                } else {
+                }
+                else {
                     $msg = "Stop Test did not confirm media pause for $($target.DisplayName) (SMTC pause command failed or no session found)."
                 }
             }
@@ -2061,7 +2148,8 @@ $script:btnTestStop.add_Click({
                 $errTxt = if ($r -and $r.Error) { [string]$r.Error } else { "" }
                 if ($stopped) {
                     $msg = "Stop Test PASSED for $($target.DisplayName) (Graceful close succeeded via $method)."
-                } else {
+                }
+                else {
                     $msg = "Stop Test did not confirm a clean stop for $($target.DisplayName). Method: $method."
                     if ($errTxt) { $msg += " $errTxt" }
                 }
@@ -2078,7 +2166,8 @@ $script:btnTestStop.add_Click({
                 $status = if ($r -and $r.Status) { [string]$r.Status } else { "Unknown" }
                 if ($stopped) {
                     $msg = "Stop Test PASSED for $($target.DisplayName) (Classic close succeeded. Status: $status)."
-                } else {
+                }
+                else {
                     $msg = "Stop Test did not confirm a stop for $($target.DisplayName). Status: $status."
                 }
             }
@@ -2110,12 +2199,12 @@ function Get-AutomatedAppDisplayLabel {
 
     $onWake = if ($app.PSObject.Properties['OnWakeAction']) { $app.OnWakeAction } else { "Smart" }
     $onWakeLabel = switch ($onWake) {
-        "Smart"       { "Smart" }
-        "Play"        { "Play" }
-        "Pause"       { "Pause" }
-        "KeepClosed"  { "Keep Closed" }
-        "ReopenOnly"  { "Reopen Only" }
-        default       { $onWake }
+        "Smart" { "Smart" }
+        "Play" { "Play" }
+        "Pause" { "Pause" }
+        "KeepClosed" { "Keep Closed" }
+        "ReopenOnly" { "Reopen Only" }
+        default { $onWake }
     }
 
     return "$($app.ProcessName) [$sleepMode - $onWakeLabel]"
@@ -2138,7 +2227,8 @@ function Update-AutomatedAppsListDisplay {
 
         if ($script:listAutomated.Items.Count -eq 0) {
             $script:listAutomated.Items.Add("(No apps automated by SAMISH yet)") | Out-Null
-        } else {
+        }
+        else {
             if ($selectedIndex -ge 0 -and $selectedIndex -lt $script:listAutomated.Items.Count) {
                 $script:listAutomated.SelectedIndex = $selectedIndex
             }
@@ -2168,3 +2258,363 @@ $syncOperatingMode = {
 
 if ($rbOpGraceful) { $rbOpGraceful.add_CheckedChanged($syncOperatingMode) }
 if ($rbOpClassic) { $rbOpClassic.add_CheckedChanged($syncOperatingMode) }
+
+
+# =====================================================================
+# V1.1.0 NAVIGATION & DRAWER EVENT HANDLERS
+# =====================================================================
+
+function Hide-All-Drawers {
+    $form.ClientSize = New-Object System.Drawing.Size(800, 640)
+    $tabControl.Size = New-Object System.Drawing.Size(780, 520)
+
+    # Reset drawer button labels so they never show stale "Close X" state
+    if ($btnToolsAdvanced) { $btnToolsAdvanced.Text = "Advanced Tools >>" }
+    if ($btnDiagAdvanced)  { $btnDiagAdvanced.Text  = "Diagnostics >>" }
+
+    # Return logo to its home position
+    if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(718, 12) }
+
+    # Hide live log controls if active
+    if ($script:IsLiveLogMode) { Exit-LiveLogMode }
+
+    # Stop telemetry if running
+    if ($script:TelemetryTimer) {
+        $script:TelemetryTimer.Stop()
+        $script:TelemetryTimer.Dispose()
+        $script:TelemetryTimer = $null
+    }
+
+    if ($script:mainSep) { $script:mainSep.Width = 764 }
+    if ($script:bottomMetadata) {
+        $script:bottomMetadata.Location = New-Object System.Drawing.Point(480, 595)
+        $script:bottomMetadata.BringToFront()
+    }
+
+    # Contract tab buttons to default names/sizes
+    if ($btnTabSetup) {
+        $btnTabSetup.Text = "1. Setup && Install"
+        $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
+        $btnTabSetup.Size = New-Object System.Drawing.Size(145, 30)
+    }
+    if ($btnTabDiag) {
+        $btnTabDiag.Text = "2. Sleep Automation"
+        $btnTabDiag.Location = New-Object System.Drawing.Point(485, 48)
+        $btnTabDiag.Size = New-Object System.Drawing.Size(180, 30)
+    }
+
+    # Hide and reset Advanced Tools sub-tabs
+    if ($btnSubTabTools) {
+        $btnSubTabTools.Visible = $false
+        $btnSubTabTools.Font = $boldFont
+        $btnSubTabTools.ForeColor = $BrandPurple
+    }
+    if ($btnSubTabLive) {
+        $btnSubTabLive.Visible = $false
+        $btnSubTabLive.Font = $font
+        $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
+    }
+}
+
+$btnTabSetup.add_Click({
+        $tabControl.SelectedIndex = 0
+        $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
+        $btnTabSetup.ForeColor = $BrandPurple
+        $btnTabSetup.Font = $boldFont
+        $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
+        $btnTabDiag.ForeColor = [System.Drawing.Color]::DimGray
+        $btnTabDiag.Font = $font
+        Hide-All-Drawers
+    })
+
+$btnTabDiag.add_Click({
+        $tabControl.SelectedIndex = 1
+        $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
+        $btnTabDiag.ForeColor = $BrandPurple
+        $btnTabDiag.Font = $boldFont
+        $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
+        $btnTabSetup.ForeColor = [System.Drawing.Color]::DimGray
+        $btnTabSetup.Font = $font
+        Hide-All-Drawers
+        # Initialize Page 2 handlers on first visit (was never called — root cause of all Page 2 bugs)
+        if (-not $script:diagInitialized) {
+            $script:diagInitialized = $true
+            Init-SleepDiagnosticsEventHandlers
+        }
+    })
+
+$btnToolsAdvanced.add_Click({
+        if ($form.ClientSize.Width -eq 800) {
+            # Expand — slide logo to far right of new header space
+            $tabControl.Size = New-Object System.Drawing.Size(1160, 520)
+            $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
+            $btnToolsAdvanced.Text = "<< Close Tools"
+            if ($script:mainSep) { $script:mainSep.Width = 1144 }
+            if ($script:bottomMetadata) {
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
+                $script:bottomMetadata.BringToFront()
+            }
+
+            # Expand tab buttons to long names/sizes (Setup anchored at X=330)
+            if ($btnTabSetup) {
+                $btnTabSetup.Text = "1. Setup && Installation"
+                $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
+                $btnTabSetup.Size = New-Object System.Drawing.Size(190, 30)
+            }
+            if ($btnTabDiag) {
+                $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
+                $btnTabDiag.Location = New-Object System.Drawing.Point(530, 48)
+                $btnTabDiag.Size = New-Object System.Drawing.Size(260, 30)
+            }
+
+            # Show sub-tabs
+            if ($btnSubTabTools) { $btnSubTabTools.Visible = $true }
+            if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
+        }
+        else {
+            # Collapse (Hide-All-Drawers resets text and logo)
+            Hide-All-Drawers
+        }
+    })
+
+$btnDiagAdvanced.add_Click({
+        if ($form.ClientSize.Width -eq 800) {
+            # Expand — slide logo to far right of new header space
+            $tabControl.Size = New-Object System.Drawing.Size(1160, 520)
+            $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
+            $btnDiagAdvanced.Text = "<< Close Diagnostics"
+            if ($script:mainSep) { $script:mainSep.Width = 1144 }
+            if ($script:bottomMetadata) {
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
+                $script:bottomMetadata.BringToFront()
+            }
+
+            # Expand tab buttons to long names/sizes (Setup anchored at X=330)
+            if ($btnTabSetup) {
+                $btnTabSetup.Text = "1. Setup && Installation"
+                $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
+                $btnTabSetup.Size = New-Object System.Drawing.Size(190, 30)
+            }
+            if ($btnTabDiag) {
+                $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
+                $btnTabDiag.Location = New-Object System.Drawing.Point(530, 48)
+                $btnTabDiag.Size = New-Object System.Drawing.Size(260, 30)
+            }
+
+            # Trigger telemetry refresh
+            if ($script:btnTelemetryRefresh) { $script:btnTelemetryRefresh.PerformClick() }
+        }
+        else {
+            # Collapse (Hide-All-Drawers resets text and logo)
+            Hide-All-Drawers
+        }
+    })
+
+$script:btnTelemetryRefresh.add_Click({
+        $script:lblTelemetryStates.Text = "Querying system telemetry..."
+        $script:txtLastWake.Text = ""
+        $script:txtWakeTimers.Text = ""
+        $script:listArmedDevices.Items.Clear()
+    
+        # Run async (simulated here with immediate run for brevity, but could use runspace)
+        try {
+            $diag = Get-SystemPowerDiagnostics
+            $script:txtLastWake.Text = $diag.LastWake
+        
+            if ($diag.WakeTimers.Count -gt 0) {
+                $script:txtWakeTimers.Text = ($diag.WakeTimers -join "`r`n")
+            }
+            else {
+                $script:txtWakeTimers.Text = "No active wake timers."
+            }
+        
+            if ($diag.ArmedDevices.Count -gt 0) {
+                foreach ($dev in $diag.ArmedDevices) {
+                    $script:listArmedDevices.Items.Add($dev) | Out-Null
+                }
+            }
+            else {
+                $script:listArmedDevices.Items.Add("No devices armed to wake the system.") | Out-Null
+            }
+        
+            $script:lblTelemetryStates.Text = "Supported Sleep States: " + ($diag.SleepSupport -join ", ")
+        }
+        catch {
+            $script:lblTelemetryStates.Text = "Failed to query telemetry."
+        }
+    })
+
+# ----- Live Log Sub-Tab Handlers -----
+function Show-SubTabTools {
+    if ($btnSubTabTools) {
+        $btnSubTabTools.Font = $boldFont
+        $btnSubTabTools.ForeColor = $BrandPurple
+    }
+    if ($btnSubTabLive) {
+        $btnSubTabLive.Font = $font
+        $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
+    }
+
+    # Hide live log and controls
+    if ($txtLiveLog) { $txtLiveLog.Visible = $false }
+    if ($script:liveLogSep) { $script:liveLogSep.Visible = $false }
+    if ($btnLivePause) { $btnLivePause.Visible = $false }
+    if ($btnLiveCopy) { $btnLiveCopy.Visible = $false }
+    if ($btnLiveClear) { $btnLiveClear.Visible = $false }
+
+    if ($script:LiveLogTimer) {
+        $script:LiveLogTimer.Stop()
+        $script:LiveLogTimer.Dispose()
+        $script:LiveLogTimer = $null
+    }
+    $script:IsLiveLogMode = $false
+
+    # Show utility buttons
+    if ($btnPowerPlan) { $btnPowerPlan.Visible = $true }
+    if ($btnOpenTS) { $btnOpenTS.Visible = $true }
+    if ($btnCleanReset) { $btnCleanReset.Visible = $true }
+    if ($btnReadSetup) { $btnReadSetup.Visible = $true }
+    if ($btnOpenLog) { $btnOpenLog.Visible = $true }
+}
+
+function Show-SubTabLive {
+    if ($btnSubTabLive) {
+        $btnSubTabLive.Font = $boldFont
+        $btnSubTabLive.ForeColor = $BrandPurple
+    }
+    if ($btnSubTabTools) {
+        $btnSubTabTools.Font = $font
+        $btnSubTabTools.ForeColor = [System.Drawing.Color]::DimGray
+    }
+
+    if (-not $script:LiveLogPath) { $script:LiveLogPath = Get-VerifiedPreferredLogPathOrShowMessageBox }
+    $path = $script:LiveLogPath
+    if (-not $path -or -not (Test-Path -LiteralPath $path)) {
+        # Switch back to tools if log path isn't valid
+        Show-SubTabTools
+        return
+    }
+
+    $script:IsLiveLogMode = $true
+    $script:IsLiveLogPaused = $false
+    if ($btnLivePause) { $btnLivePause.Text = "Pause" }
+
+    # Hide utility buttons
+    if ($btnPowerPlan) { $btnPowerPlan.Visible = $false }
+    if ($btnOpenTS) { $btnOpenTS.Visible = $false }
+    if ($btnCleanReset) { $btnCleanReset.Visible = $false }
+    if ($btnReadSetup) { $btnReadSetup.Visible = $false }
+    if ($btnOpenLog) { $btnOpenLog.Visible = $false }
+
+    # Show live log controls
+    if ($txtLiveLog) { $txtLiveLog.Visible = $true }
+    if ($script:liveLogSep) { $script:liveLogSep.Visible = $true }
+    if ($btnLivePause) { $btnLivePause.Visible = $true }
+    if ($btnLiveCopy) { $btnLiveCopy.Visible = $true }
+    if ($btnLiveClear) { $btnLiveClear.Visible = $true }
+
+    if ($txtLiveLog) {
+        $txtLiveLog.Clear()
+        $tail = Read-LogTailText -Path $path -MaxChars 100000
+        if (-not [string]::IsNullOrEmpty($tail)) {
+            $txtLiveLog.AppendText($tail)
+            if (-not $tail.EndsWith("`n")) {
+                $txtLiveLog.AppendText("`r`n")
+            }
+        }
+    }
+
+    try {
+        $fi = Get-Item -LiteralPath $path
+        $script:LiveLogPosition = [int64]$fi.Length
+    }
+    catch { $script:LiveLogPosition = 0 }
+
+    if ($script:LiveLogTimer) {
+        $script:LiveLogTimer.Stop()
+        $script:LiveLogTimer.Dispose()
+        $script:LiveLogTimer = $null
+    }
+
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 350
+    $timer.Add_Tick({
+            if ($script:IsLiveLogPaused) { return }
+
+            $fi = Get-Item -LiteralPath $script:LiveLogPath -ErrorAction SilentlyContinue
+            if ($fi -and $fi.Length -gt $script:LiveLogPosition) {
+                $fs = [System.IO.File]::Open($script:LiveLogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                $fs.Seek($script:LiveLogPosition, [System.IO.SeekOrigin]::Begin) | Out-Null
+                $reader = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8)
+                $newText = $reader.ReadToEnd()
+                $script:LiveLogPosition = $fi.Length
+                $reader.Dispose()
+                $fs.Dispose()
+
+                if (![string]::IsNullOrEmpty($newText)) {
+                    $txtLiveLog.AppendText($newText)
+                    $txtLiveLog.SelectionStart = $txtLiveLog.TextLength
+                    $txtLiveLog.ScrollToCaret()
+                }
+            }
+        })
+    $script:LiveLogTimer = $timer
+    $timer.Start()
+}
+
+function Enter-LiveLogMode {
+    Show-SubTabLive
+}
+
+function Exit-LiveLogMode {
+    Show-SubTabTools
+}
+
+# Wire sub-tab buttons
+if ($btnSubTabTools) { $btnSubTabTools.add_Click({ Show-SubTabTools }) }
+if ($btnSubTabLive) { $btnSubTabLive.add_Click({ Show-SubTabLive }) }
+
+if ($btnLivePause) {
+    $btnLivePause.add_Click({ 
+        $script:IsLiveLogPaused = -not $script:IsLiveLogPaused
+        if ($script:IsLiveLogPaused) { $btnLivePause.Text = "Resume" } else { $btnLivePause.Text = "Pause" }
+    })
+}
+if ($btnLiveClear) { $btnLiveClear.add_Click({ if ($txtLiveLog) { $txtLiveLog.Clear() } }) }
+if ($btnLiveCopy) {
+    $btnLiveCopy.add_Click({ 
+        if ($txtLiveLog -and $txtLiveLog.Text) { [System.Windows.Forms.Clipboard]::SetText($txtLiveLog.Text) }
+    })
+}
+
+# Wire double-click on version label/metadata to open changelog
+if ($bottomMetadata) {
+    $bottomMetadata.add_DoubleClick({
+        $changelogPath = Join-Path $PackageDir "CHANGELOG.md"
+        if (Test-Path -LiteralPath $changelogPath) {
+            Write-SetupLog "Changelog found at '$changelogPath'. Attempting to open."
+            try {
+                Start-Process $changelogPath | Out-Null
+            }
+            catch {
+                Write-SetupLog "Error opening changelog: $($_.Exception.Message)"
+            }
+        }
+        else {
+            Write-SetupLog "Changelog not found at expected path: '$changelogPath'"
+        }
+    })
+}
+
+# Replace Set-StatusText to remove deferred logic
+function Set-StatusText([string]$text) {
+    if (-not $statusBox) { return }
+    $timestamp = (Get-Date -Format "HH:mm:ss")
+    $statusBox.AppendText("[$timestamp] $text
+")
+    $statusBox.SelectionStart = $statusBox.TextLength
+    $statusBox.ScrollToCaret()
+}
+

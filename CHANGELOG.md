@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-23
+
+### Added
+- **Dynamic Tooltip Word-Wrapping (DPI & Resolution Safety)**: Added a helper function (`Format-WrappedText`) and wrapped the global `$tooltip` control with a dynamic proxy that automatically wraps all tooltips to a maximum of 70 characters per line. This prevents text truncation and layout overflow on high-DPI scaling configurations and lower resolution screens.
+- **Completed missing tooltips**:
+  - Added descriptive tooltips to the Setup and Diagnostics main tab buttons.
+  - Added tooltips to the Advanced Tools & Utilities group box, the Tools sub-tab, and the Live Log sub-tab.
+  - Restored the detailed Uninstall button tooltip to clarify configuration preservation.
+  - Added group box tooltips for all group boxes currently missing them (Active Blockers, Ignored Blockers, Automated Apps, Operating Mode, Operating Mode Tests, and System Sleep & Wake Analysis).
+  - Added tooltips for internal telemetry diagnostics (Supported Sleep States, Last Wake Source, Active Wake Timers, and Armed Devices).
+  - Added tooltips for the version metadata label, "Remove System Override" button, and "Refresh Telemetry" button.
+- **Interactive Version Footer**: Configured the version footer label in the lower-right corner to open `CHANGELOG.md` on double-click. Removed the Notepad fallback option and added robust PowerShell log events to track if the file is successfully located and launched.
+- **Live Log Visual Accent**: Added a SAMISH purple accent line under the Tools and Live Log tab buttons when the Live Log view is active to underline the log terminal.
+
+### Changed
+- **Symmetric Layout Alignments**:
+  - Re-aligned the bottom edge of the Live Log control buttons (Pause, Copy, Clear) with the bottom edge of the status text box.
+  - Symmetrized Page 2 layout panels, increasing the height of the automated apps list box to 105 and aligning the Y-coordinates of automated action buttons and test control buttons to 134.
+  - Lowered the On Wake dropdown label to Y=141 and dropdown to Y=166, aligning all bottom boundaries perfectly on relative Y=190.
+- **PS2EXE Compatibility Path Resolution**: Fixed a path resolution bug in `Setup.ps1` where `$MyInvocation.MyCommand.Definition` was used to resolve the script root directory. This property returns the raw script body when running inside a PS2EXE wrapper, throwing a fatal path exception and causing compiled EXEs to hang or fail on start. Replaced it with robust fallbacks (`$PSScriptRoot`, `$PSCommandPath`, and AppDomain base directory).
+- **Cleaned Misplaced Tray Logic in Setup UI**: Removed an incorrectly merged tray icon setup block and premature `$btnCleanReset.Enabled` assignments from the body of the `Get-HighQualityScaledImage` helper function in [Modules/UI.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/Modules/UI.ps1). The premature assignment threw a property-on-null exception on startup (since the button was not yet defined), which aborted UI initialization and caused compiled EXEs to hang without showing their window. The clean reset button initialization has been relocated to execute safely at the end of the file.
+## [1.1.0] - 2026-05-23
+
+### Added
+- **Unified Two-Tabbed Dashboard Layout**: Replaced the separate installer and diagnostics windows with a single, borderless TabControl. Redesigned both pages into efficient 2-column configurations, reducing vertical height to 640px to resolve the vertical cut-off bug on 1080p scaled screens.
+- **Symmetric Slide-Out Drawers**: Added expandable slide-out panels (expanding window from 800px to 1180px) containing Advanced Tools on Page 1 and Sleep/Wake Telemetry diagnostics on Page 2.
+- **Drawer-Based Live Log Console**: Relocated the real-time Live Log streaming monitor to a dedicated tall console in the Page 1 drawer (featuring Pause, Copy, Clear, and Exit controls), resolving word-wrapping issues.
+- **Advanced System Sleep Telemetry**: Gathers and displays system-wide sleep configurations, parsed last wake source (`powercfg /lastwake`), active wake timers (`powercfg /waketimers`), and armed devices (`powercfg /devicequery wake_armed`) asynchronously.
+- **Unified Terminology & User-Friendly Button Labels**: Renamed legacy buttons to clearer actions (e.g. "Restart SAMISH Service", "Verify Power Plan", "Test Sleep/Hibernate", "Remove System Override").
+- **Resource Management Improvements**: Automatically closes active timers and background runspaces on tab switches, drawer collapse, or app exit.
+
 ## [1.0.10] - 2026-05-23
 
 ### Changed

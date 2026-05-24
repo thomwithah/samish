@@ -335,3 +335,81 @@ function Resolve-ProcessExecutablePath {
 
     return $null
 }
+
+function Get-SystemPowerDiagnostics {
+    # Gathers system-wide telemetry using elevated powercfg calls
+    
+    # 1. System Sleep Support
+    $sleepSupportLines = powercfg /a 2>$null
+    $sleepSupport = @()
+    if ($sleepSupportLines) {
+        $activeSection = $false
+        foreach ($line in $sleepSupportLines) {
+            $line = $line.Trim()
+            if ($line -match "The following sleep states are available on this system:") {
+                $activeSection = $true
+                continue
+            }
+            if ($activeSection -and $line -match "The following sleep states are not available on this system:") {
+                $activeSection = $false
+                break
+            }
+            if ($activeSection -and (-not [string]::IsNullOrWhiteSpace($line))) {
+                $sleepSupport += $line
+            }
+        }
+    }
+
+    # 2. Last Wake Source
+    $lastWakeLines = powercfg /lastwake 2>$null
+    $lastWake = "Unknown"
+    if ($lastWakeLines) {
+        foreach ($line in $lastWakeLines) {
+            if ($line -match "^\s*Type:\s*(.+)$") {
+                $lastWake = $Matches[1].Trim()
+            }
+            if ($line -match "^\s*Friendly Name:\s*(.+)$") {
+                $lastWake = $Matches[1].Trim()
+                break # Friendly name is usually the most descriptive
+            }
+        }
+        if ($lastWake -eq "Unknown" -and $lastWakeLines.Count -ge 2) {
+            $lastWake = $lastWakeLines[1].Trim()
+        }
+    }
+
+    # 3. Armed Wake Devices
+    $armedDevicesLines = powercfg /devicequery wake_armed 2>$null
+    $armedDevices = @()
+    if ($armedDevicesLines) {
+        foreach ($line in $armedDevicesLines) {
+            if (-not [string]::IsNullOrWhiteSpace($line) -and $line -ne "NONE") {
+                $armedDevices += $line.Trim()
+            }
+        }
+    }
+
+    # 4. Active Wake Timers
+    $wakeTimersLines = powercfg /waketimers 2>$null
+    $wakeTimers = @()
+    if ($wakeTimersLines) {
+        $currentTimer = ""
+        foreach ($line in $wakeTimersLines) {
+            if ($line -match "^Timer set by (.+)$") {
+                if ($currentTimer) { $wakeTimers += $currentTimer }
+                $currentTimer = $line.Trim()
+            }
+            elseif ($line -match "^\s+Reason:\s*(.+)$") {
+                $currentTimer += " - " + $Matches[1].Trim()
+            }
+        }
+        if ($currentTimer) { $wakeTimers += $currentTimer }
+    }
+
+    return [pscustomobject]@{
+        SleepSupport = $sleepSupport
+        LastWake = $lastWake
+        ArmedDevices = $armedDevices
+        WakeTimers = $wakeTimers
+    }
+}
