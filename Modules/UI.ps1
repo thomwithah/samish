@@ -699,6 +699,13 @@ function Build-ProfilesUI {
             $rb.Checked = ($script:ActiveProfileId -eq $p.Id)
             $profilesPanel.Controls.Add($rb)
 
+            if ($p.Id -eq "BEACN") {
+                $tooltip.SetToolTip($rb, "To set up the recommended configuration for BEACN:`n1. Select the BEACN profile under Device Settings.`n2. Select Hidden install mode (runs silently in the background).`n3. Select Graceful operating mode (cleanly shuts down the BEACN app).`n4. Click 'Install / Update' to install the background task.`n5. Approve the Power Plan Fix if prompted to ensure proper screen-off timing.")
+            }
+            elseif ($p.Id -eq "DEMO") {
+                $tooltip.SetToolTip($rb, "Demo Device (UI Test):`nUse this profile to test the SAMISH user interface, simulated sleep blocker scans, and wake/resume action simulation. This profile also serves as a developer template to model custom device adapter modules from.")
+            }
+
             $rb.add_CheckedChanged({
                     if (-not $this.Checked) { return }
 
@@ -1553,12 +1560,13 @@ $script:btnDiagAutomate = $btnDiagAutomate
 $tooltip.SetToolTip($btnDiagAutomate, "Configure SAMISH to automatically manage this application before sleep or hibernation, and restart it when the system wakes.")
 
 $lblBlockerHint = New-Object System.Windows.Forms.Label
-$lblBlockerHint.Text = "Tip: To automate a browser/media app, open it and play media, then click Scan."
+$lblBlockerHint.Text = "Tip: To discover and automate a browser/media app, open it and play media, then click Scan."
 $lblBlockerHint.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblBlockerHint.ForeColor = [System.Drawing.Color]::DimGray
 $lblBlockerHint.Size = New-Object System.Drawing.Size(335, 36)
 $lblBlockerHint.Location = New-Object System.Drawing.Point(10, 154)
 $grpBlockers.Controls.Add($lblBlockerHint)
+$tooltip.SetToolTip($lblBlockerHint, "To configure a browser or media app for SAMISH management:`n1. Open the application (e.g., Spotify, Chrome) and play media to generate an active audio wake-lock.`n2. Click 'Scan Blockers' to discover the application in the Active Blockers list.`n3. Select the application and click 'Add to Automated Apps' to automate it.")
 
 $grpOverrides = New-Object System.Windows.Forms.GroupBox
 $grpOverrides.Text = "Ignored Blockers"

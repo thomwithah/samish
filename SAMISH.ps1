@@ -10,8 +10,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.2.1"
-$ReleaseDate   = "2026-05-23"
+$ScriptVersion = "v1.2.2"
+$ReleaseDate   = "2026-05-24"
 
 # ---------- PATH RESOLUTION ----------
 $PackageDir = $PSScriptRoot
@@ -1013,7 +1013,7 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.1.0"
+        $script:icon.Text = "SAMISH v1.2.2"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         

@@ -1085,10 +1085,12 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Active Blockers selection ----------
     $script:listBlockers.add_SelectedIndexChanged({
-            if ($script:diagListMutex) { return }
-            $script:diagListMutex = $true
-            $script:listAutomated.ClearSelected()
-            $script:diagListMutex = $false
+            if (-not $script:diagListMutex) {
+                $script:diagListMutex = $true
+                $script:listAutomated.ClearSelected()
+                $script:listOverrides.ClearSelected()
+                $script:diagListMutex = $false
+            }
 
             $idx = $script:listBlockers.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:ActiveBlockersList.Count)
@@ -1176,6 +1178,13 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- System Overrides selection ----------
     $script:listOverrides.add_SelectedIndexChanged({
+            if (-not $script:diagListMutex) {
+                $script:diagListMutex = $true
+                $script:listBlockers.ClearSelected()
+                $script:listAutomated.ClearSelected()
+                $script:diagListMutex = $false
+            }
+
             $idx = $script:listOverrides.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:SystemOverridesList.Count)
             $script:btnDiagRestore.Enabled = $hasValidItem
@@ -1188,10 +1197,12 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Automated Apps selection ----------
     $script:listAutomated.add_SelectedIndexChanged({
-            if ($script:diagListMutex) { return }
-            $script:diagListMutex = $true
-            $script:listBlockers.ClearSelected()
-            $script:diagListMutex = $false
+            if (-not $script:diagListMutex) {
+                $script:diagListMutex = $true
+                $script:listBlockers.ClearSelected()
+                $script:listOverrides.ClearSelected()
+                $script:diagListMutex = $false
+            }
 
             $idx = $script:listAutomated.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count)

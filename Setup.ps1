@@ -1,7 +1,7 @@
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.2.1
+# Version: 1.2.2
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -300,7 +300,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.2.1"
+$ProductVersion = "v1.2.2"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
