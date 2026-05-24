@@ -1,4 +1,15 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
+<img width="818" height="695" alt="image" src="https://github.com/user-attachments/assets/9eeb69db-89df-4061-a910-8f57350df001" />
+<img width="826" height="698" alt="image" src="https://github.com/user-attachments/assets/6baf3dd3-b4cc-400b-8e8e-a8bbd8cd0e88" />
+<img width="1202" height="691" alt="image" src="https://github.com/user-attachments/assets/2e513e1c-04d1-4c86-be0e-879e29c0b0d0" />
+<img width="1202" height="698" alt="image" src="https://github.com/user-attachments/assets/4e4f83e0-8845-4f2a-b459-33edf29a89cd" />
+<img width="1208" height="696" alt="image" src="https://github.com/user-attachments/assets/7d546606-9625-40ec-92bc-24e04cdd83be" />
+
+
+
+
+
+
 
 Created by thomwithah
 
