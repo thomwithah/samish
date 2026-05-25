@@ -4,6 +4,12 @@ Version: 1.2.2
 
 A lightweight helper that restores normal Windows sleep behavior for streaming audio hardware.
 
+How to Run / Install
+
+- Run Setup.bat or Use Setup.exe, or run Setup.ps1 as Administrator with all the "Included Folders and Files" from below in the same folder. 
+- Alternatively, you can use the SAMISH_Setup_vX.X.X.exe to install. This will extract all the files needed to a folder and launch the SAMISH GUI. 
+- Note: Although the .exe installers make installtion easy expect antivirus software to flag them. 
+
 Quick start (for BEACN users):
 
 - Run Setup.bat or Use SAMISH.exe, or run Setup.ps1 as Administrator
@@ -14,14 +20,6 @@ Quick start (for BEACN users):
 That’s it. SAMISH will run silently in the background.
 
 For full documentation, see README.md
-
-
-How to Run / Install
-
-- Run Setup.bat or Use Setup.exe, or run Setup.ps1 as Administrator with all the "Included Folders and Files" from below in the same folder. 
-- Alternatively, you can use the SAMISH_Setup_vX.X.X.exe to install. This will extract all the files needed to a folder and launch the SAMISH GUI. 
-- Note: Although the .exe installers make installtion easy expect antivirus software to flag them. 
-
 
 Uninstall:
 - Run Uninstall-SAMISH.bat
