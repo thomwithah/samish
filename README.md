@@ -1,14 +1,13 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-<img width="818" height="695" alt="image" src="https://github.com/user-attachments/assets/9eeb69db-89df-4061-a910-8f57350df001" />
-<img width="826" height="698" alt="image" src="https://github.com/user-attachments/assets/6baf3dd3-b4cc-400b-8e8e-a8bbd8cd0e88" />
-<img width="1202" height="691" alt="image" src="https://github.com/user-attachments/assets/2e513e1c-04d1-4c86-be0e-879e29c0b0d0" />
-<img width="1202" height="698" alt="image" src="https://github.com/user-attachments/assets/4e4f83e0-8845-4f2a-b459-33edf29a89cd" />
-<img width="1208" height="696" alt="image" src="https://github.com/user-attachments/assets/7d546606-9625-40ec-92bc-24e04cdd83be" />
+<img width="830" height="695" alt="image" src="https://github.com/user-attachments/assets/38cff770-2e72-4937-b994-f9741b08a94c" />
 
+<img width="825" height="695" alt="image" src="https://github.com/user-attachments/assets/33e0fad7-93be-46f7-aef0-93b5a28fdf89" />
 
+<img width="1208" height="700" alt="image" src="https://github.com/user-attachments/assets/30e3500b-a437-4c37-a310-2c4cad7a331a" />
 
+<img width="1230" height="709" alt="image" src="https://github.com/user-attachments/assets/6f8108d0-c23d-4c81-8a21-1de34cd71fcb" />
 
-
+<img width="1206" height="699" alt="image" src="https://github.com/user-attachments/assets/71254d91-4b05-4e1a-b494-0e692ccfbd2d" />
 
 
 Created by thomwithah
