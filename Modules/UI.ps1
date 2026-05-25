@@ -283,7 +283,7 @@ $script:btnTestGraceful.Text = "Test Graceful"
 $script:btnTestGraceful.Font = $font
 $script:btnTestGraceful.Size = New-Object System.Drawing.Size(112, 30)
 $script:btnTestGraceful.Location = New-Object System.Drawing.Point(15, 70)
-$script:btnTestGraceful.Enabled = $false
+$script:btnTestGraceful.Enabled = $true
 $testGroup.Controls.Add($script:btnTestGraceful)
 
 $tooltip.SetToolTip($script:btnTestGraceful,
@@ -294,7 +294,7 @@ $script:btnTestClassic.Text = "Test Classic"
 $script:btnTestClassic.Font = $font
 $script:btnTestClassic.Size = New-Object System.Drawing.Size(112, 30)
 $script:btnTestClassic.Location = New-Object System.Drawing.Point(137, 70)
-$script:btnTestClassic.Enabled = $false
+$script:btnTestClassic.Enabled = $true
 $testGroup.Controls.Add($script:btnTestClassic)
 
 $tooltip.SetToolTip($script:btnTestClassic,
@@ -305,7 +305,7 @@ $script:btnTestStart.Text = "Start Test"
 $script:btnTestStart.Font = $font
 $script:btnTestStart.Size = New-Object System.Drawing.Size(102, 30)
 $script:btnTestStart.Location = New-Object System.Drawing.Point(298, 70)
-$script:btnTestStart.Enabled = $false
+$script:btnTestStart.Enabled = $true
 $testGroup.Controls.Add($script:btnTestStart)
 
 $tooltip.SetToolTip($script:btnTestStart,
@@ -316,7 +316,7 @@ $script:btnTestStop.Text = "Stop Test"
 $script:btnTestStop.Font = $font
 $script:btnTestStop.Size = New-Object System.Drawing.Size(102, 30)
 $script:btnTestStop.Location = New-Object System.Drawing.Point(410, 70)
-$script:btnTestStop.Enabled = $false
+$script:btnTestStop.Enabled = $true
 $testGroup.Controls.Add($script:btnTestStop)
 
 $tooltip.SetToolTip($script:btnTestStop,
@@ -365,7 +365,9 @@ function Update-TestGroupState {
 
     # --- Enable or disable child controls ---
     foreach ($ctrl in $script:testGroup.Controls) {
-        $ctrl.Enabled = $shouldEnable
+        if ($ctrl -ne $script:btnTestStop -and $ctrl -ne $script:btnTestStart -and $ctrl -ne $script:btnTestGraceful -and $ctrl -ne $script:btnTestClassic) {
+            $ctrl.Enabled = $shouldEnable
+        }
     }
 
     # --- Update GroupBox title color (flash when enabling, grey when disabling) ---
@@ -437,6 +439,11 @@ function Update-TestGroupState {
 
     if ($script:ddTestTarget.Items.Count -gt 0) {
         $script:ddTestTarget.SelectedIndex = 0
+    }
+
+    # Refresh tooltips dynamically if the tooltip function exists
+    if (Get-Command Update-TestButtonsTooltips -ErrorAction SilentlyContinue) {
+        try { Update-TestButtonsTooltips } catch {}
     }
 }
 
@@ -783,11 +790,13 @@ $tooltip.SetToolTip($statusGroup,
     "Displays SAMISH status, diagnostics, and recent activity messages.")
 
 $statusBox = New-Object System.Windows.Forms.TextBox
+$statusBox.Name = "statusBox"
 $statusBox.Multiline = $true
 $statusBox.ReadOnly = $true
 $statusBox.ScrollBars = "Vertical"
 $statusBox.WordWrap = $true
 $statusBox.BorderStyle = "FixedSingle"
+$statusBox.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $statusBoxFont = New-Object System.Drawing.Font("Consolas", 9)
 $script:MainFormGdiResources.Add($statusBoxFont)
 $statusBox.Font = $statusBoxFont
@@ -992,7 +1001,9 @@ function Apply-UIFromConfigIfPresent {
         }
     }
     catch {
-        # Best effort only
+        if ($statusBox) {
+            $statusBox.AppendText("`r`n[DEBUG] Apply-UIFromConfigIfPresent Exception: " + $_.Exception.Message + " at " + $_.ScriptStackTrace + "`r`n")
+        }
     }
     finally {
         $script:IsApplyingConfig = $false
@@ -1244,32 +1255,43 @@ function Handle-PowerPlanPromptIfNeeded {
 
 # Create Custom Flat Navigation Buttons at the top of the form
 $btnTabSetup = New-Object System.Windows.Forms.Button
+$btnTabSetup.Name = "btnTabSetup"
 $btnTabSetup.Text = "1. Setup && Install"
 $btnTabSetup.Font = $boldFont
 $btnTabSetup.Size = New-Object System.Drawing.Size(145, 30)
 $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
 $btnTabSetup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnTabSetup.FlatAppearance.BorderSize = 1
+$btnTabSetup.FlatAppearance.BorderSize = 0
 $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
-$btnTabSetup.ForeColor = $BrandPurple
-$btnTabSetup.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTabSetup.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Controls.Add($btnTabSetup)
 $script:btnTabSetup = $btnTabSetup
 $tooltip.SetToolTip($btnTabSetup, "Configure install mode, operating mode, and device profiles.")
 
 $btnTabDiag = New-Object System.Windows.Forms.Button
+$btnTabDiag.Name = "btnTabDiag"
 $btnTabDiag.Text = "2. Sleep Automation"
 $btnTabDiag.Font = $font
 $btnTabDiag.Size = New-Object System.Drawing.Size(180, 30)
 $btnTabDiag.Location = New-Object System.Drawing.Point(485, 48)
 $btnTabDiag.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnTabDiag.FlatAppearance.BorderSize = 1
+$btnTabDiag.FlatAppearance.BorderSize = 0
 $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
 $btnTabDiag.ForeColor = [System.Drawing.Color]::DimGray
-$btnTabDiag.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTabDiag.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $form.Controls.Add($btnTabDiag)
 $script:btnTabDiag = $btnTabDiag
 $tooltip.SetToolTip($btnTabDiag, "Scan for system sleep blockers, manage overrides, and test app wake actions.")
+
+# Sliding indicator underline
+$tabIndicatorLine = New-Object System.Windows.Forms.Label
+$tabIndicatorLine.Name = "tabIndicatorLine"
+$tabIndicatorLine.Size = New-Object System.Drawing.Size(145, 2)
+$tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
+$tabIndicatorLine.BackColor = $BrandPurple
+$form.Controls.Add($tabIndicatorLine)
+$script:tabIndicatorLine = $tabIndicatorLine
 
 # Create borderless TabControl
 $tabControl = New-Object System.Windows.Forms.TabControl
@@ -1295,15 +1317,27 @@ $script:tabPage2 = $tabPage2
 
 # v1.1.0: Install/Uninstall buttons (creation code; repositioned to tabPage1 below)
 $btnInstall = New-Object System.Windows.Forms.Button
+$btnInstall.Name = "btnInstall"
 $btnInstall.Text = "Install / Update"
-$btnInstall.Font = $font
+$btnInstall.Font = $boldFont
 $btnInstall.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnInstall.FlatAppearance.BorderSize = 1
+$btnInstall.FlatAppearance.BorderColor = $BrandPurple
+$btnInstall.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnInstall.BackColor = [System.Drawing.Color]::Transparent
+$btnInstall.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $script:btnInstall = $btnInstall
 
 $btnUninstall = New-Object System.Windows.Forms.Button
+$btnUninstall.Name = "btnUninstall"
 $btnUninstall.Text = "Uninstall"
 $btnUninstall.Font = $font
 $btnUninstall.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnUninstall.FlatAppearance.BorderSize = 1
+$btnUninstall.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnUninstall.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnUninstall.BackColor = [System.Drawing.Color]::Transparent
+$btnUninstall.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $script:btnUninstall = $btnUninstall
 
 # 1. Parent controls to Page 1
@@ -1331,56 +1365,72 @@ $lblLogInterval.Location = New-Object System.Drawing.Point(25, 60)
 $ddLogInterval.Location = New-Object System.Drawing.Point(85, 56)
 $ddLogInterval.Width = 135
 $tbLogCustom.Location = New-Object System.Drawing.Point(230, 56)
-$tbLogCustom.Width = 50
-$lblLogCustom.Location = New-Object System.Drawing.Point(285, 60)
+$tbLogCustom.Width = 75
+$lblLogCustom.Location = New-Object System.Drawing.Point(310, 60)
 
 $cbHotkey.Location = New-Object System.Drawing.Point(15, 92)
 $lblHotkey.Location = New-Object System.Drawing.Point(25, 122)
 $ddHotkey.Location = New-Object System.Drawing.Point(85, 118)
 $ddHotkey.Width = 135
-$lblCustomKey.Location = New-Object System.Drawing.Point(230, 122)
-$tbCustomKey.Location = New-Object System.Drawing.Point(285, 118)
+$cfgGroup.Controls.Remove($lblCustomKey)
+$tbCustomKey.Location = New-Object System.Drawing.Point(230, 118)
 $tbCustomKey.Width = 75
 $lblCustomHint.Location = New-Object System.Drawing.Point(85, 142)
 
 $cbTray.Location = New-Object System.Drawing.Point(15, 164)
 
 # Action Row Page 1 Left
-$btnInstall.Size = New-Object System.Drawing.Size(160, 36)
+$btnInstall.Size = New-Object System.Drawing.Size(210, 36)
 $btnInstall.Location = New-Object System.Drawing.Point(10, 410)
 $tooltip.SetToolTip($btnInstall, "Install or update SAMISH using the selected settings.")
 
-$btnUninstall.Size = New-Object System.Drawing.Size(110, 36)
-$btnUninstall.Location = New-Object System.Drawing.Point(180, 410)
+$btnUninstall.Size = New-Object System.Drawing.Size(150, 36)
+$btnUninstall.Location = New-Object System.Drawing.Point(230, 410)
 $tooltip.SetToolTip($btnUninstall, "Remove SAMISH. To temporarily stop SAMISH from launching on boot, click Uninstall. You will have the option to save your profiles and configuration settings to be automatically reapplied on reinstall.")
 
 # Right Column
-$deviceGroup.Size = New-Object System.Drawing.Size(370, 210)
+$deviceGroup.Size = New-Object System.Drawing.Size(370, 180)
 $deviceGroup.Location = New-Object System.Drawing.Point(395, 10)
 
 $profilesPanel.Location = New-Object System.Drawing.Point(10, 20)
-$profilesPanel.Size = New-Object System.Drawing.Size(350, 85)
+$profilesPanel.Size = New-Object System.Drawing.Size(350, 65)
 
-$detailsPanel.Location = New-Object System.Drawing.Point(10, 110)
-$detailsPanel.Size = New-Object System.Drawing.Size(350, 90)
+$detailsPanel.Location = New-Object System.Drawing.Point(10, 90)
+$detailsPanel.Size = New-Object System.Drawing.Size(350, 85)
 
-$statusGroup.Size = New-Object System.Drawing.Size(370, 165)
-$statusGroup.Location = New-Object System.Drawing.Point(395, 230)
+$statusGroup.Size = New-Object System.Drawing.Size(370, 195)
+$statusGroup.Location = New-Object System.Drawing.Point(395, 200)
 
 $statusBox.Location = New-Object System.Drawing.Point(10, 25)
-$statusBox.Size = New-Object System.Drawing.Size(350, 127)
+$statusBox.Size = New-Object System.Drawing.Size(350, 160)
 
 
 
 # Action Row Page 1 Right (Advanced Tools Toggle)
 $btnToolsAdvanced = New-Object System.Windows.Forms.Button
+$btnToolsAdvanced.Name = "btnToolsAdvanced"
 $btnToolsAdvanced.Text = "Advanced Tools >>"
 $btnToolsAdvanced.Font = $font
-$btnToolsAdvanced.Size = New-Object System.Drawing.Size(350, 36)
-$btnToolsAdvanced.Location = New-Object System.Drawing.Point(405, 410)
+$btnToolsAdvanced.Size = New-Object System.Drawing.Size(370, 36)
+$btnToolsAdvanced.Location = New-Object System.Drawing.Point(395, 410)
+$btnToolsAdvanced.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnToolsAdvanced.FlatAppearance.BorderSize = 1
+$btnToolsAdvanced.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnToolsAdvanced.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnToolsAdvanced.BackColor = [System.Drawing.Color]::Transparent
+$btnToolsAdvanced.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $tabPage1.Controls.Add($btnToolsAdvanced)
 $script:btnToolsAdvanced = $btnToolsAdvanced
 $tooltip.SetToolTip($btnToolsAdvanced, "Open or close the advanced utility and log monitoring tools drawer.")
+
+# Page 1 Drawer Vertical Separator Line
+$toolsDrawerSep = New-Object System.Windows.Forms.Label
+$toolsDrawerSep.Size = New-Object System.Drawing.Size(2, 443)
+$toolsDrawerSep.Location = New-Object System.Drawing.Point(777, 10)
+$toolsDrawerSep.BackColor = $BrandPurple
+$toolsDrawerSep.Visible = $false
+$tabPage1.Controls.Add($toolsDrawerSep)
+$script:toolsDrawerSep = $toolsDrawerSep
 
 # 3. Page 1 Slide-Out Drawer: "Advanced Tools & Utilities"
 $grpAdvancedTools = New-Object System.Windows.Forms.GroupBox
@@ -1397,13 +1447,13 @@ $btnSubTabTools = New-Object System.Windows.Forms.Button
 $btnSubTabTools.Name = "btnSubTabTools"
 $btnSubTabTools.Text = "Tools"
 $btnSubTabTools.Font = $boldFont
-$btnSubTabTools.Size = New-Object System.Drawing.Size(75, 24)
+$btnSubTabTools.Size = New-Object System.Drawing.Size(75, 22)
 $btnSubTabTools.Location = New-Object System.Drawing.Point(190, 16)
 $btnSubTabTools.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnSubTabTools.FlatAppearance.BorderSize = 1
+$btnSubTabTools.FlatAppearance.BorderSize = 0
 $btnSubTabTools.BackColor = [System.Drawing.SystemColors]::Control
-$btnSubTabTools.ForeColor = $BrandPurple
-$btnSubTabTools.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnSubTabTools.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnSubTabTools.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $btnSubTabTools.Visible = $false
 $grpAdvancedTools.Controls.Add($btnSubTabTools)
 $btnSubTabTools.BringToFront()
@@ -1414,27 +1464,28 @@ $btnSubTabLive = New-Object System.Windows.Forms.Button
 $btnSubTabLive.Name = "btnSubTabLive"
 $btnSubTabLive.Text = "Live Log"
 $btnSubTabLive.Font = $font
-$btnSubTabLive.Size = New-Object System.Drawing.Size(75, 24)
+$btnSubTabLive.Size = New-Object System.Drawing.Size(75, 22)
 $btnSubTabLive.Location = New-Object System.Drawing.Point(270, 16)
 $btnSubTabLive.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$btnSubTabLive.FlatAppearance.BorderSize = 1
+$btnSubTabLive.FlatAppearance.BorderSize = 0
 $btnSubTabLive.BackColor = [System.Drawing.SystemColors]::Control
 $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
-$btnSubTabLive.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
-# Create Sub-Tabs for Advanced Tools (Tools vs. Live Log)
+$btnSubTabLive.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $btnSubTabLive.Visible = $false
 $grpAdvancedTools.Controls.Add($btnSubTabLive)
 $btnSubTabLive.BringToFront()
 $script:btnSubTabLive = $btnSubTabLive
 $tooltip.SetToolTip($btnSubTabLive, "Monitor the live SAMISH activity and background service logs.")
 
-# Sub-Separator line under the sub-tab buttons (mirroring the main separator)
-$subSep = New-Object System.Windows.Forms.Label
-$subSep.Size = New-Object System.Drawing.Size(330, 2)
-$subSep.Location = New-Object System.Drawing.Point(15, 45)
-$subSep.BackColor = $BrandCyan
-$grpAdvancedTools.Controls.Add($subSep)
-$script:subSep = $subSep
+# Sliding sub-tab indicator line (replacing subSep)
+$advancedTabIndicator = New-Object System.Windows.Forms.Label
+$advancedTabIndicator.Name = "advancedTabIndicator"
+$advancedTabIndicator.Size = New-Object System.Drawing.Size(75, 2)
+$advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+$advancedTabIndicator.BackColor = $BrandPurple
+$advancedTabIndicator.Visible = $false
+$grpAdvancedTools.Controls.Add($advancedTabIndicator)
+$script:advancedTabIndicator = $advancedTabIndicator
 
 # Create/Move tool buttons into Page 1 Drawer
 $btnPowerPlan = New-Object System.Windows.Forms.Button
@@ -1442,6 +1493,12 @@ $btnPowerPlan.Text = "Verify Power Plan"
 $btnPowerPlan.Font = $font
 $btnPowerPlan.Size = New-Object System.Drawing.Size(330, 32)
 $btnPowerPlan.Location = New-Object System.Drawing.Point(15, 60)
+$btnPowerPlan.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnPowerPlan.FlatAppearance.BorderSize = 1
+$btnPowerPlan.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnPowerPlan.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnPowerPlan.BackColor = [System.Drawing.Color]::Transparent
+$btnPowerPlan.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnPowerPlan)
 $script:btnPowerPlan = $btnPowerPlan
 $tooltip.SetToolTip($btnPowerPlan, "Verify and configure your system power plan settings for SAMISH compatibility.")
@@ -1451,6 +1508,12 @@ $btnOpenTS.Text = "Open Windows Task Scheduler"
 $btnOpenTS.Font = $font
 $btnOpenTS.Size = New-Object System.Drawing.Size(330, 32)
 $btnOpenTS.Location = New-Object System.Drawing.Point(15, 105)
+$btnOpenTS.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnOpenTS.FlatAppearance.BorderSize = 1
+$btnOpenTS.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnOpenTS.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnOpenTS.BackColor = [System.Drawing.Color]::Transparent
+$btnOpenTS.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnOpenTS)
 $script:btnOpenTS = $btnOpenTS
 $tooltip.SetToolTip($btnOpenTS, "Open Windows Task Scheduler to view or manage SAMISH tasks.")
@@ -1460,15 +1523,27 @@ $btnCleanReset.Text = "Restart SAMISH Service"
 $btnCleanReset.Font = $font
 $btnCleanReset.Size = New-Object System.Drawing.Size(330, 32)
 $btnCleanReset.Location = New-Object System.Drawing.Point(15, 150)
+$btnCleanReset.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnCleanReset.FlatAppearance.BorderSize = 1
+$btnCleanReset.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnCleanReset.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnCleanReset.BackColor = [System.Drawing.Color]::Transparent
+$btnCleanReset.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnCleanReset)
 $script:btnCleanReset = $btnCleanReset
 $tooltip.SetToolTip($btnCleanReset, "Restart background service and check for errors (safely preserves configuration).")
 
 $btnReadSetup = New-Object System.Windows.Forms.Button
-$btnReadSetup.Text = "Check Install Status"
+$btnReadSetup.Text = "Read Setup & Status"
 $btnReadSetup.Font = $font
 $btnReadSetup.Size = New-Object System.Drawing.Size(330, 32)
 $btnReadSetup.Location = New-Object System.Drawing.Point(15, 195)
+$btnReadSetup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnReadSetup.FlatAppearance.BorderSize = 1
+$btnReadSetup.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnReadSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnReadSetup.BackColor = [System.Drawing.Color]::Transparent
+$btnReadSetup.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnReadSetup)
 $script:btnReadSetup = $btnReadSetup
 $tooltip.SetToolTip($btnReadSetup, "Query and print the active installation status and current settings.")
@@ -1478,6 +1553,12 @@ $btnOpenLog.Text = "Open Setup Log"
 $btnOpenLog.Font = $font
 $btnOpenLog.Size = New-Object System.Drawing.Size(330, 32)
 $btnOpenLog.Location = New-Object System.Drawing.Point(15, 240)
+$btnOpenLog.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnOpenLog.FlatAppearance.BorderSize = 1
+$btnOpenLog.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnOpenLog.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnOpenLog.BackColor = [System.Drawing.Color]::Transparent
+$btnOpenLog.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnOpenLog)
 $script:btnOpenLog = $btnOpenLog
 $tooltip.SetToolTip($btnOpenLog, "Open the main SAMISH text log in your default editor.")
@@ -1491,7 +1572,7 @@ $txtLiveLog.ReadOnly = $true
 $txtLiveLog.Size = New-Object System.Drawing.Size(330, 279)
 $txtLiveLog.Location = New-Object System.Drawing.Point(15, 55)
 $txtLiveLog.Visible = $false
-$txtLiveLog.BackColor = [System.Drawing.Color]::FromArgb(10, 10, 14)
+$txtLiveLog.BackColor = [System.Drawing.Color]::FromArgb(40, 44, 52)
 $txtLiveLog.ForeColor = $BrandCyan
 $grpAdvancedTools.Controls.Add($txtLiveLog)
 $script:txtLiveLog = $txtLiveLog
@@ -1511,6 +1592,12 @@ $btnLivePause.Text = "Pause"
 $btnLivePause.Size = New-Object System.Drawing.Size(90, 28)
 $btnLivePause.Location = New-Object System.Drawing.Point(15, 344)
 $btnLivePause.Visible = $false
+$btnLivePause.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLivePause.FlatAppearance.BorderSize = 1
+$btnLivePause.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLivePause.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLivePause.BackColor = [System.Drawing.Color]::Transparent
+$btnLivePause.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnLivePause)
 $script:btnLivePause = $btnLivePause
 $tooltip.SetToolTip($btnLivePause, "Pause or resume the live log stream")
@@ -1520,6 +1607,12 @@ $btnLiveCopy.Text = "Copy"
 $btnLiveCopy.Size = New-Object System.Drawing.Size(90, 28)
 $btnLiveCopy.Location = New-Object System.Drawing.Point(135, 344)
 $btnLiveCopy.Visible = $false
+$btnLiveCopy.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLiveCopy.FlatAppearance.BorderSize = 1
+$btnLiveCopy.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLiveCopy.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLiveCopy.BackColor = [System.Drawing.Color]::Transparent
+$btnLiveCopy.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnLiveCopy)
 $script:btnLiveCopy = $btnLiveCopy
 $tooltip.SetToolTip($btnLiveCopy, "Copy all visible log text to the clipboard")
@@ -1529,6 +1622,12 @@ $btnLiveClear.Text = "Clear"
 $btnLiveClear.Size = New-Object System.Drawing.Size(90, 28)
 $btnLiveClear.Location = New-Object System.Drawing.Point(255, 344)
 $btnLiveClear.Visible = $false
+$btnLiveClear.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLiveClear.FlatAppearance.BorderSize = 1
+$btnLiveClear.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLiveClear.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLiveClear.BackColor = [System.Drawing.Color]::Transparent
+$btnLiveClear.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedTools.Controls.Add($btnLiveClear)
 $script:btnLiveClear = $btnLiveClear
 $tooltip.SetToolTip($btnLiveClear, "Clear the log display (does not delete the log file)")
@@ -1537,24 +1636,31 @@ $tooltip.SetToolTip($btnLiveClear, "Clear the log display (does not delete the l
 # 4. Page 2: Sleep & Hibernate Diagnostics
 $grpBlockers = New-Object System.Windows.Forms.GroupBox
 $grpBlockers.Text = "Active Blockers"
-$grpBlockers.Size = New-Object System.Drawing.Size(355, 200)
+$grpBlockers.Size = New-Object System.Drawing.Size(370, 200)
 $grpBlockers.Location = New-Object System.Drawing.Point(10, 10)
 $tabPage2.Controls.Add($grpBlockers)
 $tooltip.SetToolTip($grpBlockers, "System processes, services, or drivers currently blocking Windows from sleep or hibernate.")
 
 $listBlockers = New-Object System.Windows.Forms.ListBox
-$listBlockers.Size = New-Object System.Drawing.Size(335, 90)
+$listBlockers.Size = New-Object System.Drawing.Size(350, 90)
 $listBlockers.Location = New-Object System.Drawing.Point(10, 22)
 $listBlockers.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+$listBlockers.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $grpBlockers.Controls.Add($listBlockers)
 $script:listBlockers = $listBlockers
 
 $btnDiagAutomate = New-Object System.Windows.Forms.Button
 $btnDiagAutomate.Text = "Add to Automated Apps"
 $btnDiagAutomate.Font = $font
-$btnDiagAutomate.Size = New-Object System.Drawing.Size(335, 32)
+$btnDiagAutomate.Size = New-Object System.Drawing.Size(350, 32)
 $btnDiagAutomate.Location = New-Object System.Drawing.Point(10, 118)
 $btnDiagAutomate.Enabled = $false
+$btnDiagAutomate.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagAutomate.FlatAppearance.BorderSize = 1
+$btnDiagAutomate.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagAutomate.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagAutomate.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagAutomate.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpBlockers.Controls.Add($btnDiagAutomate)
 $script:btnDiagAutomate = $btnDiagAutomate
 $tooltip.SetToolTip($btnDiagAutomate, "Configure SAMISH to automatically manage this application before sleep or hibernation, and restart it when the system wakes.")
@@ -1563,65 +1669,86 @@ $lblBlockerHint = New-Object System.Windows.Forms.Label
 $lblBlockerHint.Text = "Tip: To discover and automate a browser/media app, open it and play media, then click Scan."
 $lblBlockerHint.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblBlockerHint.ForeColor = [System.Drawing.Color]::DimGray
-$lblBlockerHint.Size = New-Object System.Drawing.Size(335, 36)
+$lblBlockerHint.Size = New-Object System.Drawing.Size(350, 36)
 $lblBlockerHint.Location = New-Object System.Drawing.Point(10, 154)
 $grpBlockers.Controls.Add($lblBlockerHint)
 $tooltip.SetToolTip($lblBlockerHint, "To configure a browser or media app for SAMISH management:`n1. Open the application (e.g., Spotify, Chrome) and play media to generate an active audio wake-lock.`n2. Click 'Scan Blockers' to discover the application in the Active Blockers list.`n3. Select the application and click 'Add to Automated Apps' to automate it.")
 
 $grpOverrides = New-Object System.Windows.Forms.GroupBox
 $grpOverrides.Text = "Ignored Blockers"
-$grpOverrides.Size = New-Object System.Drawing.Size(355, 175)
+$grpOverrides.Size = New-Object System.Drawing.Size(370, 175)
 $grpOverrides.Location = New-Object System.Drawing.Point(10, 220)
 $tabPage2.Controls.Add($grpOverrides)
 $tooltip.SetToolTip($grpOverrides, "Configured system overrides to let Windows ignore specific sleep blockers.")
 
 $listOverrides = New-Object System.Windows.Forms.ListBox
-$listOverrides.Size = New-Object System.Drawing.Size(335, 105)
+$listOverrides.Size = New-Object System.Drawing.Size(350, 105)
 $listOverrides.Location = New-Object System.Drawing.Point(10, 22)
 $listOverrides.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+$listOverrides.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $grpOverrides.Controls.Add($listOverrides)
 $script:listOverrides = $listOverrides
 
 $btnDiagRestore = New-Object System.Windows.Forms.Button
 $btnDiagRestore.Text = "Remove System Override"
-$btnDiagRestore.Size = New-Object System.Drawing.Size(335, 32)
+$btnDiagRestore.Size = New-Object System.Drawing.Size(350, 32)
 $btnDiagRestore.Location = New-Object System.Drawing.Point(10, 134)
 $btnDiagRestore.Enabled = $false
+$btnDiagRestore.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagRestore.FlatAppearance.BorderSize = 1
+$btnDiagRestore.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagRestore.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagRestore.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagRestore.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpOverrides.Controls.Add($btnDiagRestore)
 $script:btnDiagRestore = $btnDiagRestore
 $tooltip.SetToolTip($btnDiagRestore, "Remove the override and let this item's power requests once again affect sleep and hibernation behaviour.")
 
 $btnDiagScan = New-Object System.Windows.Forms.Button
+$btnDiagScan.Name = "btnDiagScan"
 $btnDiagScan.Text = "Scan Blockers"
 $btnDiagScan.Font = $font
 $btnDiagScan.Size = New-Object System.Drawing.Size(112, 36)
 $btnDiagScan.Location = New-Object System.Drawing.Point(10, 410)
+$btnDiagScan.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagScan.FlatAppearance.BorderSize = 1
+$btnDiagScan.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagScan.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagScan.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagScan.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $tabPage2.Controls.Add($btnDiagScan)
 $script:btnDiagScan = $btnDiagScan
 $tooltip.SetToolTip($btnDiagScan, "Scan Windows for all active power requests currently preventing sleep or hibernation.")
 
 $btnDiagIgnore = New-Object System.Windows.Forms.Button
+$btnDiagIgnore.Name = "btnDiagIgnore"
 $btnDiagIgnore.Text = "Ignore Blocker"
 $btnDiagIgnore.Font = $font
-$btnDiagIgnore.Size = New-Object System.Drawing.Size(237, 36)
-$btnDiagIgnore.Location = New-Object System.Drawing.Point(128, 410)
+$btnDiagIgnore.Size = New-Object System.Drawing.Size(248, 36)
+$btnDiagIgnore.Location = New-Object System.Drawing.Point(132, 410)
 $btnDiagIgnore.Enabled = $false
+$btnDiagIgnore.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagIgnore.FlatAppearance.BorderSize = 1
+$btnDiagIgnore.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagIgnore.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagIgnore.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagIgnore.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $tabPage2.Controls.Add($btnDiagIgnore)
 $script:btnDiagIgnore = $btnDiagIgnore
 $tooltip.SetToolTip($btnDiagIgnore, "Tell Windows to ignore this blocker's power request so it no longer prevents sleep or hibernation.")
-
 # Right Column
 $grpAutomated = New-Object System.Windows.Forms.GroupBox
 $grpAutomated.Text = "SAMISH Automated Apps"
-$grpAutomated.Size = New-Object System.Drawing.Size(375, 175)
+$grpAutomated.Size = New-Object System.Drawing.Size(370, 200)
 $grpAutomated.Location = New-Object System.Drawing.Point(395, 10)
 $tabPage2.Controls.Add($grpAutomated)
 $tooltip.SetToolTip($grpAutomated, "Applications automated by SAMISH to be closed before sleep and restarted on wake.")
 
 $listAutomated = New-Object System.Windows.Forms.ListBox
-$listAutomated.Size = New-Object System.Drawing.Size(355, 105)
+$listAutomated.Size = New-Object System.Drawing.Size(350, 130)
 $listAutomated.Location = New-Object System.Drawing.Point(10, 22)
 $listAutomated.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+$listAutomated.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $grpAutomated.Controls.Add($listAutomated)
 $script:listAutomated = $listAutomated
  
@@ -1629,8 +1756,14 @@ $btnDiagStopAuto = New-Object System.Windows.Forms.Button
 $btnDiagStopAuto.Text = "Remove from Automation"
 $btnDiagStopAuto.Font = $font
 $btnDiagStopAuto.Size = New-Object System.Drawing.Size(170, 32)
-$btnDiagStopAuto.Location = New-Object System.Drawing.Point(10, 134)
+$btnDiagStopAuto.Location = New-Object System.Drawing.Point(10, 159)
 $btnDiagStopAuto.Enabled = $false
+$btnDiagStopAuto.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagStopAuto.FlatAppearance.BorderSize = 1
+$btnDiagStopAuto.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagStopAuto.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagStopAuto.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagStopAuto.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAutomated.Controls.Add($btnDiagStopAuto)
 $script:btnDiagStopAuto = $btnDiagStopAuto
 $tooltip.SetToolTip($btnDiagStopAuto, "Remove this application from SAMISH automation.")
@@ -1639,16 +1772,22 @@ $btnDiagOpenLocation = New-Object System.Windows.Forms.Button
 $btnDiagOpenLocation.Text = "Open Installation Folder"
 $btnDiagOpenLocation.Font = $font
 $btnDiagOpenLocation.Size = New-Object System.Drawing.Size(170, 32)
-$btnDiagOpenLocation.Location = New-Object System.Drawing.Point(195, 134)
+$btnDiagOpenLocation.Location = New-Object System.Drawing.Point(190, 159)
 $btnDiagOpenLocation.Enabled = $false
+$btnDiagOpenLocation.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagOpenLocation.FlatAppearance.BorderSize = 1
+$btnDiagOpenLocation.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagOpenLocation.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagOpenLocation.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagOpenLocation.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAutomated.Controls.Add($btnDiagOpenLocation)
 $script:btnDiagOpenLocation = $btnDiagOpenLocation
 $tooltip.SetToolTip($btnDiagOpenLocation, "Open the installation folder for this application in Windows File Explorer.")
 
 $grpOperatingMode = New-Object System.Windows.Forms.GroupBox
-$grpOperatingMode.Text = "Operating Mode"
-$grpOperatingMode.Size = New-Object System.Drawing.Size(375, 200)
-$grpOperatingMode.Location = New-Object System.Drawing.Point(395, 195)
+$grpOperatingMode.Text = "App Override Settings"
+$grpOperatingMode.Size = New-Object System.Drawing.Size(370, 175)
+$grpOperatingMode.Location = New-Object System.Drawing.Point(395, 220)
 $tabPage2.Controls.Add($grpOperatingMode)
 $tooltip.SetToolTip($grpOperatingMode, "Configure operating mode and wake actions for the selected automated application.")
 
@@ -1689,29 +1828,45 @@ $lblOnWake.Text = "On Wake/Resume:"
 $lblOnWake.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblOnWake.ForeColor = $BrandPurple
 $lblOnWake.AutoSize = $true
-$lblOnWake.Location = New-Object System.Drawing.Point(10, 141)
+$lblOnWake.Location = New-Object System.Drawing.Point(10, 118)
 $grpOperatingMode.Controls.Add($lblOnWake)
 $tooltip.SetToolTip($lblOnWake, "Choose what action SAMISH will perform when the system wakes: Smart Restore restores the pre-sleep state; Always Play forces playback; Always Pause keeps media paused; Keep Closed prevents app restart; Reopen Only restarts the app but keeps media paused.")
 
 $ddOnWakeAction = New-Object System.Windows.Forms.ComboBox
 $ddOnWakeAction.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $ddOnWakeAction.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
-$ddOnWakeAction.Size = New-Object System.Drawing.Size(355, 24)
-$ddOnWakeAction.Location = New-Object System.Drawing.Point(10, 166)
+$ddOnWakeAction.Size = New-Object System.Drawing.Size(350, 24)
+$ddOnWakeAction.Location = New-Object System.Drawing.Point(10, 138)
 $grpOperatingMode.Controls.Add($ddOnWakeAction)
 $script:ddDiagOnWakeAction = $ddOnWakeAction
 $tooltip.SetToolTip($ddOnWakeAction, "Choose what action SAMISH will perform when the system wakes.")
 
 # Bottom Action Row (Page 2 Right Column)
 $btnDiagAdvanced = New-Object System.Windows.Forms.Button
+$btnDiagAdvanced.Name = "btnDiagAdvanced"
 $btnDiagAdvanced.Text = "Diagnostics >>"
 $btnDiagAdvanced.Font = $font
-$btnDiagAdvanced.Size = New-Object System.Drawing.Size(375, 36)
+$btnDiagAdvanced.Size = New-Object System.Drawing.Size(370, 36)
 $btnDiagAdvanced.Location = New-Object System.Drawing.Point(395, 410)
+$btnDiagAdvanced.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnDiagAdvanced.FlatAppearance.BorderSize = 1
+$btnDiagAdvanced.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnDiagAdvanced.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnDiagAdvanced.BackColor = [System.Drawing.Color]::Transparent
+$btnDiagAdvanced.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $tabPage2.Controls.Add($btnDiagAdvanced)
 $script:btnDiagAdvanced = $btnDiagAdvanced
 $tooltip.SetToolTip($btnDiagAdvanced, "Open or close the advanced system sleep telemetry and testing drawer.")
 
+
+# Page 2 Drawer Vertical Separator Line
+$diagDrawerSep = New-Object System.Windows.Forms.Label
+$diagDrawerSep.Size = New-Object System.Drawing.Size(2, 443)
+$diagDrawerSep.Location = New-Object System.Drawing.Point(777, 10)
+$diagDrawerSep.BackColor = $BrandPurple
+$diagDrawerSep.Visible = $false
+$tabPage2.Controls.Add($diagDrawerSep)
+$script:diagDrawerSep = $diagDrawerSep
 
 # 5. Page 2 Slide-Out Drawer: "Sleep & Wake Diagnostics"
 $grpAdvancedDiag = New-Object System.Windows.Forms.Panel
@@ -1723,8 +1878,8 @@ $script:grpAdvancedDiag = $grpAdvancedDiag
 # Operating Mode Tests GroupBox
 $grpTest = New-Object System.Windows.Forms.GroupBox
 $grpTest.Text = "Operating Mode Tests"
-$grpTest.Size = New-Object System.Drawing.Size(340, 175)
-$grpTest.Location = New-Object System.Drawing.Point(10, 0)
+$grpTest.Size = New-Object System.Drawing.Size(360, 150)
+$grpTest.Location = New-Object System.Drawing.Point(0, 0)
 $grpAdvancedDiag.Controls.Add($grpTest)
 $script:testGroup = $grpTest
 $tooltip.SetToolTip($grpTest, "Perform interactive test actions on the selected sleep blocker target.")
@@ -1732,7 +1887,7 @@ $tooltip.SetToolTip($grpTest, "Perform interactive test actions on the selected 
 $ddTestTarget = New-Object System.Windows.Forms.ComboBox
 $ddTestTarget.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $ddTestTarget.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
-$ddTestTarget.Size = New-Object System.Drawing.Size(310, 24)
+$ddTestTarget.Size = New-Object System.Drawing.Size(330, 24)
 $ddTestTarget.Location = New-Object System.Drawing.Point(15, 22)
 $ddTestTarget.Enabled = $false
 $grpTest.Controls.Add($ddTestTarget)
@@ -1741,36 +1896,60 @@ $tooltip.SetToolTip($ddTestTarget, "Select which configured application or devic
 
 $btnTestSleep = New-Object System.Windows.Forms.Button
 $btnTestSleep.Text = "Test Sleep/Hibernate"
-$btnTestSleep.Size = New-Object System.Drawing.Size(148, 32)
-$btnTestSleep.Location = New-Object System.Drawing.Point(15, 85)
-$btnTestSleep.Enabled = $false
+$btnTestSleep.Size = New-Object System.Drawing.Size(158, 32)
+$btnTestSleep.Location = New-Object System.Drawing.Point(15, 60)
+$btnTestSleep.Enabled = $true
+$btnTestSleep.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTestSleep.FlatAppearance.BorderSize = 1
+$btnTestSleep.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTestSleep.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTestSleep.BackColor = [System.Drawing.Color]::Transparent
+$btnTestSleep.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpTest.Controls.Add($btnTestSleep)
 $script:btnTestStop = $btnTestSleep
 $tooltip.SetToolTip($btnTestSleep, "Test whether SAMISH can close this application or pause its media playback based on its configured sleep action.")
 
 $btnTestWake = New-Object System.Windows.Forms.Button
 $btnTestWake.Text = "Test Wake/Resume"
-$btnTestWake.Size = New-Object System.Drawing.Size(148, 32)
-$btnTestWake.Location = New-Object System.Drawing.Point(177, 85)
-$btnTestWake.Enabled = $false
+$btnTestWake.Size = New-Object System.Drawing.Size(158, 32)
+$btnTestWake.Location = New-Object System.Drawing.Point(187, 60)
+$btnTestWake.Enabled = $true
+$btnTestWake.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTestWake.FlatAppearance.BorderSize = 1
+$btnTestWake.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTestWake.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTestWake.BackColor = [System.Drawing.Color]::Transparent
+$btnTestWake.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpTest.Controls.Add($btnTestWake)
 $script:btnTestStart = $btnTestWake
 $tooltip.SetToolTip($btnTestWake, "Test whether SAMISH can launch this application and/or restore its media playback status based on its configured wake action.")
 
 $btnTestGraceful = New-Object System.Windows.Forms.Button
 $btnTestGraceful.Text = "Test Graceful Close"
-$btnTestGraceful.Size = New-Object System.Drawing.Size(148, 32)
-$btnTestGraceful.Location = New-Object System.Drawing.Point(15, 134)
-$btnTestGraceful.Enabled = $false
+$btnTestGraceful.Size = New-Object System.Drawing.Size(158, 32)
+$btnTestGraceful.Location = New-Object System.Drawing.Point(15, 105)
+$btnTestGraceful.Enabled = $true
+$btnTestGraceful.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTestGraceful.FlatAppearance.BorderSize = 1
+$btnTestGraceful.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTestGraceful.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTestGraceful.BackColor = [System.Drawing.Color]::Transparent
+$btnTestGraceful.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpTest.Controls.Add($btnTestGraceful)
 $script:btnTestGraceful = $btnTestGraceful
-$tooltip.SetToolTip($btnTestGraceful, "Test close app (graceful) behavior, forcing a WM_CLOSE command to ask the application to close cleanly.")
+$tooltip.SetToolTip($btnTestGraceful, "Test close app (graceful) behavior, asking the application to close cleanly.")
 
 $btnTestForce = New-Object System.Windows.Forms.Button
 $btnTestForce.Text = "Test Force Close"
-$btnTestForce.Size = New-Object System.Drawing.Size(148, 32)
-$btnTestForce.Location = New-Object System.Drawing.Point(177, 134)
-$btnTestForce.Enabled = $false
+$btnTestForce.Size = New-Object System.Drawing.Size(158, 32)
+$btnTestForce.Location = New-Object System.Drawing.Point(187, 105)
+$btnTestForce.Enabled = $true
+$btnTestForce.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTestForce.FlatAppearance.BorderSize = 1
+$btnTestForce.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTestForce.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTestForce.BackColor = [System.Drawing.Color]::Transparent
+$btnTestForce.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpTest.Controls.Add($btnTestForce)
 $script:btnTestClassic = $btnTestForce
 $tooltip.SetToolTip($btnTestForce, "Test close app (classic) behavior, forcing immediate process termination.")
@@ -1778,18 +1957,18 @@ $tooltip.SetToolTip($btnTestForce, "Test close app (classic) behavior, forcing i
 # System Sleep & Wake Telemetry GroupBox
 $grpTelemetry = New-Object System.Windows.Forms.GroupBox
 $grpTelemetry.Text = "System Sleep && Wake Analysis"
-$grpTelemetry.Size = New-Object System.Drawing.Size(340, 200)
-$grpTelemetry.Location = New-Object System.Drawing.Point(10, 185)
+$grpTelemetry.Size = New-Object System.Drawing.Size(360, 225)
+$grpTelemetry.Location = New-Object System.Drawing.Point(0, 160)
 $grpAdvancedDiag.Controls.Add($grpTelemetry)
 $tooltip.SetToolTip($grpTelemetry, "Analyze active wake timers, armed hardware devices, and supported system sleep states.")
 
 $lblTelemetryStates = New-Object System.Windows.Forms.Label
 $lblTelemetryStates.Text = "Querying sleep states..."
 $lblTelemetryStates.AutoSize = $false
-$lblTelemetryStates.Size = New-Object System.Drawing.Size(310, 18)
+$lblTelemetryStates.Size = New-Object System.Drawing.Size(330, 32)
 $lblTelemetryStates.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblTelemetryStates.ForeColor = $BrandPurple
-$lblTelemetryStates.Location = New-Object System.Drawing.Point(15, 22)
+$lblTelemetryStates.Location = New-Object System.Drawing.Point(15, 20)
 $grpTelemetry.Controls.Add($lblTelemetryStates)
 $script:lblTelemetryStates = $lblTelemetryStates
 $tooltip.SetToolTip($lblTelemetryStates, "Sleep states supported by your system's hardware configuration.")
@@ -1797,15 +1976,16 @@ $tooltip.SetToolTip($lblTelemetryStates, "Sleep states supported by your system'
 $lblLastWakeTitle = New-Object System.Windows.Forms.Label
 $lblLastWakeTitle.Text = "Last Wake Source:"
 $lblLastWakeTitle.AutoSize = $true
-$lblLastWakeTitle.Location = New-Object System.Drawing.Point(15, 42)
+$lblLastWakeTitle.Location = New-Object System.Drawing.Point(15, 58)
 $grpTelemetry.Controls.Add($lblLastWakeTitle)
 
 $txtLastWake = New-Object System.Windows.Forms.TextBox
+$txtLastWake.Name = "txtLastWake"
 $txtLastWake.Multiline = $true
 $txtLastWake.ScrollBars = "Vertical"
 $txtLastWake.ReadOnly = $true
-$txtLastWake.Size = New-Object System.Drawing.Size(310, 36)
-$txtLastWake.Location = New-Object System.Drawing.Point(15, 60)
+$txtLastWake.Size = New-Object System.Drawing.Size(330, 42)
+$txtLastWake.Location = New-Object System.Drawing.Point(15, 78)
 $txtLastWake.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $grpTelemetry.Controls.Add($txtLastWake)
 $script:txtLastWake = $txtLastWake
@@ -1813,8 +1993,11 @@ $tooltip.SetToolTip($txtLastWake, "The driver, device, or component that woke yo
 
 # Nested TabControl inside Telemetry box for Timers and Armed Devices
 $tabTelemetryDetails = New-Object System.Windows.Forms.TabControl
-$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 90)
-$tabTelemetryDetails.Location = New-Object System.Drawing.Point(15, 100)
+$tabTelemetryDetails.SizeMode = [System.Windows.Forms.TabSizeMode]::Fixed
+$tabTelemetryDetails.ItemSize = New-Object System.Drawing.Size(0, 1)
+$tabTelemetryDetails.Appearance = [System.Windows.Forms.TabAppearance]::FlatButtons
+$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 70)
+$tabTelemetryDetails.Location = New-Object System.Drawing.Point(15, 145)
 $tooltip.SetToolTip($tabTelemetryDetails, "Switch between active wake timers and armed hardware devices.")
 
 $tabPageTimers = New-Object System.Windows.Forms.TabPage
@@ -1829,11 +2012,52 @@ $tabPageArmed.BackColor = [System.Drawing.SystemColors]::Control
 [void]$tabTelemetryDetails.TabPages.Add($tabPageArmed)
 $grpTelemetry.Controls.Add($tabTelemetryDetails)
 
+# Custom header buttons at Y = 120
+$btnTelemetryTabTimers = New-Object System.Windows.Forms.Button
+$btnTelemetryTabTimers.Name = "btnTelemetryTabTimers"
+$btnTelemetryTabTimers.Text = "Wake Timers"
+$btnTelemetryTabTimers.Font = $boldFont
+$btnTelemetryTabTimers.Size = New-Object System.Drawing.Size(90, 22)
+$btnTelemetryTabTimers.Location = New-Object System.Drawing.Point(15, 120)
+$btnTelemetryTabTimers.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTelemetryTabTimers.FlatAppearance.BorderSize = 0
+$btnTelemetryTabTimers.BackColor = [System.Drawing.SystemColors]::Control
+$btnTelemetryTabTimers.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTelemetryTabTimers.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpTelemetry.Controls.Add($btnTelemetryTabTimers)
+$script:btnTelemetryTabTimers = $btnTelemetryTabTimers
+$tooltip.SetToolTip($btnTelemetryTabTimers, "View active wake timers that can wake the PC from sleep automatically.")
+
+$btnTelemetryTabArmed = New-Object System.Windows.Forms.Button
+$btnTelemetryTabArmed.Name = "btnTelemetryTabArmed"
+$btnTelemetryTabArmed.Text = "Armed Devices"
+$btnTelemetryTabArmed.Font = $font
+$btnTelemetryTabArmed.Size = New-Object System.Drawing.Size(115, 22)
+$btnTelemetryTabArmed.Location = New-Object System.Drawing.Point(110, 120)
+$btnTelemetryTabArmed.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTelemetryTabArmed.FlatAppearance.BorderSize = 0
+$btnTelemetryTabArmed.BackColor = [System.Drawing.SystemColors]::Control
+$btnTelemetryTabArmed.ForeColor = [System.Drawing.Color]::DimGray
+$btnTelemetryTabArmed.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpTelemetry.Controls.Add($btnTelemetryTabArmed)
+$script:btnTelemetryTabArmed = $btnTelemetryTabArmed
+$tooltip.SetToolTip($btnTelemetryTabArmed, "View hardware devices configured to wake the system from sleep.")
+
+# Telemetry underline indicator Y = 142
+$telemetryTabIndicator = New-Object System.Windows.Forms.Label
+$telemetryTabIndicator.Name = "telemetryTabIndicator"
+$telemetryTabIndicator.Size = New-Object System.Drawing.Size(90, 2)
+$telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 142)
+$telemetryTabIndicator.BackColor = $BrandPurple
+$grpTelemetry.Controls.Add($telemetryTabIndicator)
+$script:telemetryTabIndicator = $telemetryTabIndicator
+
 $txtWakeTimers = New-Object System.Windows.Forms.TextBox
+$txtWakeTimers.Name = "txtWakeTimers"
 $txtWakeTimers.Multiline = $true
 $txtWakeTimers.ScrollBars = "Vertical"
 $txtWakeTimers.ReadOnly = $true
-$txtWakeTimers.Size = New-Object System.Drawing.Size(292, 50)
+$txtWakeTimers.Size = New-Object System.Drawing.Size(298, 55)
 $txtWakeTimers.Location = New-Object System.Drawing.Point(4, 4)
 $txtWakeTimers.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $tabPageTimers.Controls.Add($txtWakeTimers)
@@ -1841,7 +2065,7 @@ $script:txtWakeTimers = $txtWakeTimers
 $tooltip.SetToolTip($txtWakeTimers, "Lists active system wake timers that can wake the PC from sleep automatically.")
 
 $listArmedDevices = New-Object System.Windows.Forms.ListBox
-$listArmedDevices.Size = New-Object System.Drawing.Size(292, 50)
+$listArmedDevices.Size = New-Object System.Drawing.Size(298, 55)
 $listArmedDevices.Location = New-Object System.Drawing.Point(4, 4)
 $listArmedDevices.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $listArmedDevices.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
@@ -1853,8 +2077,14 @@ $tooltip.SetToolTip($listArmedDevices, "Lists hardware devices (keyboard, mouse,
 $btnTelemetryRefresh = New-Object System.Windows.Forms.Button
 $btnTelemetryRefresh.Text = "Refresh Telemetry"
 $btnTelemetryRefresh.Font = $font
-$btnTelemetryRefresh.Size = New-Object System.Drawing.Size(340, 36)
-$btnTelemetryRefresh.Location = New-Object System.Drawing.Point(10, 400)
+$btnTelemetryRefresh.Size = New-Object System.Drawing.Size(330, 36)
+$btnTelemetryRefresh.Location = New-Object System.Drawing.Point(15, 400)
+$btnTelemetryRefresh.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnTelemetryRefresh.FlatAppearance.BorderSize = 1
+$btnTelemetryRefresh.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTelemetryRefresh.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnTelemetryRefresh.BackColor = [System.Drawing.Color]::Transparent
+$btnTelemetryRefresh.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpAdvancedDiag.Controls.Add($btnTelemetryRefresh)
 $script:btnTelemetryRefresh = $btnTelemetryRefresh
 $tooltip.SetToolTip($btnTelemetryRefresh, "Query and refresh active sleep blockers, system overrides, and wake diagnostics.")
@@ -1862,6 +2092,7 @@ $tooltip.SetToolTip($btnTelemetryRefresh, "Query and refresh active sleep blocke
 
 # 6. Global Status Label (Page 2 Bottom Info Bar)
 $lblDiagDetail = New-Object System.Windows.Forms.Label
+$lblDiagDetail.Name = "lblDiagDetail"
 $lblDiagDetail.Text = "Select an item from the Active Blockers list to see details, or click Scan Blockers."
 $lblDiagDetail.AutoSize = $false
 $lblDiagDetail.Size = New-Object System.Drawing.Size(760, 36)
@@ -1894,16 +2125,18 @@ $bottomMetadata.BringToFront()
 $tooltip.SetToolTip($bottomMetadata, "Double-click to open CHANGELOG.md (if present in the application folder).")
 
 # Styling resets
-# NOTE: controls named statusBox / txtLiveLog / txtLastWake / txtWakeTimers are excluded from
-# font AND ForeColor resets so they keep their custom terminal/log colours.
+# NOTE: controls named statusBox / txtLiveLog / lblDiagDetail are excluded from
+# font AND ForeColor resets so they keep their custom colors/fonts.
 function Reset-MainFormChildControls {
     param($container)
     foreach ($ctrl in $container.Controls) {
         if ($ctrl -isnot [System.Windows.Forms.GroupBox] -and
             $ctrl.Name -ne "statusBox" -and $ctrl.Name -ne "txtLiveLog" -and
-            $ctrl.Name -ne "txtLastWake" -and $ctrl.Name -ne "txtWakeTimers" -and
             $ctrl.Name -ne "btnSubTabTools" -and $ctrl.Name -ne "btnSubTabLive" -and
-            $ctrl.Name -ne "liveLogSep") {
+            $ctrl.Name -ne "advancedTabIndicator" -and
+            $ctrl.Name -ne "btnTelemetryTabTimers" -and $ctrl.Name -ne "btnTelemetryTabArmed" -and
+            $ctrl.Name -ne "btnInstall" -and
+            $ctrl.Name -ne "liveLogSep" -and $ctrl.Name -ne "lblDiagDetail") {
             $ctrl.Font = $font
             $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
         }
@@ -1925,13 +2158,13 @@ Reset-MainFormChildControls $tabPage2
 
 # Set initial tab style (Setup active by default)
 $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
-$btnTabSetup.ForeColor = $BrandPurple
+$btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
 $btnTabSetup.Font = $boldFont
-$btnTabSetup.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTabSetup.FlatAppearance.BorderSize = 0
 $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
 $btnTabDiag.ForeColor = [System.Drawing.Color]::DimGray
 $btnTabDiag.Font = $font
-$btnTabDiag.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnTabDiag.FlatAppearance.BorderSize = 0
 
 # Set initial state of Clean Reset button based on install status
 $script:IsSamishInstalled = Test-SamishInstalled

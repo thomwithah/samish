@@ -39,27 +39,34 @@ if ($ddOnWakeAction) { $ddOnWakeAction.add_DrawItem($comboDrawItem) }
 if ($ddTestTarget) { $ddTestTarget.add_DrawItem($comboDrawItem) }
 
 # ---------- Custom Focus Borders for TextBoxes ----------
-if ($cfgGroup -and $tbLogCustom -and $tbCustomKey) {
+$tbLogSingle = Get-LatestTextBox $tbLogCustom
+$tbKeySingle = Get-LatestTextBox $tbCustomKey
+
+if ($cfgGroup -and $tbLogSingle -and $tbKeySingle) {
     $cfgGroup.add_Paint({
         param($sender, $e)
-        if ($tbLogCustom -and $tbLogCustom.Focused) {
-            $rect = New-Object System.Drawing.Rectangle($tbLogCustom.Location.X - 1, $tbLogCustom.Location.Y - 1, $tbLogCustom.Width + 1, $tbLogCustom.Height + 1)
+        # Safely resolve single controls in case of array/multi-instance shadowing in persistent sessions
+        $tbLog = Get-LatestTextBox $tbLogCustom
+        $tbKey = Get-LatestTextBox $tbCustomKey
+
+        if ($tbLog -and $tbLog.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbLog.Location.X - 1, $tbLog.Location.Y - 1, $tbLog.Width + 1, $tbLog.Height + 1)
             $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
             $e.Graphics.DrawRectangle($pen, $rect)
             $pen.Dispose()
         }
-        if ($tbCustomKey -and $tbCustomKey.Focused) {
-            $rect = New-Object System.Drawing.Rectangle($tbCustomKey.Location.X - 1, $tbCustomKey.Location.Y - 1, $tbCustomKey.Width + 1, $tbCustomKey.Height + 1)
+        if ($tbKey -and $tbKey.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbKey.Location.X - 1, $tbKey.Location.Y - 1, $tbKey.Width + 1, $tbKey.Height + 1)
             $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
             $e.Graphics.DrawRectangle($pen, $rect)
             $pen.Dispose()
         }
     })
 
-    $tbLogCustom.add_GotFocus({ $cfgGroup.Invalidate() })
-    $tbLogCustom.add_LostFocus({ $cfgGroup.Invalidate() })
-    $tbCustomKey.add_GotFocus({ $cfgGroup.Invalidate() })
-    $tbCustomKey.add_LostFocus({ $cfgGroup.Invalidate() })
+    $tbLogSingle.add_GotFocus({ $cfgGroup.Invalidate() })
+    $tbLogSingle.add_LostFocus({ $cfgGroup.Invalidate() })
+    $tbKeySingle.add_GotFocus({ $cfgGroup.Invalidate() })
+    $tbKeySingle.add_LostFocus({ $cfgGroup.Invalidate() })
 }
 
 # --- Mode toggles ---
@@ -793,11 +800,12 @@ function Update-SleepDiagnosticsListsAsync {
     $script:btnDiagScan.Enabled = $false
 
     $script:DiagSyncState = [hashtable]::Synchronized(@{
-            "DiagModulePath" = $DiagModulePath
-            "Blockers"       = $null
-            "Overrides"      = $null
-            "Error"          = $null
-            "Complete"       = $false
+            "DiagModulePath"    = $DiagModulePath
+            "Blockers"          = $null
+            "Overrides"         = $null
+            "Error"             = $null
+            "Complete"          = $false
+            "AutomatedAppNames" = @($script:MonitoredApps | ForEach-Object { $_.ProcessName })
         })
 
     $script:DiagRunspace = [runspacefactory]::CreateRunspace()
@@ -814,7 +822,7 @@ function Update-SleepDiagnosticsListsAsync {
                 if (Test-Path -LiteralPath $SyncState.DiagModulePath) {
                     . $SyncState.DiagModulePath
                 }
-                $SyncState.Blockers = Get-ActiveSleepBlockers
+                $SyncState.Blockers = Get-ActiveSleepBlockers -AutomatedAppNames $SyncState.AutomatedAppNames
                 $SyncState.Overrides = Get-SystemOverrides
             }
             catch {
@@ -844,7 +852,8 @@ function Update-SleepDiagnosticsListsAsync {
                 $script:DiagRunspace.Dispose()
 
                 Complete-SleepDiagnosticsListsUpdate -SyncState $script:DiagSyncState
-                $script:lblDiagDetail.Text = "Scan complete - $(Get-Date -Format 'HH:mm:ss')."
+                $script:lblDiagDetail.Text = "Last scan completed at $(Get-Date -Format 'HH:mm:ss')."
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
                 $script:btnDiagScan.Enabled = $true
             }
         })
@@ -1800,6 +1809,111 @@ function Resolve-TestTarget {
     }
 }
 
+# ---- Update-TestButtonsTooltips --------------------------------------
+# Evaluates SAMISH installation, active profile, and process running states
+# to update the tooltips for the four diagnostic test buttons on Page 2.
+function Update-TestButtonsTooltips {
+    # Check general group availability
+    $isInstalled = $false
+    $deviceRunning = $false
+    $hasAutomated = ($script:MonitoredApps -and $script:MonitoredApps.Count -gt 0)
+    try { $isInstalled = Test-SamishInstalled } catch {}
+
+    $profileProcName = $null
+    try {
+        if ($script:ProfileMetaById -and $script:ProfileMetaById.ContainsKey($script:ActiveProfileId)) {
+            $meta = $script:ProfileMetaById[$script:ActiveProfileId]
+            if ($meta.Raw.targets -and $meta.Raw.targets.Count -gt 0) {
+                $profileProcName = [string]$meta.Raw.targets[0].processName
+            }
+        }
+    } catch {}
+    if ($profileProcName) {
+        try {
+            $deviceRunning = ($null -ne (Get-Process -Name $profileProcName -ErrorAction SilentlyContinue | Select-Object -First 1))
+        } catch {}
+    }
+
+    $groupAvailable = ($isInstalled -or $hasAutomated -or $deviceRunning)
+
+    # Base tooltips
+    $baseSleep = "Test whether SAMISH can close this application or pause its media playback based on its configured sleep action."
+    $baseWake = "Test whether SAMISH can launch this application and/or restore its media playback status based on its configured wake action."
+    $baseGraceful = "Test close app (graceful) behavior, forcing a WM_CLOSE command to ask the application to close cleanly."
+    $baseForce = "Test close app (classic) behavior, forcing immediate process termination."
+
+    if (-not $groupAvailable) {
+        $reason = "[Unavailable - Requires SAMISH to be installed, the active profile's device software to be running, or automated apps configured.]"
+        $tipSleep = "$reason`r`n`r`n$baseSleep"
+        $tipWake = "$reason`r`n`r`n$baseWake"
+        $tipGraceful = "$reason`r`n`r`n$baseGraceful"
+        $tipForce = "$reason`r`n`r`n$baseForce"
+    }
+    else {
+        $target = Resolve-TestTarget
+        if (-not $target.Valid) {
+            $reason = "[Unavailable - No valid target selected in dropdown]"
+            $tipSleep = "$reason`r`n`r`n$baseSleep"
+            $tipWake = "$reason`r`n`r`n$baseWake"
+            $tipGraceful = "$reason`r`n`r`n$baseGraceful"
+            $tipForce = "$reason`r`n`r`n$baseForce"
+        }
+        else {
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $running = $null -ne $proc
+
+            if ($running) {
+                $statusSleep = "[Available - Target is running]"
+                $statusGraceful = "[Available - Target is running]"
+                $statusForce = "[Available - Target is running]"
+
+                if ($target.BeforeSleepMode -eq "PauseMedia") {
+                    $statusWake = "[Available - Target is running (testing playback resumption)]"
+                    $guidanceWake = "This will test media playback resumption on the running application."
+                }
+                else {
+                    $statusWake = "[Unavailable - Target is running. Click 'Test Sleep/Hibernate' first.]"
+                    $guidanceWake = "The application must be stopped before testing the launch action."
+                }
+
+                $guidanceSleep = "Warning: This test will attempt to close or pause the running application."
+                $guidanceGraceful = "Warning: This test will attempt to gracefully close the running application."
+                $guidanceForce = "Warning: This test will force-terminate the running application."
+
+                $tipSleep = "$statusSleep`r`n`r`n$baseSleep`r`n`r`n$guidanceSleep"
+                $tipWake = "$statusWake`r`n`r`n$baseWake`r`n`r`n$guidanceWake"
+                $tipGraceful = "$statusGraceful`r`n`r`n$baseGraceful`r`n`r`n$guidanceGraceful"
+                $tipForce = "$statusForce`r`n`r`n$baseForce`r`n`r`n$guidanceForce"
+            }
+            else {
+                $statusSleep = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
+                $statusGraceful = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
+                $statusForce = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
+                
+                $statusWake = "[Available - Target is not running]"
+
+                $guidanceSleep = "The application must be running to test sleep actions."
+                $guidanceGraceful = "The application must be running to test graceful close."
+                $guidanceForce = "The application must be running to test force close."
+                
+                $pathText = if ($target.ConfiguredPath) { $target.ConfiguredPath } else { "(Auto-detect on launch)" }
+                $guidanceWake = "This will attempt to launch the application using its configured path: $pathText"
+
+                $tipSleep = "$statusSleep`r`n`r`n$baseSleep`r`n`r`n$guidanceSleep"
+                $tipWake = "$statusWake`r`n`r`n$baseWake`r`n`r`n$guidanceWake"
+                $tipGraceful = "$statusGraceful`r`n`r`n$baseGraceful`r`n`r`n$guidanceGraceful"
+                $tipForce = "$statusForce`r`n`r`n$baseForce`r`n`r`n$guidanceForce"
+            }
+        }
+    }
+
+    # Set tooltips dynamically
+    if ($script:btnTestStop) { $script:tooltip.SetToolTip($script:btnTestStop, $tipSleep) }
+    if ($script:btnTestStart) { $script:tooltip.SetToolTip($script:btnTestStart, $tipWake) }
+    if ($script:btnTestGraceful) { $script:tooltip.SetToolTip($script:btnTestGraceful, $tipGraceful) }
+    if ($script:btnTestClassic) { $script:tooltip.SetToolTip($script:btnTestClassic, $tipForce) }
+}
+
 # ---- Test Graceful Stop -------------------------------------
 $script:btnTestGraceful.add_Click({
         try {
@@ -1863,6 +1977,9 @@ $script:btnTestGraceful.add_Click({
             Set-StatusText $errMsg
             Write-SetupLog "Operating Mode Test (Graceful): $errMsg"
         }
+        finally {
+            Update-TestButtonsTooltips
+        }
     })
 
 # ---- Test Classic Stop --------------------------------------
@@ -1920,6 +2037,9 @@ $script:btnTestClassic.add_Click({
             $errMsg = "Classic Stop test encountered an unexpected error: $($_.Exception.Message)"
             Set-StatusText $errMsg
             Write-SetupLog "Operating Mode Test (Classic): $errMsg"
+        }
+        finally {
+            Update-TestButtonsTooltips
         }
     })
 
@@ -2106,6 +2226,9 @@ $script:btnTestStart.add_Click({
             Set-StatusText $errMsg
             Write-SetupLog "Operating Mode Test (Start): $errMsg"
         }
+        finally {
+            Update-TestButtonsTooltips
+        }
     })
 
 # ---- Stop Test -----------------------------------------------
@@ -2196,6 +2319,9 @@ $script:btnTestStop.add_Click({
             Set-StatusText $errMsg
             Write-SetupLog "Operating Mode Test (Stop): $errMsg"
         }
+        finally {
+            Update-TestButtonsTooltips
+        }
     })
 
 # ---- Helper to format automated app label with friendly Before Sleep and On Wake Actions ----
@@ -2272,6 +2398,40 @@ if ($rbOpClassic) { $rbOpClassic.add_CheckedChanged($syncOperatingMode) }
 
 
 # =====================================================================
+# V1.2.2 CUSTOM TAB UNDERLINE AND HOVER DECORATORS
+# =====================================================================
+
+function Update-TabIndicator {
+    if (-not $script:tabIndicatorLine) { return }
+    $isExpanded = ($form.ClientSize.Width -gt 800)
+    if ($tabControl.SelectedIndex -eq 0) {
+        # Setup tab is active
+        if ($isExpanded) {
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(190, 2)
+        }
+        else {
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(145, 2)
+        }
+    }
+    else {
+        # Diagnostics tab is active
+        if ($isExpanded) {
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(530, 78)
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(260, 2)
+        }
+        else {
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(485, 78)
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(180, 2)
+        }
+    }
+}
+
+# (Removed Register-ButtonHoverBorder helper function and event hooks - hover background is natively handled by FlatAppearance in UI.ps1)
+
+
+# =====================================================================
 # V1.1.0 NAVIGATION & DRAWER EVENT HANDLERS
 # =====================================================================
 
@@ -2282,6 +2442,9 @@ function Hide-All-Drawers {
     # Reset drawer button labels so they never show stale "Close X" state
     if ($btnToolsAdvanced) { $btnToolsAdvanced.Text = "Advanced Tools >>" }
     if ($btnDiagAdvanced)  { $btnDiagAdvanced.Text  = "Diagnostics >>" }
+
+    if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $false }
+    if ($script:diagDrawerSep)  { $script:diagDrawerSep.Visible  = $false }
 
     # Return logo to its home position
     if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(718, 12) }
@@ -2318,30 +2481,35 @@ function Hide-All-Drawers {
     if ($btnSubTabTools) {
         $btnSubTabTools.Visible = $false
         $btnSubTabTools.Font = $boldFont
-        $btnSubTabTools.ForeColor = $BrandPurple
+        $btnSubTabTools.ForeColor = [System.Drawing.SystemColors]::ControlText
     }
     if ($btnSubTabLive) {
         $btnSubTabLive.Visible = $false
         $btnSubTabLive.Font = $font
         $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
     }
+    if ($script:advancedTabIndicator) {
+        $script:advancedTabIndicator.Visible = $false
+    }
+    Update-TabIndicator
 }
 
 $btnTabSetup.add_Click({
         $tabControl.SelectedIndex = 0
         $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabSetup.ForeColor = $BrandPurple
+        $btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTabSetup.Font = $boldFont
         $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
         $btnTabDiag.ForeColor = [System.Drawing.Color]::DimGray
         $btnTabDiag.Font = $font
         Hide-All-Drawers
+        Update-TabIndicator
     })
 
 $btnTabDiag.add_Click({
         $tabControl.SelectedIndex = 1
         $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabDiag.ForeColor = $BrandPurple
+        $btnTabDiag.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTabDiag.Font = $boldFont
         $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
         $btnTabSetup.ForeColor = [System.Drawing.Color]::DimGray
@@ -2352,6 +2520,7 @@ $btnTabDiag.add_Click({
             $script:diagInitialized = $true
             Init-SleepDiagnosticsEventHandlers
         }
+        Update-TabIndicator
     })
 
 $btnToolsAdvanced.add_Click({
@@ -2361,6 +2530,7 @@ $btnToolsAdvanced.add_Click({
             $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
             if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
             $btnToolsAdvanced.Text = "<< Close Tools"
+            if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
             if ($script:mainSep) { $script:mainSep.Width = 1144 }
             if ($script:bottomMetadata) {
                 $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
@@ -2382,6 +2552,16 @@ $btnToolsAdvanced.add_Click({
             # Show sub-tabs
             if ($btnSubTabTools) { $btnSubTabTools.Visible = $true }
             if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
+            if ($script:advancedTabIndicator) {
+                if ($script:IsLiveLogMode) {
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 40)
+                }
+                else {
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+                }
+                $script:advancedTabIndicator.Visible = $true
+            }
+            Update-TabIndicator
         }
         else {
             # Collapse (Hide-All-Drawers resets text and logo)
@@ -2396,6 +2576,7 @@ $btnDiagAdvanced.add_Click({
             $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
             if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
             $btnDiagAdvanced.Text = "<< Close Diagnostics"
+            if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
             if ($script:mainSep) { $script:mainSep.Width = 1144 }
             if ($script:bottomMetadata) {
                 $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
@@ -2416,6 +2597,7 @@ $btnDiagAdvanced.add_Click({
 
             # Trigger telemetry refresh
             if ($script:btnTelemetryRefresh) { $script:btnTelemetryRefresh.PerformClick() }
+            Update-TabIndicator
         }
         else {
             # Collapse (Hide-All-Drawers resets text and logo)
@@ -2461,7 +2643,7 @@ $script:btnTelemetryRefresh.add_Click({
 function Show-SubTabTools {
     if ($btnSubTabTools) {
         $btnSubTabTools.Font = $boldFont
-        $btnSubTabTools.ForeColor = $BrandPurple
+        $btnSubTabTools.ForeColor = [System.Drawing.SystemColors]::ControlText
     }
     if ($btnSubTabLive) {
         $btnSubTabLive.Font = $font
@@ -2488,12 +2670,17 @@ function Show-SubTabTools {
     if ($btnCleanReset) { $btnCleanReset.Visible = $true }
     if ($btnReadSetup) { $btnReadSetup.Visible = $true }
     if ($btnOpenLog) { $btnOpenLog.Visible = $true }
+
+    if ($script:advancedTabIndicator) {
+        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+        $script:advancedTabIndicator.Visible = $true
+    }
 }
 
 function Show-SubTabLive {
     if ($btnSubTabLive) {
         $btnSubTabLive.Font = $boldFont
-        $btnSubTabLive.ForeColor = $BrandPurple
+        $btnSubTabLive.ForeColor = [System.Drawing.SystemColors]::ControlText
     }
     if ($btnSubTabTools) {
         $btnSubTabTools.Font = $font
@@ -2573,6 +2760,11 @@ function Show-SubTabLive {
         })
     $script:LiveLogTimer = $timer
     $timer.Start()
+
+    if ($script:advancedTabIndicator) {
+        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 40)
+        $script:advancedTabIndicator.Visible = $true
+    }
 }
 
 function Enter-LiveLogMode {
@@ -2628,4 +2820,39 @@ function Set-StatusText([string]$text) {
     $statusBox.SelectionStart = $statusBox.TextLength
     $statusBox.ScrollToCaret()
 }
+
+# Wire IndexChanged for ddTestTarget to refresh tooltips dynamically
+if ($script:ddTestTarget) {
+    $script:ddTestTarget.add_SelectedIndexChanged({
+        Update-TestButtonsTooltips
+    })
+}
+
+# Wire custom telemetry sub-tab buttons
+if ($btnTelemetryTabTimers) {
+    $btnTelemetryTabTimers.add_Click({
+        $tabTelemetryDetails.SelectedIndex = 0
+        $btnTelemetryTabTimers.Font = $boldFont
+        $btnTelemetryTabTimers.ForeColor = [System.Drawing.SystemColors]::ControlText
+        $btnTelemetryTabArmed.Font = $font
+        $btnTelemetryTabArmed.ForeColor = [System.Drawing.Color]::DimGray
+        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 142)
+        $telemetryTabIndicator.Width = 90
+    })
+}
+if ($btnTelemetryTabArmed) {
+    $btnTelemetryTabArmed.add_Click({
+        $tabTelemetryDetails.SelectedIndex = 1
+        $btnTelemetryTabArmed.Font = $boldFont
+        $btnTelemetryTabArmed.ForeColor = [System.Drawing.SystemColors]::ControlText
+        $btnTelemetryTabTimers.Font = $font
+        $btnTelemetryTabTimers.ForeColor = [System.Drawing.Color]::DimGray
+        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(110, 142)
+        $telemetryTabIndicator.Width = 115
+    })
+}
+
+# Initialise tooltips on load
+Update-TestButtonsTooltips
+
 

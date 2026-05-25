@@ -3,6 +3,9 @@
 # ==========================================
 
 function Get-ActiveSleepBlockers {
+    param(
+        [string[]]$AutomatedAppNames = @()
+    )
     # Runs powercfg /requests and parses ALL active sleep/hibernate blockers.
     # Returns an array of blocker custom objects (Apps, Drivers, Services).
 
@@ -181,6 +184,10 @@ function Get-ActiveSleepBlockers {
 
     # Append non-blocking discovered apps to the blockers list if not already present
     foreach ($app in $discoveredApps) {
+        # Skip if the idle app is already automated by SAMISH
+        if ($AutomatedAppNames -and ($AutomatedAppNames -contains $app.ProcessName)) {
+            continue
+        }
         $existing = $blockers | Where-Object { $_.ProcessName -eq $app.ProcessName -and $_.BlockerType -eq "App" }
         if (-not $existing) {
             $blockers += [pscustomobject]@{
@@ -219,10 +226,29 @@ function Get-SystemOverrides {
 
         if ($currentType -and $line -notmatch '^\[') {
             # Parse: <Name> <RequestType(s)>
-            # e.g. "BEACN.EXE DISPLAY SYSTEM AWAYMODE"
-            $parts    = $line -split '\s+'
-            $name     = $parts[0]
-            $requests = $parts[1..($parts.Count - 1)] -join ' '
+            # Note: The name may contain spaces (e.g. "Legacy Kernel Caller" or "BECAN Mic").
+            # The request types are always the trailing tokens that match standard power request keywords.
+            $parts = $line -split '\s+'
+            
+            $requestKeywords = @('DISPLAY', 'SYSTEM', 'AWAYMODE', 'EXECUTION', 'PERFBOOST', 'ACTIVELOCKSCREEN')
+            $nameTokens = @()
+            $requestTokens = @()
+            
+            # Read tokens from right to left
+            $inRequests = $true
+            for ($i = $parts.Count - 1; $i -ge 0; $i--) {
+                $token = $parts[$i]
+                if ($inRequests -and $i -gt 0 -and ($requestKeywords -contains $token.ToUpper())) {
+                    $requestTokens = @($token) + $requestTokens
+                }
+                else {
+                    $inRequests = $false
+                    $nameTokens = @($token) + $nameTokens
+                }
+            }
+            
+            $name = $nameTokens -join ' '
+            $requests = $requestTokens -join ' '
 
             $overrides += [pscustomobject]@{
                 OverrideType = $currentType

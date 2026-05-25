@@ -52,6 +52,25 @@ public class Win32 {
 "@
 #endregion
 
+# ---------- Strategy A: Custom Taskbar Icon AppUserModelID Registration ----------
+$isCompiled = ($MyInvocation.MyCommand.Name -like "*.exe")
+if (-not $isCompiled) {
+    try {
+        # Register explicit AppUserModelID to force Windows taskbar to use our custom form icon rather than powershell.exe icon
+        $AppIDCode = @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class ShellApi {
+            [DllImport("shell32.dll", SetLastError = true)]
+            public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
+        }
+"@
+        Add-Type -TypeDefinition $AppIDCode -ErrorAction SilentlyContinue
+        [ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
+    }
+    catch {}
+}
+
 # Temporarily bypass execution policy for the current process to ensure dot-sourced modules can load (crucial for PS2EXE compiled EXEs)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
 
@@ -79,6 +98,18 @@ function Get-CurrentExecutionMode {
     }
     
     return "Exe"
+}
+
+# Helper to safely resolve a single TextBox from potential array or PSObject-wrapped collections in persistent sessions
+function Get-LatestTextBox {
+    param($ControlVar)
+    $resolved = $null
+    foreach ($item in $ControlVar) {
+        if ($item -and $item.GetType().FullName -eq "System.Windows.Forms.TextBox") {
+            $resolved = $item
+        }
+    }
+    return $resolved
 }
 
 # ----- LOAD ADAPTERS -------------------------------------------------
@@ -1873,6 +1904,11 @@ $UIModulePath = Join-Path $PackageDir "Modules\UI.ps1"
 if (Test-Path -LiteralPath $UIModulePath) {
     . $UIModulePath
 }
+
+# Resolve any potential array/shadowing issues for TextBox controls in persistent sessions
+$tbLogCustom = Get-LatestTextBox $tbLogCustom
+$tbCustomKey = Get-LatestTextBox $tbCustomKey
+
 $EventsModulePath = Join-Path $PackageDir "Modules\Events-handlers.ps1"
 if (Test-Path -LiteralPath $EventsModulePath) {
     . $EventsModulePath
@@ -1882,21 +1918,25 @@ $cbTray.Enabled = $false
 $tbLogCustom.Enabled = $false
 $tbCustomKey.Enabled = $false 
 
-#Apply previous saved config to UI controls (Operating Mode, logging, etc.)
-try {
-    Apply-UIFromConfigIfPresent
-}
-catch {
-    # best effort only
-}
+# ---------- Strategy B: Deferred Initialization to avoid UI startup lag ----------
+$form.add_Shown({
+    # Apply previous saved config to UI controls (Operating Mode, logging, etc.)
+    try {
+        Apply-UIFromConfigIfPresent
+    }
+    catch {}
 
-# ----- AUTO-READ CURRENT SETUP ON LAUNCH -----
-try {
-    Show-CurrentConfiguration
-}
-catch {
-    # fail silently to avoid blocking UI load
-}
+    # Auto-read current setup on launch
+    try {
+        Show-CurrentConfiguration
+    }
+    catch {}
+
+    # Initialise test group state after profiles are loaded
+    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+        try { Update-TestGroupState } catch {}
+    }
+})
 
 [void]$form.ShowDialog()
 Complete-SamishSetupUi -Form $form
