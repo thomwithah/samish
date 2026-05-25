@@ -48,3 +48,26 @@ https://forms.gle/BYfxQqKgUpYfiyUo8
 
 Fallback:
 fakerjs+license@gmail.com
+
+
+## Included files
+
+Keep these files and folders together in the same directory:
+- Assets/
+- GUIstuff/
+- Modules/
+- Profiles/
+- Workspace/
+- Install-SAMISH-Hidden.bat
+- Install-SAMISH-Interactive.bat
+- Uninstall-SAMISH.bat
+- Setup.bat
+- Setup.ps1
+- SAMISH.ps1
+- SAMISH-HiddenTask.xml
+- SAMISH-InteractiveTask.xml
+- README.txt
+- README.md
+- SAMISH.exe (compiled version of SAMISH.ps1; requires same folder structure with Assets/, Modules/, Profiles/ etc.)
+- LICENSE
+- COMMERCIAL-LICENSE.md
