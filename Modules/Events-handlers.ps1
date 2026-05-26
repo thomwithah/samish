@@ -2650,7 +2650,10 @@ $btnTabSetup.add_Click({
         $tabControl.SelectedIndex = 0
         $btnTabSetup.Font = $boldFont
         $btnTabDiag.Font = $font
+        $wasExpanded = ($form.ClientSize.Width -gt 800)
         Hide-All-Drawers
+        # If the window was expanded on the other tab, keep it expanded by opening this tab's drawer
+        if ($wasExpanded -and $btnToolsAdvanced) { $btnToolsAdvanced.PerformClick() }
         Update-TabIndicator
     })
 
@@ -2658,12 +2661,15 @@ $btnTabDiag.add_Click({
         $tabControl.SelectedIndex = 1
         $btnTabDiag.Font = $boldFont
         $btnTabSetup.Font = $font
+        $wasExpanded = ($form.ClientSize.Width -gt 800)
         Hide-All-Drawers
         # Initialize Page 2 handlers on first visit (was never called — root cause of all Page 2 bugs)
         if (-not $script:diagInitialized) {
             $script:diagInitialized = $true
             Init-SleepDiagnosticsEventHandlers
         }
+        # If the window was expanded on the other tab, keep it expanded by opening this tab's drawer
+        if ($wasExpanded -and $btnDiagAdvanced) { $btnDiagAdvanced.PerformClick() }
         Update-TabIndicator
     })
 

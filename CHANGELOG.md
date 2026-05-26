@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-05-26
+
+### Added
+- **Drawer State Persistence on Tab Switch**: Automatically opens the corresponding slide-out drawer when switching between the Setup and Sleep Automation tabs if a drawer was already expanded on the previous tab.
+
 ## [1.2.2] - 2026-05-24
 
 ### Added

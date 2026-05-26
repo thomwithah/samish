@@ -1,6 +1,7 @@
-﻿build-tools/
+build-tools/
 dist/
 build.bat
+Push-ToGitHub.bat
 build.ps1
 config.txt
 Thumbs.db

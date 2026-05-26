@@ -1,20 +1,21 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-<img width="830" height="695" alt="image" src="https://github.com/user-attachments/assets/38cff770-2e72-4937-b994-f9741b08a94c" />
+<img width="800" alt="Setup Collapsed" src="Assets/screenshots/1.png" />
 
-<img width="825" height="695" alt="image" src="https://github.com/user-attachments/assets/33e0fad7-93be-46f7-aef0-93b5a28fdf89" />
 
-<img width="1208" height="700" alt="image" src="https://github.com/user-attachments/assets/30e3500b-a437-4c37-a310-2c4cad7a331a" />
+<img width="800" alt="Diagnostics Collapsed" src="Assets/screenshots/2.png" />
 
-<img width="1230" height="709" alt="image" src="https://github.com/user-attachments/assets/6f8108d0-c23d-4c81-8a21-1de34cd71fcb" />
+<img width="1180" alt="Setup Expanded Tools" src="Assets/screenshots/3.png" />
 
-<img width="1206" height="699" alt="image" src="https://github.com/user-attachments/assets/71254d91-4b05-4e1a-b494-0e692ccfbd2d" />
+<img width="1180" alt="Setup Expanded Live Log" src="Assets/screenshots/4.png" />
+
+<img width="1180" alt="Diagnostics Expanded" src="Assets/screenshots/5.png" />
 
 
 Created by thomwithah
 
 A lightweight helper that restores normal Windows sleep behavior for streaming audio hardware.
 
-Version: 1.2.2
+Version: 1.2.3
 
 ---
 
