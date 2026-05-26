@@ -8,8 +8,11 @@ $comboDrawItem = {
     $itemText = $sender.Items[$e.Index].ToString()
     $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
 
+    $highlightColor = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $script:BrandCyan }
+    if ($null -eq $highlightColor) { $highlightColor = [System.Drawing.Color]::FromArgb(0, 215, 255) }
+
     if ($isHighlighted) {
-        $brushBack = New-Object System.Drawing.SolidBrush($BrandCyan) # SAMISH Cyan/Blue
+        $brushBack = New-Object System.Drawing.SolidBrush($highlightColor)
         $e.Graphics.FillRectangle($brushBack, $e.Bounds)
         $brushBack.Dispose()
     }
@@ -19,7 +22,21 @@ $comboDrawItem = {
         $brushBack.Dispose()
     }
 
-    $foreColor = if ($isHighlighted) { [System.Drawing.Color]::Black } else { $sender.ForeColor }
+    $foreColor = if ($isHighlighted) {
+        [System.Drawing.Color]::Black
+    } elseif (-not $sender.Enabled) {
+        if ($global:ThemeNeonActive) {
+            $global:NeonCyan
+        } else {
+            [System.Drawing.Color]::Gray
+        }
+    } else {
+        if ($global:ThemeNeonActive) {
+            $global:NeonCyan
+        } else {
+            $sender.ForeColor
+        }
+    }
     $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
     
     $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
@@ -33,33 +50,53 @@ $comboDrawItem = {
     $e.DrawFocusRectangle()
 }
 
-if ($ddLogInterval) { $ddLogInterval.add_DrawItem($comboDrawItem) }
-if ($ddHotkey) { $ddHotkey.add_DrawItem($comboDrawItem) }
-if ($ddOnWakeAction) { $ddOnWakeAction.add_DrawItem($comboDrawItem) }
-if ($ddTestTarget) { $ddTestTarget.add_DrawItem($comboDrawItem) }
+$logCtrl = if ($script:ddLogInterval) { $script:ddLogInterval } else { $ddLogInterval }
+if ($logCtrl) { $logCtrl.add_DrawItem($comboDrawItem) }
+
+$hkCtrl = if ($script:ddHotkey) { $script:ddHotkey } else { $ddHotkey }
+if ($hkCtrl) { $hkCtrl.add_DrawItem($comboDrawItem) }
+
+$wakeCtrl = if ($script:ddDiagOnWakeAction) { $script:ddDiagOnWakeAction } else { $ddOnWakeAction }
+if ($wakeCtrl) { $wakeCtrl.add_DrawItem($comboDrawItem) }
+
+$testCtrl = if ($script:ddTestTarget) { $script:ddTestTarget } else { $ddTestTarget }
+if ($testCtrl) { $testCtrl.add_DrawItem($comboDrawItem) }
 
 # ---------- Custom Focus Borders for TextBoxes ----------
-$tbLogSingle = Get-LatestTextBox $tbLogCustom
-$tbKeySingle = Get-LatestTextBox $tbCustomKey
+$tbLogSingle = $null
+$arrLogSingle = @($tbLogCustom | Where-Object { $_ -is [System.Windows.Forms.Control] })
+if ($arrLogSingle.Count -gt 0) { $tbLogSingle = $arrLogSingle[-1] }
 
-if ($cfgGroup -and $tbLogSingle -and $tbKeySingle) {
+$tbKeySingle = $null
+$arrKeySingle = @($tbCustomKey | Where-Object { $_ -is [System.Windows.Forms.Control] })
+if ($arrKeySingle.Count -gt 0) { $tbKeySingle = $arrKeySingle[-1] }
+
+if ($cfgGroup) {
     $cfgGroup.add_Paint({
         param($sender, $e)
-        # Safely resolve single controls in case of array/multi-instance shadowing in persistent sessions
-        $tbLog = Get-LatestTextBox $tbLogCustom
-        $tbKey = Get-LatestTextBox $tbCustomKey
+        try {
+            $tbLog = $null
+            $arrLog = @($tbLogCustom | Where-Object { $_ -is [System.Windows.Forms.Control] })
+            if ($arrLog.Count -gt 0) { $tbLog = $arrLog[-1] }
+            
+            $tbKey = $null
+            $arrKey = @($tbCustomKey | Where-Object { $_ -is [System.Windows.Forms.Control] })
+            if ($arrKey.Count -gt 0) { $tbKey = $arrKey[-1] }
 
-        if ($tbLog -and $tbLog.Focused) {
-            $rect = New-Object System.Drawing.Rectangle($tbLog.Location.X - 1, $tbLog.Location.Y - 1, $tbLog.Width + 1, $tbLog.Height + 1)
-            $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
-            $e.Graphics.DrawRectangle($pen, $rect)
-            $pen.Dispose()
-        }
-        if ($tbKey -and $tbKey.Focused) {
-            $rect = New-Object System.Drawing.Rectangle($tbKey.Location.X - 1, $tbKey.Location.Y - 1, $tbKey.Width + 1, $tbKey.Height + 1)
-            $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
-            $e.Graphics.DrawRectangle($pen, $rect)
-            $pen.Dispose()
+            if ($tbLog -is [System.Windows.Forms.Control] -and $tbLog.Focused) {
+                $rect = New-Object System.Drawing.Rectangle($tbLog.Location.X - 1, $tbLog.Location.Y - 1, $tbLog.Width + 1, $tbLog.Height + 1)
+                $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
+                $e.Graphics.DrawRectangle($pen, $rect)
+                $pen.Dispose()
+            }
+            if ($tbKey -is [System.Windows.Forms.Control] -and $tbKey.Focused) {
+                $rect = New-Object System.Drawing.Rectangle($tbKey.Location.X - 1, $tbKey.Location.Y - 1, $tbKey.Width + 1, $tbKey.Height + 1)
+                $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
+                $e.Graphics.DrawRectangle($pen, $rect)
+                $pen.Dispose()
+            }
+        } catch {
+            # Silently suppress any drawing exceptions (like legacy array indexing bugs)
         }
     })
 
@@ -890,7 +927,40 @@ function Set-OperatingModeBoxState {
     if (-not $script:grpDiagOperatingMode) { return }
 
     foreach ($ctrl in $script:grpDiagOperatingMode.Controls) {
-        $ctrl.Enabled = $Enabled
+        if ($ctrl.Name -eq "pnlOnWakeBorder" -or $ctrl -is [System.Windows.Forms.Panel]) {
+            # Handle ComboBox inside Panel
+            if ($script:ddDiagOnWakeAction) {
+                $script:ddDiagOnWakeAction.Enabled = $Enabled
+            }
+            if ($global:ThemeNeonActive) {
+                $ctrl.Enabled = $true
+                $ctrl.BackColor = if ($Enabled) { $global:NeonPurple } else { [System.Drawing.Color]::FromArgb(60, 60, 65) }
+            } else {
+                $ctrl.Enabled = $Enabled
+                $ctrl.BackColor = [System.Drawing.Color]::DarkGray
+            }
+        }
+        elseif ($ctrl -is [System.Windows.Forms.RadioButton] -or $ctrl -is [System.Windows.Forms.Label]) {
+            if ($global:ThemeNeonActive) {
+                $ctrl.Enabled = $true
+                $ctrl.ForeColor = if ($Enabled) { $global:NeonText } else { [System.Drawing.Color]::FromArgb(100, 100, 110) }
+                if ($ctrl -is [System.Windows.Forms.RadioButton]) {
+                    $ctrl.AutoCheck = $Enabled
+                }
+            } else {
+                $ctrl.Enabled = $Enabled
+                if ($ctrl -is [System.Windows.Forms.RadioButton]) {
+                    $ctrl.AutoCheck = $true
+                    $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
+                }
+                elseif ($ctrl -is [System.Windows.Forms.Label]) {
+                    $ctrl.ForeColor = $BrandPurple
+                }
+            }
+        }
+        else {
+            $ctrl.Enabled = $Enabled
+        }
     }
 
     if ($Enabled) {
@@ -901,23 +971,35 @@ function Set-OperatingModeBoxState {
             $script:diagFlashTimer = $null
         }
 
+        # Determine colors safely
+        $color1 = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $script:BrandCyan }
+        if ($null -eq $color1) { $color1 = [System.Drawing.Color]::FromArgb(0, 215, 255) }
+        $color2 = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.SystemColors]::ControlText }
+        if ($null -eq $color2) { $color2 = [System.Drawing.Color]::Black }
+
         # Triple-flash: Cyan -> ControlText (6 ticks @ 180ms each)
-        $script:grpDiagOperatingMode.ForeColor = $BrandCyan
+        $script:grpDiagOperatingMode.ForeColor = $color1
         $script:grpDiagOperatingMode.Refresh()
         $script:diagFlashTick = 0
         $script:diagFlashTimer = New-Object System.Windows.Forms.Timer
         $script:diagFlashTimer.Interval = 180
+        $script:diagFlashTimer.Tag = [PSCustomObject]@{
+            Color1 = $color1
+            Color2 = $color2
+        }
         $script:diagFlashTimer.add_Tick({
+                param($sender, $e)
                 $script:diagFlashTick++
+                $colors = $sender.Tag
                 if ($script:diagFlashTick % 2 -eq 0) {
-                    $script:grpDiagOperatingMode.ForeColor = $BrandCyan
+                    $script:grpDiagOperatingMode.ForeColor = $colors.Color1
                 }
                 else {
-                    $script:grpDiagOperatingMode.ForeColor = [System.Drawing.SystemColors]::ControlText
+                    $script:grpDiagOperatingMode.ForeColor = $colors.Color2
                 }
                 if ($script:diagFlashTick -ge 5) {
-                    # Ensure we end on ControlText then clean up
-                    $script:grpDiagOperatingMode.ForeColor = [System.Drawing.SystemColors]::ControlText
+                    # Ensure we end on final color then clean up
+                    $script:grpDiagOperatingMode.ForeColor = $colors.Color2
                     if ($script:diagFlashTimer) {
                         $script:diagFlashTimer.Stop()
                         $script:diagFlashTimer.Dispose()
@@ -934,7 +1016,7 @@ function Set-OperatingModeBoxState {
             $script:diagFlashTimer.Dispose()
             $script:diagFlashTimer = $null
         }
-        $script:grpDiagOperatingMode.ForeColor = [System.Drawing.Color]::Gray
+        $script:grpDiagOperatingMode.ForeColor = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.Color]::Gray }
     }
 }
 
@@ -1094,12 +1176,11 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Active Blockers selection ----------
     $script:listBlockers.add_SelectedIndexChanged({
-            if (-not $script:diagListMutex) {
-                $script:diagListMutex = $true
-                $script:listAutomated.ClearSelected()
-                $script:listOverrides.ClearSelected()
-                $script:diagListMutex = $false
-            }
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            $script:listAutomated.ClearSelected()
+            $script:listOverrides.ClearSelected()
+            $script:diagListMutex = $false
 
             $idx = $script:listBlockers.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:ActiveBlockersList.Count)
@@ -1187,12 +1268,11 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- System Overrides selection ----------
     $script:listOverrides.add_SelectedIndexChanged({
-            if (-not $script:diagListMutex) {
-                $script:diagListMutex = $true
-                $script:listBlockers.ClearSelected()
-                $script:listAutomated.ClearSelected()
-                $script:diagListMutex = $false
-            }
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            $script:listBlockers.ClearSelected()
+            $script:listAutomated.ClearSelected()
+            $script:diagListMutex = $false
 
             $idx = $script:listOverrides.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:SystemOverridesList.Count)
@@ -1206,12 +1286,11 @@ function Init-SleepDiagnosticsEventHandlers {
 
     # ---------- Automated Apps selection ----------
     $script:listAutomated.add_SelectedIndexChanged({
-            if (-not $script:diagListMutex) {
-                $script:diagListMutex = $true
-                $script:listBlockers.ClearSelected()
-                $script:listOverrides.ClearSelected()
-                $script:diagListMutex = $false
-            }
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            $script:listBlockers.ClearSelected()
+            $script:listOverrides.ClearSelected()
+            $script:diagListMutex = $false
 
             $idx = $script:listAutomated.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count)
@@ -1480,7 +1559,11 @@ function Init-SleepDiagnosticsEventHandlers {
                 # No app is selected after removal -- grey the Operating Mode box and reset to safe defaults
                 Set-OperatingModeBoxState -Enabled $false
                 if ($script:rbDiagGraceful) { $script:rbDiagGraceful.Checked = $true }
-                if ($script:ddDiagOnWakeAction) { $script:ddDiagOnWakeAction.Items.Clear() }
+                if ($script:ddDiagOnWakeAction) { 
+                    $script:ddDiagOnWakeAction.Items.Clear()
+                    $script:ddDiagOnWakeAction.Items.Add("- Select App -") | Out-Null
+                    $script:ddDiagOnWakeAction.SelectedIndex = 0
+                }
             }
         })
 
@@ -2404,7 +2487,24 @@ if ($rbOpClassic) { $rbOpClassic.add_CheckedChanged($syncOperatingMode) }
 function Update-TabIndicator {
     if (-not $script:tabIndicatorLine) { return }
     $isExpanded = ($form.ClientSize.Width -gt 800)
+    
+    if ($global:ThemeNeonActive) {
+        $btnTabSetup.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 40)
+        $btnTabDiag.BackColor  = [System.Drawing.Color]::FromArgb(35, 35, 40)
+    } else {
+        $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
+        $btnTabDiag.BackColor  = [System.Drawing.SystemColors]::Control
+    }
+
     if ($tabControl.SelectedIndex -eq 0) {
+        if ($global:ThemeNeonActive) {
+            $btnTabSetup.ForeColor = $global:NeonCyan
+            $btnTabDiag.ForeColor  = $global:NeonText
+        } else {
+            $btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
+            $btnTabDiag.ForeColor  = [System.Drawing.Color]::DimGray
+        }
+
         # Setup tab is active
         if ($isExpanded) {
             $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
@@ -2416,6 +2516,14 @@ function Update-TabIndicator {
         }
     }
     else {
+        if ($global:ThemeNeonActive) {
+            $btnTabDiag.ForeColor  = $global:NeonCyan
+            $btnTabSetup.ForeColor = $global:NeonText
+        } else {
+            $btnTabDiag.ForeColor  = [System.Drawing.SystemColors]::ControlText
+            $btnTabSetup.ForeColor = [System.Drawing.Color]::DimGray
+        }
+
         # Diagnostics tab is active
         if ($isExpanded) {
             $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(530, 78)
@@ -2424,6 +2532,45 @@ function Update-TabIndicator {
         else {
             $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(485, 78)
             $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(180, 2)
+        }
+    }
+    Update-SecondaryTabStyles
+}
+
+function global:Update-SecondaryTabStyles {
+    if ($global:ThemeNeonActive) {
+        $secTabBg = [System.Drawing.Color]::FromArgb(35, 35, 40)
+        $activeColor = $global:NeonCyan
+        $inactiveColor = $global:NeonText
+    } else {
+        $secTabBg = [System.Drawing.SystemColors]::Control
+        $activeColor = [System.Drawing.SystemColors]::ControlText
+        $inactiveColor = [System.Drawing.Color]::DimGray
+    }
+
+    # Telemetry tabs
+    if ($script:btnTelemetryTabTimers -and $script:btnTelemetryTabArmed) {
+        $script:btnTelemetryTabTimers.BackColor = $secTabBg
+        $script:btnTelemetryTabArmed.BackColor = $secTabBg
+        if ($script:tabTelemetryDetails -and $script:tabTelemetryDetails.SelectedIndex -eq 0) {
+            $script:btnTelemetryTabTimers.ForeColor = $activeColor
+            $script:btnTelemetryTabArmed.ForeColor = $inactiveColor
+        } else {
+            $script:btnTelemetryTabArmed.ForeColor = $activeColor
+            $script:btnTelemetryTabTimers.ForeColor = $inactiveColor
+        }
+    }
+
+    # Tools / Live Log tabs
+    if ($script:btnSubTabTools -and $script:btnSubTabLive) {
+        $script:btnSubTabTools.BackColor = $secTabBg
+        $script:btnSubTabLive.BackColor = $secTabBg
+        if ($script:IsLiveLogMode) {
+            $script:btnSubTabLive.ForeColor = $activeColor
+            $script:btnSubTabTools.ForeColor = $inactiveColor
+        } else {
+            $script:btnSubTabTools.ForeColor = $activeColor
+            $script:btnSubTabLive.ForeColor = $inactiveColor
         }
     }
 }
@@ -2436,8 +2583,13 @@ function Update-TabIndicator {
 # =====================================================================
 
 function Hide-All-Drawers {
+    if ($script:grpAdvancedTools) { $script:grpAdvancedTools.Visible = $false }
+    if ($script:grpAdvancedDiag)  { $script:grpAdvancedDiag.Visible  = $false }
     $form.ClientSize = New-Object System.Drawing.Size(800, 640)
-    $tabControl.Size = New-Object System.Drawing.Size(780, 520)
+    if ($script:pnlTabWrapper) {
+        $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(780, 490)
+    }
+    $tabControl.Size = New-Object System.Drawing.Size(788, 498)
 
     # Reset drawer button labels so they never show stale "Close X" state
     if ($btnToolsAdvanced) { $btnToolsAdvanced.Text = "Advanced Tools >>" }
@@ -2461,7 +2613,7 @@ function Hide-All-Drawers {
 
     if ($script:mainSep) { $script:mainSep.Width = 764 }
     if ($script:bottomMetadata) {
-        $script:bottomMetadata.Location = New-Object System.Drawing.Point(480, 595)
+        $script:bottomMetadata.Location = New-Object System.Drawing.Point(480, 606)
         $script:bottomMetadata.BringToFront()
     }
 
@@ -2496,11 +2648,7 @@ function Hide-All-Drawers {
 
 $btnTabSetup.add_Click({
         $tabControl.SelectedIndex = 0
-        $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTabSetup.Font = $boldFont
-        $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabDiag.ForeColor = [System.Drawing.Color]::DimGray
         $btnTabDiag.Font = $font
         Hide-All-Drawers
         Update-TabIndicator
@@ -2508,11 +2656,7 @@ $btnTabSetup.add_Click({
 
 $btnTabDiag.add_Click({
         $tabControl.SelectedIndex = 1
-        $btnTabDiag.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabDiag.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTabDiag.Font = $boldFont
-        $btnTabSetup.BackColor = [System.Drawing.SystemColors]::Control
-        $btnTabSetup.ForeColor = [System.Drawing.Color]::DimGray
         $btnTabSetup.Font = $font
         Hide-All-Drawers
         # Initialize Page 2 handlers on first visit (was never called — root cause of all Page 2 bugs)
@@ -2526,14 +2670,22 @@ $btnTabDiag.add_Click({
 $btnToolsAdvanced.add_Click({
         if ($form.ClientSize.Width -eq 800) {
             # Expand — slide logo to far right of new header space
-            $tabControl.Size = New-Object System.Drawing.Size(1160, 520)
+            if ($script:pnlTabWrapper) {
+                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(1160, 490)
+            }
+            $tabControl.Size = New-Object System.Drawing.Size(1168, 498)
             $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($script:grpAdvancedTools) {
+                $script:grpAdvancedTools.Visible = $true
+                $script:grpAdvancedTools.Invalidate()
+            }
             if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
             $btnToolsAdvanced.Text = "<< Close Tools"
             if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
             if ($script:mainSep) { $script:mainSep.Width = 1144 }
             if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 606)
                 $script:bottomMetadata.BringToFront()
             }
 
@@ -2554,10 +2706,10 @@ $btnToolsAdvanced.add_Click({
             if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
             if ($script:advancedTabIndicator) {
                 if ($script:IsLiveLogMode) {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 40)
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 38)
                 }
                 else {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
                 }
                 $script:advancedTabIndicator.Visible = $true
             }
@@ -2572,14 +2724,22 @@ $btnToolsAdvanced.add_Click({
 $btnDiagAdvanced.add_Click({
         if ($form.ClientSize.Width -eq 800) {
             # Expand — slide logo to far right of new header space
-            $tabControl.Size = New-Object System.Drawing.Size(1160, 520)
+            if ($script:pnlTabWrapper) {
+                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(1160, 490)
+            }
+            $tabControl.Size = New-Object System.Drawing.Size(1168, 498)
             $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($script:grpAdvancedDiag) {
+                $script:grpAdvancedDiag.Visible = $true
+                $script:grpAdvancedDiag.Invalidate()
+            }
             if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
             $btnDiagAdvanced.Text = "<< Close Diagnostics"
             if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
             if ($script:mainSep) { $script:mainSep.Width = 1144 }
             if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 595)
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 606)
                 $script:bottomMetadata.BringToFront()
             }
 
@@ -2643,11 +2803,9 @@ $script:btnTelemetryRefresh.add_Click({
 function Show-SubTabTools {
     if ($btnSubTabTools) {
         $btnSubTabTools.Font = $boldFont
-        $btnSubTabTools.ForeColor = [System.Drawing.SystemColors]::ControlText
     }
     if ($btnSubTabLive) {
         $btnSubTabLive.Font = $font
-        $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
     }
 
     # Hide live log and controls
@@ -2672,19 +2830,18 @@ function Show-SubTabTools {
     if ($btnOpenLog) { $btnOpenLog.Visible = $true }
 
     if ($script:advancedTabIndicator) {
-        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
         $script:advancedTabIndicator.Visible = $true
     }
+    Update-SecondaryTabStyles
 }
 
 function Show-SubTabLive {
     if ($btnSubTabLive) {
         $btnSubTabLive.Font = $boldFont
-        $btnSubTabLive.ForeColor = [System.Drawing.SystemColors]::ControlText
     }
     if ($btnSubTabTools) {
         $btnSubTabTools.Font = $font
-        $btnSubTabTools.ForeColor = [System.Drawing.Color]::DimGray
     }
 
     if (-not $script:LiveLogPath) { $script:LiveLogPath = Get-VerifiedPreferredLogPathOrShowMessageBox }
@@ -2762,9 +2919,10 @@ function Show-SubTabLive {
     $timer.Start()
 
     if ($script:advancedTabIndicator) {
-        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 40)
+        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 38)
         $script:advancedTabIndicator.Visible = $true
     }
+    Update-SecondaryTabStyles
 }
 
 function Enter-LiveLogMode {
@@ -2833,26 +2991,33 @@ if ($btnTelemetryTabTimers) {
     $btnTelemetryTabTimers.add_Click({
         $tabTelemetryDetails.SelectedIndex = 0
         $btnTelemetryTabTimers.Font = $boldFont
-        $btnTelemetryTabTimers.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTelemetryTabArmed.Font = $font
-        $btnTelemetryTabArmed.ForeColor = [System.Drawing.Color]::DimGray
         $telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 142)
         $telemetryTabIndicator.Width = 90
+        Update-SecondaryTabStyles
     })
 }
 if ($btnTelemetryTabArmed) {
     $btnTelemetryTabArmed.add_Click({
         $tabTelemetryDetails.SelectedIndex = 1
         $btnTelemetryTabArmed.Font = $boldFont
-        $btnTelemetryTabArmed.ForeColor = [System.Drawing.SystemColors]::ControlText
         $btnTelemetryTabTimers.Font = $font
-        $btnTelemetryTabTimers.ForeColor = [System.Drawing.Color]::DimGray
         $telemetryTabIndicator.Location = New-Object System.Drawing.Point(110, 142)
         $telemetryTabIndicator.Width = 115
+        Update-SecondaryTabStyles
     })
 }
 
 # Initialise tooltips on load
 Update-TestButtonsTooltips
+
+# --- Branding Interactions (Easter Egg) ---
+if ($logo) {
+    $logo.add_DoubleClick({
+        if ($global:IsThemeAnimating) { return }
+        . (Join-Path $global:PackageDir "Modules\Theme-Extension.ps1")
+        Invoke-BrandSequence -Form $form
+    })
+}
 
 

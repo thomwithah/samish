@@ -93,6 +93,7 @@ $script:BrandCyan = $BrandCyan
 $script:MonitoredApps = @()
 
 $form = New-Object System.Windows.Forms.Form
+$form.DoubleBuffered = $true
 $form.Text = "$ProductName - Setup"
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
@@ -126,14 +127,60 @@ $title.Location = New-Object System.Drawing.Point(18, 12)
 $form.Controls.Add($title)
 
 $subtitle = New-Object System.Windows.Forms.Label
-$subtitle.Text = "Streaming Audio Mixer Interface Sleep Helper"
+$subtitle.Name = "subtitle"
+$subtitle.Text = ""
 $subtitleFont = New-Object System.Drawing.Font("Segoe UI", 10)
 $script:MainFormGdiResources.Add($subtitleFont)
 $subtitle.Font = $subtitleFont
 $subtitle.ForeColor = $BrandCyan
-$subtitle.AutoSize = $true
+$subtitle.AutoSize = $false
+$subtitle.Size = New-Object System.Drawing.Size(300, 20)
 $subtitle.UseMnemonic = $false
 $subtitle.Location = New-Object System.Drawing.Point(20, 60)
+
+$subtitle.add_Paint({
+    param($sender, $e)
+    $normalFont = $sender.Font
+    $boldFont = New-Object System.Drawing.Font($normalFont.FontFamily, $normalFont.Size, [System.Drawing.FontStyle]::Bold)
+    
+    $words = @(
+        @{ Init = "S"; Rest = "treaming" },
+        @{ Init = "A"; Rest = "udio" },
+        @{ Init = "M"; Rest = "ixer" },
+        @{ Init = "I"; Rest = "nterface" },
+        @{ Init = "S"; Rest = "leep" },
+        @{ Init = "H"; Rest = "elper" }
+    )
+    
+    $brush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
+    $sf = [System.Drawing.StringFormat]::GenericTypographic
+    $x = 0.0
+    $y = 0.0
+    $spaceWidth = 5.0
+    
+    for ($i = 0; $i -lt $words.Count; $i++) {
+        $w = $words[$i]
+        
+        # Draw bold initial
+        $e.Graphics.DrawString($w.Init, $boldFont, $brush, $x, $y, $sf)
+        $initSize = $e.Graphics.MeasureString($w.Init, $boldFont, [System.Drawing.PointF]::Empty, $sf)
+        $x += $initSize.Width
+        
+        # Draw normal rest
+        $e.Graphics.DrawString($w.Rest, $normalFont, $brush, $x, $y, $sf)
+        $restSize = $e.Graphics.MeasureString($w.Rest, $normalFont, [System.Drawing.PointF]::Empty, $sf)
+        $x += $restSize.Width
+        
+        # Add space after word (except for the last word)
+        if ($i -lt $words.Count - 1) {
+            $x += $spaceWidth
+        }
+    }
+    
+    $brush.Dispose()
+    $boldFont.Dispose()
+})
+
 $form.Controls.Add($subtitle)
 
 # Logo PictureBox
@@ -154,6 +201,7 @@ $script:logo = $logo
 
 # Separator line under header (matching diagnostics window style)
 $mainSep = New-Object System.Windows.Forms.Label
+$mainSep.Name = "mainSep"
 $mainSep.Size = New-Object System.Drawing.Size(764, 2)
 $mainSep.Location = New-Object System.Drawing.Point(18, 84)
 $mainSep.BackColor = $BrandCyan
@@ -714,9 +762,10 @@ function Build-ProfilesUI {
             }
 
             $rb.add_CheckedChanged({
-                    if (-not $this.Checked) { return }
+                    param($sender, $e)
+                    if (-not $sender.Checked) { return }
 
-                    $selectedId = [string]$this.Tag
+                    $selectedId = [string]$sender.Tag
                     $script:ActiveProfileId = $selectedId
                     $script:ProfilesEnabled = @($selectedId)
 
@@ -1293,14 +1342,32 @@ $tabIndicatorLine.BackColor = $BrandPurple
 $form.Controls.Add($tabIndicatorLine)
 $script:tabIndicatorLine = $tabIndicatorLine
 
-# Create borderless TabControl
+# Create wrapper panel for TabControl to implement custom borders and clip native borders
+$pnlTabWrapper = New-Object System.Windows.Forms.Panel
+$pnlTabWrapper.Name = "pnlTabWrapper"
+$pnlTabWrapper.Location = New-Object System.Drawing.Point(10, 95)
+$pnlTabWrapper.Size = New-Object System.Drawing.Size(780, 490)
+$pnlTabWrapper.BackColor = [System.Drawing.Color]::Transparent
+$form.Controls.Add($pnlTabWrapper)
+$script:pnlTabWrapper = $pnlTabWrapper
+
+$pnlTabWrapper.add_Paint({
+    param($sender, $e)
+    if ($global:ThemeNeonActive) {
+        $pen = New-Object System.Drawing.Pen($global:NeonPurple, 1)
+        $e.Graphics.DrawRectangle($pen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+        $pen.Dispose()
+    }
+})
+
+# Create borderless TabControl (clipped inside wrapper panel)
 $tabControl = New-Object System.Windows.Forms.TabControl
-$tabControl.Location = New-Object System.Drawing.Point(10, 95)
-$tabControl.Size = New-Object System.Drawing.Size(780, 490)
+$tabControl.Location = New-Object System.Drawing.Point(-4, -4)
+$tabControl.Size = New-Object System.Drawing.Size(788, 498)
 $tabControl.SizeMode = [System.Windows.Forms.TabSizeMode]::Fixed
 $tabControl.ItemSize = New-Object System.Drawing.Size(0, 1)
 $tabControl.Appearance = [System.Windows.Forms.TabAppearance]::FlatButtons
-$form.Controls.Add($tabControl)
+$pnlTabWrapper.Controls.Add($tabControl)
 $script:tabControl = $tabControl
 
 $tabPage1 = New-Object System.Windows.Forms.TabPage
@@ -1425,6 +1492,7 @@ $tooltip.SetToolTip($btnToolsAdvanced, "Open or close the advanced utility and l
 
 # Page 1 Drawer Vertical Separator Line
 $toolsDrawerSep = New-Object System.Windows.Forms.Label
+$toolsDrawerSep.Name = "toolsDrawerSep"
 $toolsDrawerSep.Size = New-Object System.Drawing.Size(2, 443)
 $toolsDrawerSep.Location = New-Object System.Drawing.Point(777, 10)
 $toolsDrawerSep.BackColor = $BrandPurple
@@ -1438,6 +1506,7 @@ $grpAdvancedTools.Text = "Advanced Tools && Utilities"
 $grpAdvancedTools.Font = $font
 $grpAdvancedTools.Size = New-Object System.Drawing.Size(360, 385)
 $grpAdvancedTools.Location = New-Object System.Drawing.Point(790, 10)
+$grpAdvancedTools.Visible = $false
 $tabPage1.Controls.Add($grpAdvancedTools)
 $script:grpAdvancedTools = $grpAdvancedTools
 $tooltip.SetToolTip($grpAdvancedTools, "Advanced utility tools and live background service monitoring.")
@@ -1481,11 +1550,21 @@ $tooltip.SetToolTip($btnSubTabLive, "Monitor the live SAMISH activity and backgr
 $advancedTabIndicator = New-Object System.Windows.Forms.Label
 $advancedTabIndicator.Name = "advancedTabIndicator"
 $advancedTabIndicator.Size = New-Object System.Drawing.Size(75, 2)
-$advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 40)
+$advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
 $advancedTabIndicator.BackColor = $BrandPurple
 $advancedTabIndicator.Visible = $false
 $grpAdvancedTools.Controls.Add($advancedTabIndicator)
 $script:advancedTabIndicator = $advancedTabIndicator
+
+# Sub-Separator line under the sub-tab buttons (mirroring the main separator)
+$subSep = New-Object System.Windows.Forms.Label
+$subSep.Name = "subSep"
+$subSep.Size = New-Object System.Drawing.Size(330, 2)
+$subSep.Location = New-Object System.Drawing.Point(15, 44)
+$subSep.BackColor = $BrandCyan
+$grpAdvancedTools.Controls.Add($subSep)
+$script:subSep = $subSep
+$advancedTabIndicator.BringToFront()
 
 # Create/Move tool buttons into Page 1 Drawer
 $btnPowerPlan = New-Object System.Windows.Forms.Button
@@ -1832,12 +1911,23 @@ $lblOnWake.Location = New-Object System.Drawing.Point(10, 118)
 $grpOperatingMode.Controls.Add($lblOnWake)
 $tooltip.SetToolTip($lblOnWake, "Choose what action SAMISH will perform when the system wakes: Smart Restore restores the pre-sleep state; Always Play forces playback; Always Pause keeps media paused; Keep Closed prevents app restart; Reopen Only restarts the app but keeps media paused.")
 
+$pnlOnWakeBorder = New-Object System.Windows.Forms.Panel
+$pnlOnWakeBorder.Name = "pnlOnWakeBorder"
+$pnlOnWakeBorder.Size = New-Object System.Drawing.Size(350, 24)
+$pnlOnWakeBorder.Location = New-Object System.Drawing.Point(10, 138)
+$pnlOnWakeBorder.BackColor = [System.Drawing.Color]::DarkGray
+$grpOperatingMode.Controls.Add($pnlOnWakeBorder)
+$script:pnlDiagOnWakeBorder = $pnlOnWakeBorder
+
 $ddOnWakeAction = New-Object System.Windows.Forms.ComboBox
 $ddOnWakeAction.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $ddOnWakeAction.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
-$ddOnWakeAction.Size = New-Object System.Drawing.Size(350, 24)
-$ddOnWakeAction.Location = New-Object System.Drawing.Point(10, 138)
-$grpOperatingMode.Controls.Add($ddOnWakeAction)
+$ddOnWakeAction.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$ddOnWakeAction.Size = New-Object System.Drawing.Size(348, 22)
+$ddOnWakeAction.Location = New-Object System.Drawing.Point(1, 1)
+$ddOnWakeAction.Items.Add("- Select App -") | Out-Null
+$ddOnWakeAction.SelectedIndex = 0
+$pnlOnWakeBorder.Controls.Add($ddOnWakeAction)
 $script:ddDiagOnWakeAction = $ddOnWakeAction
 $tooltip.SetToolTip($ddOnWakeAction, "Choose what action SAMISH will perform when the system wakes.")
 
@@ -1861,6 +1951,7 @@ $tooltip.SetToolTip($btnDiagAdvanced, "Open or close the advanced system sleep t
 
 # Page 2 Drawer Vertical Separator Line
 $diagDrawerSep = New-Object System.Windows.Forms.Label
+$diagDrawerSep.Name = "diagDrawerSep"
 $diagDrawerSep.Size = New-Object System.Drawing.Size(2, 443)
 $diagDrawerSep.Location = New-Object System.Drawing.Point(777, 10)
 $diagDrawerSep.BackColor = $BrandPurple
@@ -1870,8 +1961,18 @@ $script:diagDrawerSep = $diagDrawerSep
 
 # 5. Page 2 Slide-Out Drawer: "Sleep & Wake Diagnostics"
 $grpAdvancedDiag = New-Object System.Windows.Forms.Panel
+$grpAdvancedDiag.Name = "grpAdvancedDiag"
+$grpAdvancedDiag.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 $grpAdvancedDiag.Size = New-Object System.Drawing.Size(360, 436)
 $grpAdvancedDiag.Location = New-Object System.Drawing.Point(790, 10)
+$grpAdvancedDiag.Visible = $false
+$grpAdvancedDiag.add_Paint({
+    param($sender, $e)
+    $color = if ($global:ThemeNeonActive) { $global:NeonBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
+    $brush = New-Object System.Drawing.SolidBrush($color)
+    $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)
+    $brush.Dispose()
+})
 $tabPage2.Controls.Add($grpAdvancedDiag)
 $script:grpAdvancedDiag = $grpAdvancedDiag
 
@@ -1992,12 +2093,19 @@ $script:txtLastWake = $txtLastWake
 $tooltip.SetToolTip($txtLastWake, "The driver, device, or component that woke your system from the last sleep cycle.")
 
 # Nested TabControl inside Telemetry box for Timers and Armed Devices
+$tabTelemetryPanel = New-Object System.Windows.Forms.Panel
+$tabTelemetryPanel.Name = "tabTelemetryPanel"
+$tabTelemetryPanel.Size = New-Object System.Drawing.Size(302, 55)
+$tabTelemetryPanel.Location = New-Object System.Drawing.Point(19, 159)
+$tabTelemetryPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+$grpTelemetry.Controls.Add($tabTelemetryPanel)
+
 $tabTelemetryDetails = New-Object System.Windows.Forms.TabControl
 $tabTelemetryDetails.SizeMode = [System.Windows.Forms.TabSizeMode]::Fixed
 $tabTelemetryDetails.ItemSize = New-Object System.Drawing.Size(0, 1)
 $tabTelemetryDetails.Appearance = [System.Windows.Forms.TabAppearance]::FlatButtons
-$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 70)
-$tabTelemetryDetails.Location = New-Object System.Drawing.Point(15, 145)
+$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 63)
+$tabTelemetryDetails.Location = New-Object System.Drawing.Point(-4, -4)
 $tooltip.SetToolTip($tabTelemetryDetails, "Switch between active wake timers and armed hardware devices.")
 
 $tabPageTimers = New-Object System.Windows.Forms.TabPage
@@ -2010,7 +2118,7 @@ $tabPageArmed.BackColor = [System.Drawing.SystemColors]::Control
 
 [void]$tabTelemetryDetails.TabPages.Add($tabPageTimers)
 [void]$tabTelemetryDetails.TabPages.Add($tabPageArmed)
-$grpTelemetry.Controls.Add($tabTelemetryDetails)
+$tabTelemetryPanel.Controls.Add($tabTelemetryDetails)
 
 # Custom header buttons at Y = 120
 $btnTelemetryTabTimers = New-Object System.Windows.Forms.Button
@@ -2052,12 +2160,22 @@ $telemetryTabIndicator.BackColor = $BrandPurple
 $grpTelemetry.Controls.Add($telemetryTabIndicator)
 $script:telemetryTabIndicator = $telemetryTabIndicator
 
+# Telemetry sub-separator line under the sub-tab buttons (mirroring subSep)
+$telemetrySubSep = New-Object System.Windows.Forms.Label
+$telemetrySubSep.Name = "telemetrySubSep"
+$telemetrySubSep.Size = New-Object System.Drawing.Size(330, 2)
+$telemetrySubSep.Location = New-Object System.Drawing.Point(15, 148)
+$telemetrySubSep.BackColor = $BrandCyan
+$grpTelemetry.Controls.Add($telemetrySubSep)
+$script:telemetrySubSep = $telemetrySubSep
+$telemetryTabIndicator.BringToFront()
+
 $txtWakeTimers = New-Object System.Windows.Forms.TextBox
 $txtWakeTimers.Name = "txtWakeTimers"
 $txtWakeTimers.Multiline = $true
 $txtWakeTimers.ScrollBars = "Vertical"
 $txtWakeTimers.ReadOnly = $true
-$txtWakeTimers.Size = New-Object System.Drawing.Size(298, 55)
+$txtWakeTimers.Size = New-Object System.Drawing.Size(298, 48)
 $txtWakeTimers.Location = New-Object System.Drawing.Point(4, 4)
 $txtWakeTimers.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $tabPageTimers.Controls.Add($txtWakeTimers)
@@ -2065,7 +2183,7 @@ $script:txtWakeTimers = $txtWakeTimers
 $tooltip.SetToolTip($txtWakeTimers, "Lists active system wake timers that can wake the PC from sleep automatically.")
 
 $listArmedDevices = New-Object System.Windows.Forms.ListBox
-$listArmedDevices.Size = New-Object System.Drawing.Size(298, 55)
+$listArmedDevices.Size = New-Object System.Drawing.Size(298, 48)
 $listArmedDevices.Location = New-Object System.Drawing.Point(4, 4)
 $listArmedDevices.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $listArmedDevices.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
@@ -2077,8 +2195,8 @@ $tooltip.SetToolTip($listArmedDevices, "Lists hardware devices (keyboard, mouse,
 $btnTelemetryRefresh = New-Object System.Windows.Forms.Button
 $btnTelemetryRefresh.Text = "Refresh Telemetry"
 $btnTelemetryRefresh.Font = $font
-$btnTelemetryRefresh.Size = New-Object System.Drawing.Size(330, 36)
-$btnTelemetryRefresh.Location = New-Object System.Drawing.Point(15, 400)
+$btnTelemetryRefresh.Size = New-Object System.Drawing.Size(360, 36)
+$btnTelemetryRefresh.Location = New-Object System.Drawing.Point(0, 400)
 $btnTelemetryRefresh.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnTelemetryRefresh.FlatAppearance.BorderSize = 1
 $btnTelemetryRefresh.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -2112,13 +2230,14 @@ foreach ($ctrl in $grpOperatingMode.Controls) { $ctrl.Enabled = $false }
 
 # Position metadata footer
 $bottomMetadata = New-Object System.Windows.Forms.Label
+$bottomMetadata.Name = "bottomMetadata"
 $bottomMetadata.Text = "$ProductName $ProductVersion  |  $AuthorLine"
 $bottomMetadata.Font = $font
 $bottomMetadata.ForeColor = $BrandCyan
 $bottomMetadata.AutoSize = $false
 $bottomMetadata.Size = New-Object System.Drawing.Size(300, 20)
-$bottomMetadata.TextAlign = [System.Drawing.ContentAlignment]::TopRight
-$bottomMetadata.Location = New-Object System.Drawing.Point(480, 595)
+$bottomMetadata.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+$bottomMetadata.Location = New-Object System.Drawing.Point(480, 606)
 $form.Controls.Add($bottomMetadata)
 $script:bottomMetadata = $bottomMetadata
 $bottomMetadata.BringToFront()

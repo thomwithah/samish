@@ -101,11 +101,11 @@ function Get-CurrentExecutionMode {
 }
 
 # Helper to safely resolve a single TextBox from potential array or PSObject-wrapped collections in persistent sessions
-function Get-LatestTextBox {
+function Get-LatestControl {
     param($ControlVar)
     $resolved = $null
     foreach ($item in $ControlVar) {
-        if ($item -and $item.GetType().FullName -eq "System.Windows.Forms.TextBox") {
+        if ($item -is [System.Windows.Forms.Control]) {
             $resolved = $item
         }
     }
@@ -1905,9 +1905,8 @@ if (Test-Path -LiteralPath $UIModulePath) {
     . $UIModulePath
 }
 
-# Resolve any potential array/shadowing issues for TextBox controls in persistent sessions
-$tbLogCustom = Get-LatestTextBox $tbLogCustom
-$tbCustomKey = Get-LatestTextBox $tbCustomKey
+# Resolve any potential array/shadowing issues for UI controls in persistent sessions
+# [Removed Get-LatestControl block]
 
 $EventsModulePath = Join-Path $PackageDir "Modules\Events-handlers.ps1"
 if (Test-Path -LiteralPath $EventsModulePath) {
