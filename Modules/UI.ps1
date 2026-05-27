@@ -1145,8 +1145,18 @@ function Apply-UIFromConfigIfPresent {
             $cbTray.Enabled = $true
         }
 
+        # Logging enablement sync
+        $ddLogInterval.Enabled = $cbLogging.Checked
+        if ($cbLogging.Checked) {
+            $tbLogCustom.Enabled = ($ddLogInterval.SelectedItem.ToString() -eq "Custom seconds...")
+        } else {
+            $tbLogCustom.Enabled = $false
+        }
+
+        # Hotkey enablement sync
+        $ddHotkey.Enabled = $cbHotkey.Checked
         $isCustomHotkey = $false
-        if ($ddHotkey.SelectedItem) {
+        if ($cbHotkey.Checked -and $ddHotkey.SelectedItem) {
             $isCustomHotkey = ($ddHotkey.SelectedItem.ToString() -eq "Custom")
         }
         $tbCustomKey.Enabled = $isCustomHotkey

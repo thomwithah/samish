@@ -150,6 +150,32 @@ $ddHotkey.add_SelectedIndexChanged({
         }
     })
 
+# --- Logging Checkbox UI ---
+$cbLogging.add_CheckedChanged({
+        if ($script:IsApplyingConfig) { return }
+
+        $enabled = $cbLogging.Checked
+        $ddLogInterval.Enabled = $enabled
+        if ($enabled) {
+            $tbLogCustom.Enabled = ($ddLogInterval.SelectedItem.ToString() -eq "Custom seconds...")
+        } else {
+            $tbLogCustom.Enabled = $false
+        }
+    })
+
+# --- Hotkey Checkbox UI ---
+$cbHotkey.add_CheckedChanged({
+        if ($script:IsApplyingConfig) { return }
+
+        $enabled = $cbHotkey.Checked
+        $ddHotkey.Enabled = $enabled
+        if ($enabled) {
+            $tbCustomKey.Enabled = ($ddHotkey.SelectedItem.ToString() -eq "Custom")
+        } else {
+            $tbCustomKey.Enabled = $false
+        }
+    })
+
 # --- Simple buttons ---
 $btnOpenTS.add_Click({ Start-Process "taskschd.msc" | Out-Null })
 

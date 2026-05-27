@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Dynamic Sleep Delay Polling**: Optimized graceful stop sequences by replacing the static `Start-Sleep` delay with a dynamic, low-impact 50ms polling loop that queries `MainWindowHandle` and process exit state. Graceful closures now complete immediately once the process UI handles disappear, accelerating sleep transitions.
 
+### Fixed
+- **UI Configuration Sync and State Lock**: Fixed a bug where checking/unchecking the "Enable Logging" or "Enable Hotkey Toggle" checkboxes did not dynamically enable/disable their respective configuration dropdowns and textboxes. Added event listeners and startup synchronization so that the active state of logging and hotkey parameters always accurately reflects the saved `config.json` values and interactive toggles.
+
 ## [1.2.3] - 2026-05-26
 
 ### Added
