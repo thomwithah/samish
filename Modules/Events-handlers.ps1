@@ -597,19 +597,19 @@ No  = Standard uninstall (keeps configuration files for future installations)."
 # Sleep & Hibernate Diagnostics - Event Wiring
 # ============================================================
 
-$btnSleepDiag.add_Click({
-        try {
-            Show-SleepDiagnosticsDialog
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Failed to open Sleep & Hibernate Diagnostics:`r`n$($_.Exception.Message)",
-                "SAMISH - Error",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            )
-        }
-    })
+# $btnSleepDiag.add_Click({
+#         try {
+#             Show-SleepDiagnosticsDialog
+#         }
+#         catch {
+#             [System.Windows.Forms.MessageBox]::Show(
+#                 "Failed to open Sleep & Hibernate Diagnostics:`r`n$($_.Exception.Message)",
+#                 "SAMISH - Error",
+#                 [System.Windows.Forms.MessageBoxButtons]::OK,
+#                 [System.Windows.Forms.MessageBoxIcon]::Error
+#             )
+#         }
+#     })
 
 # ---- Helpers ------------------------------------------------
 
