@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **UI Configuration Sync and State Lock**: Fixed a bug where checking/unchecking the "Enable Logging" or "Enable Hotkey Toggle" checkboxes did not dynamically enable/disable their respective configuration dropdowns and textboxes. Added event listeners and startup synchronization so that the active state of logging and hotkey parameters always accurately reflects the saved `config.json` values and interactive toggles.
+- **Stray Startup Output '0' Box**: Cast `SetCurrentProcessExplicitAppUserModelID` API call to `[void]` in `Setup.ps1` to prevent outputting `0` to the stdout pipeline, resolving the empty message box shown by `ps2exe` on startup.
+- **SFX Configuration Corruption**: Relocated `rcedit` branding operations in `build.ps1` to run on a temporary copy of the SFX stub prior to file concatenation. This preserves the 7-Zip configuration and archive overlay payload at the end of the executable, resolving the `Could not read SFX configuration` crash.
 
 ## [1.2.3] - 2026-05-26
 
