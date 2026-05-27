@@ -72,7 +72,7 @@ if (-not $isCompiled) {
 "@
         Add-Type -TypeDefinition $AppIDCode -ErrorAction Stop
         if (([System.Management.Automation.PSTypeName]'ShellApi').Type) {
-            [ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
+            [void][ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
         }
     }
     catch {
