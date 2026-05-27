@@ -42,7 +42,8 @@ param(
 )
 
 #region Win32 Console Hider
-Add-Type @"
+try {
+    Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class Win32 {
@@ -50,6 +51,10 @@ public class Win32 {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
 "@
+}
+catch {
+    Write-SamishSetupTrace -Message "Failed to compile Win32 Console Hider. OS policies may block runtime C# compilation. Details: $($_.Exception.Message)" -Level "WARN"
+}
 #endregion
 
 # ---------- Strategy A: Custom Taskbar Icon AppUserModelID Registration ----------
@@ -65,10 +70,14 @@ if (-not $isCompiled) {
             public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
         }
 "@
-        Add-Type -TypeDefinition $AppIDCode -ErrorAction SilentlyContinue
-        [ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
+        Add-Type -TypeDefinition $AppIDCode -ErrorAction Stop
+        if (([System.Management.Automation.PSTypeName]'ShellApi').Type) {
+            [ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
+        }
     }
-    catch {}
+    catch {
+        Write-SamishSetupTrace -Message "Failed to compile or execute AppUserModelID Registration: $($_.Exception.Message)" -Level "WARN"
+    }
 }
 
 # Temporarily bypass execution policy for the current process to ensure dot-sourced modules can load (crucial for PS2EXE compiled EXEs)
@@ -314,9 +323,16 @@ function Write-SamishSetupTrace {
 }
 
 if (-not $CliInstall) {
-    $console = [Win32]::GetConsoleWindow()
-    if ($console -ne [IntPtr]::Zero) {
-        [void][Win32]::ShowWindow($console, 0)
+    try {
+        if (([System.Management.Automation.PSTypeName]'Win32').Type) {
+            $console = [Win32]::GetConsoleWindow()
+            if ($console -ne [IntPtr]::Zero) {
+                [void][Win32]::ShowWindow($console, 0)
+            }
+        }
+    }
+    catch {
+        Write-SamishSetupTrace -Message "Failed to hide console window: $($_.Exception.Message)" -Level "WARN"
     }
 }
 
@@ -333,7 +349,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.2.3"
+$ProductVersion = "v1.2.4"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"

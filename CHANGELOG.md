@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - Unreleased
+
+### Added
+- **Try/Catch Block C# Compiler Logging**: Wrapped the inline `Add-Type` compilations in `Setup.ps1` and `SAMISH.ps1` in try/catch blocks. If a strict Windows environment or security policy blocks dynamic compilation, the setup hider, AppUserModelID, Power Interceptor, and hotkey systems fail gracefully and output full diagnostic details to `samish.log` and the Windows Application Event Log rather than failing silently or causing script crashes.
+
+### Changed
+- **Dynamic Sleep Delay Polling**: Optimized graceful stop sequences by replacing the static `Start-Sleep` delay with a dynamic, low-impact 50ms polling loop that queries `MainWindowHandle` and process exit state. Graceful closures now complete immediately once the process UI handles disappear, accelerating sleep transitions.
+
 ## [1.2.3] - 2026-05-26
 
 ### Added

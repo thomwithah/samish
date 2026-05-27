@@ -37,11 +37,16 @@ public class PowerNotificationForm : Form {
     }
 }
 "@
-Add-Type -TypeDefinition $PowerTypeSig -ReferencedAssemblies "System.Windows.Forms" -ErrorAction SilentlyContinue
+try {
+    Add-Type -TypeDefinition $PowerTypeSig -ReferencedAssemblies "System.Windows.Forms" -ErrorAction Stop
+}
+catch {
+    $script:PowerTypeSigError = $_.Exception.Message
+}
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.2.3"
+$ScriptVersion = "v1.2.4"
 $ReleaseDate   = "2026-05-26"
 
 # ---------- PATH RESOLUTION ----------
@@ -439,7 +444,8 @@ catch {
 
 try {
     # IDLE DETECTION
-    Add-Type @"
+    try {
+        Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class IdleNative {
@@ -454,8 +460,15 @@ public static class IdleNative {
   }
 }
 "@
+    }
+    catch {
+        $script:IdleNativeError = $_.Exception.Message
+    }
 
-    function Get-IdleSeconds { [math]::Floor([IdleNative]::GetIdleMilliseconds() / 1000) }
+    function Get-IdleSeconds {
+        if ($script:IdleNativeError) { return 0 }
+        [math]::Floor([IdleNative]::GetIdleMilliseconds() / 1000)
+    }
 
     # POWERCFG
     $SUB_VIDEO = "7516b95f-f776-4464-8c53-06167f40cc99"
@@ -1044,7 +1057,7 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.2.3"
+        $script:icon.Text = "$ScriptName $ScriptVersion"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1239,7 +1252,8 @@ public class SamishWin32 {
 
     # HOTKEY (Polling-based)
     if ($EnableHotkey) {
-        Add-Type @"
+        try {
+            Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class KeyState {
@@ -1247,6 +1261,12 @@ public static class KeyState {
   public static extern short GetAsyncKeyState(int vKey);
 }
 "@
+        }
+        catch {
+            Log-Always "ERROR: Failed to compile KeyState helper. Disabling hotkey polling. Details: $($_.Exception.Message)"
+            Write-EventLogEntry -Message "Failed to compile KeyState helper: $($_.Exception.Message)" -EntryType "Error" -EventId 400
+            $EnableHotkey = $false
+        }
 
         switch ($HotkeyMode) {
             "ScrollLock" { $vk = 0x91 }
@@ -1271,6 +1291,14 @@ public static class KeyState {
 
     # ---------- INITIALIZE POWER STATE INTERCEPTOR ----------
     try {
+        if ($script:PowerTypeSigError) {
+            Log-Always "ERROR: Power State Interceptor compilation failed. OS policies may block runtime C# compilation. Details: $script:PowerTypeSigError"
+            Write-EventLogEntry -Message "Power State Interceptor compilation failed: $script:PowerTypeSigError" -EntryType "Error" -EventId 400
+        }
+        if ($script:IdleNativeError) {
+            Log-Always "ERROR: IdleNative helper compilation failed. OS policies may block runtime C# compilation. Idle checks will be disabled. Details: $script:IdleNativeError"
+            Write-EventLogEntry -Message "IdleNative helper compilation failed: $script:IdleNativeError" -EntryType "Error" -EventId 400
+        }
         Log-Always "Initializing Power State Interceptor (WM_POWERBROADCAST)..."
         $script:PowerForm = New-Object PowerNotificationForm
         # Accessing the handle forces creation of the window and its handle

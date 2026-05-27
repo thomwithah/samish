@@ -41,6 +41,9 @@ public static class SamishWin32 {
         try {
             Add-Type -TypeDefinition $sig -Language CSharp -ErrorAction Stop | Out-Null
         } catch {
+            if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
+                Log-Always "ERROR: Failed to compile SamishWin32 C# signatures for Graceful close. Falling back to Classic mode. Details: $($_.Exception.Message)"
+            }
             # If type load fails, we cannot do graceful messaging.
             if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
                 $r = Invoke-AppStop -ProcessName $ProcessName
@@ -110,7 +113,21 @@ public static class SamishWin32 {
             return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Failed to restore UI and Classic fallback not available.")
         }
 
-        Start-Sleep -Milliseconds $WindowWakeDelayMs
+        # Poll for MainWindowHandle to become non-zero (so we don't sleep longer than necessary)
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($sw.ElapsedMilliseconds -lt $WindowWakeDelayMs) {
+            try {
+                $checkP = Get-Process -Id $procId -ErrorAction Stop
+                if ($checkP.MainWindowHandle -ne 0) {
+                    break
+                }
+            } catch {
+                # Process exited or crashed
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        $sw.Stop()
 
         # Refresh handle
         try {
@@ -158,11 +175,19 @@ public static class SamishWin32 {
         return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Failed to send shutdown messages and Classic fallback not available.")
     }
 
-    # 5) Wait briefly, then check if process exited
-    Start-Sleep -Milliseconds $ShutdownWaitMs
+    # 5) Poll briefly for the process to exit (so we don't wait longer than necessary if it exits instantly)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $exited = $false
+    while ($sw.ElapsedMilliseconds -lt $ShutdownWaitMs) {
+        if (-not (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
+            $exited = $true
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    $sw.Stop()
 
-    $stillRunning = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    if (-not $stillRunning) {
+    if ($exited) {
         return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
     }
 
