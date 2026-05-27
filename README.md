@@ -1,4 +1,14 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
+Created by thomwithah | Version: 1.2.4
+
+**Are you having trouble getting Windows to sleep or turn off your screens while your virtual audio mixer (BEACN, Voicemeeter, GoXLR, or Wave Link) is open?**
+
+SAMISH is a lightweight, open-source utility that solves persistent system sleep issues caused by hardware audio routers.
+
+> SAMISH helps your PC, well, act the "same" and helps your mixer hardware's software get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH can use "force" (via Classic termination mode) to shut things down if they are being otherwise non-compliant.
+
+By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
+
 <img width="800" alt="Setup Collapsed" src="Assets/screenshots/1.png" />
 
 
@@ -9,13 +19,6 @@
 <img width="1180" alt="Setup Expanded Live Log" src="Assets/screenshots/4.png" />
 
 <img width="1180" alt="Diagnostics Expanded" src="Assets/screenshots/5.png" />
-
-
-Created by thomwithah
-
-A lightweight helper that restores normal Windows sleep behavior for streaming audio hardware.
-
-Version: 1.2.3
 
 ---
 
