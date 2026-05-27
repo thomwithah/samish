@@ -5,7 +5,7 @@ Created by thomwithah | Version: 1.2.4
 
 SAMISH is a lightweight, open-source utility that solves persistent system sleep issues caused by hardware audio routers.
 
-> SAMISH helps your PC, well, act the "same-ish" by coaxing your mixer hardware’s software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
+> SAMISH helps your PC, well, act the "same(-ish)" by coaxing your mixer hardware’s software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
