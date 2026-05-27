@@ -1,0 +1,16 @@
+﻿{
+    "id":  "Custom",
+    "displayName":  "Custom Device (Mock Test)",
+    "targets":  [
+                    {
+                        "processName":  "CustomTarget",
+                        "defaultExePath":  "C:\\Scripts\\GOOGLE-ANTI-GRAVITY\\SAMISH\\scratch\\Stubs\\CustomTarget.exe",
+                        "supportsGraceful":  true,
+                        "supportsClassic":  true
+                    }
+                ],
+    "defaults":  {
+                     "GracefulWindowWakeDelayMs":  200,
+                     "GracefulShutdownWaitMs":  200
+                 }
+}

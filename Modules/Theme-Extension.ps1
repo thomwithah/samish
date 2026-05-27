@@ -24,7 +24,7 @@ $global:ImgGrayPath = Join-Path $global:PackageDir "Assets\SAMISH-SQUARE-GREYSCA
 
 # Neon Palette - MUST BE GLOBAL to survive dot-sourcing inside a scriptblock
 $global:NeonBackground = [System.Drawing.Color]::FromArgb(15, 15, 18)    # #0F0F12
-$global:NeonPurple     = [System.Drawing.Color]::FromArgb(153, 51, 255)   # Sampled from stylized logo
+$global:NeonPurple     = [System.Drawing.Color]::FromArgb(153, 51, 255)   # From stylized logo
 $global:NeonPink       = [System.Drawing.Color]::FromArgb(255, 0, 102)    # #FF0066
 $global:NeonLime       = [System.Drawing.Color]::FromArgb(179, 255, 0)    # #b3ff00
 $global:NeonCyan       = [System.Drawing.Color]::FromArgb(0, 245, 212)    # #00f5d4
@@ -173,7 +173,7 @@ function global:Run-TakeoverAnimation {
 
     $FadeForm.Show($Form)
 
-    # Pre-generate randomized geeky stroboscopic frames for "SAMISH"
+    # Pre-generate randomized stroboscopic frames for "SAMISH"
     $strobeFrames = @()
     if (-not $Reverting) {
         $mode = Get-Random -Minimum 0 -Maximum 2
@@ -598,5 +598,9 @@ function global:Set-BrandTheme {
             }
             Set-OperatingModeBoxState -Enabled $isBoxEnabled
         } catch {}
+    }
+    # Ensure current state of Operating Mode Tests box is rendered with correct colors for active theme
+    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+        try { Update-TestGroupState } catch {}
     }
 }

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Drawer State Persistence on Tab Switch**: Automatically opens the corresponding slide-out drawer when switching between the Setup and Sleep Automation tabs if a drawer was already expanded on the previous tab.
+- **Flat Dropdown Simulated-Disabled Borders**: Configured both the "On Wake/Resume" (`ddOnWakeAction`) and "Operating Mode Tests" (`ddTestTarget`) dropdowns to remain physically `Enabled = $true` to prevent the OS from altering their flat border thickness when inactive. They now utilize a custom simulated-disabled state with color styling and user-input interception (restoring index to 0 when inactive).
+- **Wake Dropdown State Reset**: Configured the "On Wake/Resume" dropdown to automatically clear its option items and reset back to a single `"- Select App -"` placeholder when no app is selected in the automated list.
+- **Ignored Blockers Selection Sync**: Added explicit list state reset (`Set-OperatingModeBoxState -Enabled $false`) when selecting an item in the Ignored Blockers list (`listOverrides`), clearing the App Override Settings panel.
+- **Popularity-Based Profile Ordering**: Added dynamic profile list sorting prioritizing BEACN at the top, then custom user-defined profiles, followed by major brands in order of popularity (Voicemeeter, GoXLR, WaveLink), and the developer test profiles at the bottom.
+
+### Fixed
+- **Wake Dropdown Active Enablement**: Fixed a bug where the "On Wake/Resume" dropdown remained physically disabled after selecting an automated app.
+- **Neon Mode Test Box Title Color**: Fixed the "Operating Mode Tests" GroupBox title color resetting to system default dark text (ControlText) after finishing its flash sequence or when disabled in Neon mode. It now resolves correctly to Neon Pink.
+- **High-DPI Profile Details Coordinate Lock**: Wrapped the dynamic positioning of the profile details labels in a startup-only check (`$script:ProfileDetailsInitialized`). This preserves the perfectly scaled layout coordinates at startup, resolving overlapping text and clipping on selecting a profile.
+- **Device Settings Checkbox Clipping**: Widened `$profilesPanel` to height `79` to prevent the third bubble checkbox (`Demo Device`) from being clipped, and moved `$detailsPanel` to `Y=96` with height `86` to maintain clean, proportional layout bounds.
 
 ## [1.2.2] - 2026-05-24
 

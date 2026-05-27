@@ -1,0 +1,16 @@
+{
+  "id": "WaveLink",
+  "displayName": "Elgato Wave Link [Beta]",
+  "targets": [
+    {
+      "processName": "WaveLink",
+      "defaultExePath": "C:\\Program Files\\Elgato\\WaveLink\\WaveLink.exe",
+      "supportsGraceful": true,
+      "supportsClassic": true
+    }
+  ],
+  "defaults": {
+    "GracefulWindowWakeDelayMs": 800,
+    "GracefulShutdownWaitMs": 800
+  }
+}

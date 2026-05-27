@@ -121,6 +121,8 @@ $rbHidden.add_CheckedChanged({
 
 # --- Logging UI ---
 $ddLogInterval.add_SelectedIndexChanged({
+        if ($script:IsApplyingConfig) { return }
+
         if ($ddLogInterval.SelectedItem.ToString() -eq "Custom seconds...") {
             $tbLogCustom.Enabled = $true
             $tbLogCustom.Focus()
@@ -137,6 +139,8 @@ $ddLogInterval.add_SelectedIndexChanged({
 
 # --- Hotkey UI ---
 $ddHotkey.add_SelectedIndexChanged({
+        if ($script:IsApplyingConfig) { return }
+
         if ($ddHotkey.SelectedItem.ToString() -eq "Custom") {
             $tbCustomKey.Enabled = $true
             $tbCustomKey.Focus()
@@ -927,17 +931,40 @@ function Set-OperatingModeBoxState {
     if (-not $script:grpDiagOperatingMode) { return }
 
     foreach ($ctrl in $script:grpDiagOperatingMode.Controls) {
-        if ($ctrl.Name -eq "pnlOnWakeBorder" -or $ctrl -is [System.Windows.Forms.Panel]) {
-            # Handle ComboBox inside Panel
-            if ($script:ddDiagOnWakeAction) {
-                $script:ddDiagOnWakeAction.Enabled = $Enabled
+        if ($ctrl -is [System.Windows.Forms.ComboBox]) {
+            # Keep Enabled=$true always to avoid OS disabled-border rendering in neon mode.
+            # Exception: fall back to Enabled toggling if the SelectionChangeCommitted hook failed to register.
+            try {
+                if ($script:wakeDropdownFallback) {
+                    $ctrl.Enabled = $Enabled
+                } else {
+                    $ctrl.Enabled = $true
+                    $script:wakeDropdownActive = $Enabled
+                }
+                # When disabled, reset the items and selection to "Select App"
+                if (-not $Enabled) {
+                    $ctrl.Items.Clear()
+                    [void]$ctrl.Items.Add("- Select App -")
+                    $ctrl.SelectedIndex = 0
+                }
+            } catch {
+                $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+                Out-File -FilePath $errPath -Append `
+                    -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown state update failed: $($_.Exception.Message)"
+                try { $ctrl.Enabled = $Enabled } catch {}  # last-resort fallback
             }
             if ($global:ThemeNeonActive) {
-                $ctrl.Enabled = $true
-                $ctrl.BackColor = if ($Enabled) { $global:NeonPurple } else { [System.Drawing.Color]::FromArgb(60, 60, 65) }
+                $ctrl.BackColor = if ($Enabled) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
+                $ctrl.ForeColor = if ($Enabled) { $global:NeonCyan } else { [System.Drawing.Color]::Gray }
             } else {
-                $ctrl.Enabled = $Enabled
-                $ctrl.BackColor = [System.Drawing.Color]::DarkGray
+                if ($Enabled) {
+                    $ctrl.ResetBackColor()
+                    $ctrl.ResetForeColor()
+                } else {
+                    # Mimic OS disabled appearance without using Enabled=$false (avoids border change)
+                    $ctrl.BackColor = [System.Drawing.SystemColors]::Control
+                    $ctrl.ForeColor = [System.Drawing.SystemColors]::GrayText
+                }
             }
         }
         elseif ($ctrl -is [System.Windows.Forms.RadioButton] -or $ctrl -is [System.Windows.Forms.Label]) {
@@ -954,7 +981,7 @@ function Set-OperatingModeBoxState {
                     $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
                 }
                 elseif ($ctrl -is [System.Windows.Forms.Label]) {
-                    $ctrl.ForeColor = $BrandPurple
+                    # Leave ForeColor untouched — startup Reset-MainFormChildControls already set it correctly
                 }
             }
         }
@@ -1273,6 +1300,9 @@ function Init-SleepDiagnosticsEventHandlers {
             $script:listBlockers.ClearSelected()
             $script:listAutomated.ClearSelected()
             $script:diagListMutex = $false
+
+            # Overridden system blockers cannot be automated; grey out the App Override Settings box
+            Set-OperatingModeBoxState -Enabled $false
 
             $idx = $script:listOverrides.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:SystemOverridesList.Count)
@@ -2585,11 +2615,11 @@ function global:Update-SecondaryTabStyles {
 function Hide-All-Drawers {
     if ($script:grpAdvancedTools) { $script:grpAdvancedTools.Visible = $false }
     if ($script:grpAdvancedDiag)  { $script:grpAdvancedDiag.Visible  = $false }
-    $form.ClientSize = New-Object System.Drawing.Size(800, 640)
+    $form.ClientSize = New-Object System.Drawing.Size([int](800 * $script:DpiScale), [int](640 * $script:DpiScale))
     if ($script:pnlTabWrapper) {
-        $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(780, 490)
+        $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](780 * $script:DpiScale), [int](490 * $script:DpiScale))
     }
-    $tabControl.Size = New-Object System.Drawing.Size(788, 498)
+    $tabControl.Size = New-Object System.Drawing.Size([int](788 * $script:DpiScale), [int](498 * $script:DpiScale))
 
     # Reset drawer button labels so they never show stale "Close X" state
     if ($btnToolsAdvanced) { $btnToolsAdvanced.Text = "Advanced Tools >>" }
@@ -2599,7 +2629,7 @@ function Hide-All-Drawers {
     if ($script:diagDrawerSep)  { $script:diagDrawerSep.Visible  = $false }
 
     # Return logo to its home position
-    if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(718, 12) }
+    if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](718 * $script:DpiScale), [int](12 * $script:DpiScale)) }
 
     # Hide live log controls if active
     if ($script:IsLiveLogMode) { Exit-LiveLogMode }
@@ -2611,22 +2641,22 @@ function Hide-All-Drawers {
         $script:TelemetryTimer = $null
     }
 
-    if ($script:mainSep) { $script:mainSep.Width = 764 }
+    if ($script:mainSep) { $script:mainSep.Width = [int](764 * $script:DpiScale) }
     if ($script:bottomMetadata) {
-        $script:bottomMetadata.Location = New-Object System.Drawing.Point(480, 606)
+        $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](480 * $script:DpiScale), [int](606 * $script:DpiScale))
         $script:bottomMetadata.BringToFront()
     }
 
     # Contract tab buttons to default names/sizes
     if ($btnTabSetup) {
         $btnTabSetup.Text = "1. Setup && Install"
-        $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
-        $btnTabSetup.Size = New-Object System.Drawing.Size(145, 30)
+        $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
+        $btnTabSetup.Size = New-Object System.Drawing.Size([int](145 * $script:DpiScale), [int](30 * $script:DpiScale))
     }
     if ($btnTabDiag) {
         $btnTabDiag.Text = "2. Sleep Automation"
-        $btnTabDiag.Location = New-Object System.Drawing.Point(485, 48)
-        $btnTabDiag.Size = New-Object System.Drawing.Size(180, 30)
+        $btnTabDiag.Location = New-Object System.Drawing.Point([int](485 * $script:DpiScale), [int](48 * $script:DpiScale))
+        $btnTabDiag.Size = New-Object System.Drawing.Size([int](180 * $script:DpiScale), [int](30 * $script:DpiScale))
     }
 
     # Hide and reset Advanced Tools sub-tabs
@@ -2643,6 +2673,7 @@ function Hide-All-Drawers {
     if ($script:advancedTabIndicator) {
         $script:advancedTabIndicator.Visible = $false
     }
+    $script:IsWindowExpanded = $false
     Update-TabIndicator
 }
 
@@ -2650,7 +2681,7 @@ $btnTabSetup.add_Click({
         $tabControl.SelectedIndex = 0
         $btnTabSetup.Font = $boldFont
         $btnTabDiag.Font = $font
-        $wasExpanded = ($form.ClientSize.Width -gt 800)
+        $wasExpanded = $script:IsWindowExpanded
         Hide-All-Drawers
         # If the window was expanded on the other tab, keep it expanded by opening this tab's drawer
         if ($wasExpanded -and $btnToolsAdvanced) { $btnToolsAdvanced.PerformClick() }
@@ -2661,7 +2692,7 @@ $btnTabDiag.add_Click({
         $tabControl.SelectedIndex = 1
         $btnTabDiag.Font = $boldFont
         $btnTabSetup.Font = $font
-        $wasExpanded = ($form.ClientSize.Width -gt 800)
+        $wasExpanded = $script:IsWindowExpanded
         Hide-All-Drawers
         # Initialize Page 2 handlers on first visit (was never called — root cause of all Page 2 bugs)
         if (-not $script:diagInitialized) {
@@ -2674,37 +2705,37 @@ $btnTabDiag.add_Click({
     })
 
 $btnToolsAdvanced.add_Click({
-        if ($form.ClientSize.Width -eq 800) {
+        if (-not $script:IsWindowExpanded) {
             # Expand — slide logo to far right of new header space
             if ($script:pnlTabWrapper) {
-                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(1160, 490)
+                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
             }
-            $tabControl.Size = New-Object System.Drawing.Size(1168, 498)
-            $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
+            $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
             [System.Windows.Forms.Application]::DoEvents()
             if ($script:grpAdvancedTools) {
                 $script:grpAdvancedTools.Visible = $true
                 $script:grpAdvancedTools.Invalidate()
             }
-            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
+            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
             $btnToolsAdvanced.Text = "<< Close Tools"
             if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
-            if ($script:mainSep) { $script:mainSep.Width = 1144 }
+            if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
             if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 606)
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
                 $script:bottomMetadata.BringToFront()
             }
 
             # Expand tab buttons to long names/sizes (Setup anchored at X=330)
             if ($btnTabSetup) {
                 $btnTabSetup.Text = "1. Setup && Installation"
-                $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
-                $btnTabSetup.Size = New-Object System.Drawing.Size(190, 30)
+                $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
+                $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
             }
             if ($btnTabDiag) {
                 $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
-                $btnTabDiag.Location = New-Object System.Drawing.Point(530, 48)
-                $btnTabDiag.Size = New-Object System.Drawing.Size(260, 30)
+                $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
+                $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
             }
 
             # Show sub-tabs
@@ -2712,13 +2743,14 @@ $btnToolsAdvanced.add_Click({
             if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
             if ($script:advancedTabIndicator) {
                 if ($script:IsLiveLogMode) {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(270, 38)
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](270 * $script:DpiScale), [int](38 * $script:DpiScale))
                 }
                 else {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
+                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](190 * $script:DpiScale), [int](38 * $script:DpiScale))
                 }
                 $script:advancedTabIndicator.Visible = $true
             }
+            $script:IsWindowExpanded = $true
             Update-TabIndicator
         }
         else {
@@ -2728,41 +2760,42 @@ $btnToolsAdvanced.add_Click({
     })
 
 $btnDiagAdvanced.add_Click({
-        if ($form.ClientSize.Width -eq 800) {
+        if (-not $script:IsWindowExpanded) {
             # Expand — slide logo to far right of new header space
             if ($script:pnlTabWrapper) {
-                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size(1160, 490)
+                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
             }
-            $tabControl.Size = New-Object System.Drawing.Size(1168, 498)
-            $form.ClientSize = New-Object System.Drawing.Size(1180, 640)
+            $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
+            $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
             [System.Windows.Forms.Application]::DoEvents()
             if ($script:grpAdvancedDiag) {
                 $script:grpAdvancedDiag.Visible = $true
                 $script:grpAdvancedDiag.Invalidate()
             }
-            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point(1098, 12) }
+            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
             $btnDiagAdvanced.Text = "<< Close Diagnostics"
             if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
-            if ($script:mainSep) { $script:mainSep.Width = 1144 }
+            if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
             if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point(860, 606)
+                $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
                 $script:bottomMetadata.BringToFront()
             }
 
             # Expand tab buttons to long names/sizes (Setup anchored at X=330)
             if ($btnTabSetup) {
                 $btnTabSetup.Text = "1. Setup && Installation"
-                $btnTabSetup.Location = New-Object System.Drawing.Point(330, 48)
-                $btnTabSetup.Size = New-Object System.Drawing.Size(190, 30)
+                $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
+                $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
             }
             if ($btnTabDiag) {
                 $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
-                $btnTabDiag.Location = New-Object System.Drawing.Point(530, 48)
-                $btnTabDiag.Size = New-Object System.Drawing.Size(260, 30)
+                $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
+                $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
             }
 
             # Trigger telemetry refresh
             if ($script:btnTelemetryRefresh) { $script:btnTelemetryRefresh.PerformClick() }
+            $script:IsWindowExpanded = $true
             Update-TabIndicator
         }
         else {
@@ -2780,7 +2813,31 @@ $script:btnTelemetryRefresh.add_Click({
         # Run async (simulated here with immediate run for brevity, but could use runspace)
         try {
             $diag = Get-SystemPowerDiagnostics
-            $script:txtLastWake.Text = $diag.LastWake
+            if ($diag.SleepHistory -and $diag.SleepHistory.Count -gt 0) {
+                # Format to a compact ASCII table
+                $tableText = "Wake Time   Duration  Wake Source`r`n"
+                $tableText += "---------   --------  -----------`r`n"
+                foreach ($h in $diag.SleepHistory) {
+                    $formattedTime = "Unknown"
+                    if ($h.WakeTime) {
+                        try {
+                            $dt = [DateTime]::Parse($h.WakeTime)
+                            $formattedTime = $dt.ToString("MM-dd HH:mm")
+                        }
+                        catch {
+                            $formattedTime = $h.WakeTime
+                        }
+                    }
+                    $c1 = $formattedTime.PadRight(12).Substring(0, 12)
+                    $c2 = $h.Duration.PadRight(10).Substring(0, 10)
+                    $c3 = $h.WakeSource
+                    $tableText += "$c1$c2$c3`r`n"
+                }
+                $script:txtLastWake.Text = $tableText.TrimEnd()
+            }
+            else {
+                $script:txtLastWake.Text = $diag.LastWake
+            }
         
             if ($diag.WakeTimers.Count -gt 0) {
                 $script:txtWakeTimers.Text = ($diag.WakeTimers -join "`r`n")
@@ -2998,7 +3055,7 @@ if ($btnTelemetryTabTimers) {
         $tabTelemetryDetails.SelectedIndex = 0
         $btnTelemetryTabTimers.Font = $boldFont
         $btnTelemetryTabArmed.Font = $font
-        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 142)
+        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 158)
         $telemetryTabIndicator.Width = 90
         Update-SecondaryTabStyles
     })
@@ -3008,7 +3065,7 @@ if ($btnTelemetryTabArmed) {
         $tabTelemetryDetails.SelectedIndex = 1
         $btnTelemetryTabArmed.Font = $boldFont
         $btnTelemetryTabTimers.Font = $font
-        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(110, 142)
+        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(110, 158)
         $telemetryTabIndicator.Width = 115
         Update-SecondaryTabStyles
     })
@@ -3017,7 +3074,7 @@ if ($btnTelemetryTabArmed) {
 # Initialise tooltips on load
 Update-TestButtonsTooltips
 
-# --- Branding Interactions (Easter Egg) ---
+# --- Branding Interactions ---
 if ($logo) {
     $logo.add_DoubleClick({
         if ($global:IsThemeAnimating) { return }

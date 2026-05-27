@@ -99,6 +99,17 @@ $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 $form.AutoScaleMode = "Font"
+
+# Measure screen DPI scaling factor at startup
+$graphics = $form.CreateGraphics()
+$script:DpiScale = 1.0
+try {
+    $script:DpiScale = $graphics.DpiX / 96.0
+} catch {}
+$graphics.Dispose()
+
+$script:IsWindowExpanded = $false
+
 $form.ClientSize = New-Object System.Drawing.Size(800, 640)
 
 $formIconPath = Join-Path $PackageDir "Assets\128x128.ico"
@@ -414,7 +425,34 @@ function Update-TestGroupState {
     # --- Enable or disable child controls ---
     foreach ($ctrl in $script:testGroup.Controls) {
         if ($ctrl -ne $script:btnTestStop -and $ctrl -ne $script:btnTestStart -and $ctrl -ne $script:btnTestGraceful -and $ctrl -ne $script:btnTestClassic) {
-            $ctrl.Enabled = $shouldEnable
+            if ($ctrl -is [System.Windows.Forms.ComboBox]) {
+                try {
+                    if ($script:testDropdownFallback) {
+                        $ctrl.Enabled = $shouldEnable
+                    } else {
+                        $ctrl.Enabled = $true
+                        $script:testDropdownActive = $shouldEnable
+                    }
+                } catch {
+                    $script:testDropdownFallback = $true
+                    try { $ctrl.Enabled = $shouldEnable } catch {}
+                }
+                # Apply theme-appropriate active/inactive colors to maintain flat border thickness consistency
+                if ($global:ThemeNeonActive) {
+                    $ctrl.BackColor = if ($shouldEnable) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
+                    $ctrl.ForeColor = if ($shouldEnable) { $global:NeonCyan } else { [System.Drawing.Color]::Gray }
+                } else {
+                    if ($shouldEnable) {
+                        $ctrl.ResetBackColor()
+                        $ctrl.ResetForeColor()
+                    } else {
+                        $ctrl.BackColor = [System.Drawing.SystemColors]::Control
+                        $ctrl.ForeColor = [System.Drawing.SystemColors]::GrayText
+                    }
+                }
+            } else {
+                $ctrl.Enabled = $shouldEnable
+            }
         }
     }
 
@@ -426,22 +464,34 @@ function Update-TestGroupState {
             $script:testGroupFlashTimer = $null
         }
 
-        # Triple-flash: Cyan -> ControlText (6 ticks at 180ms each, ends on ControlText)
-        $script:testGroup.ForeColor = $BrandCyan
+        # Determine colors safely
+        $color1 = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $BrandCyan }
+        if ($null -eq $color1) { $color1 = [System.Drawing.Color]::FromArgb(0, 215, 255) }
+        $color2 = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.SystemColors]::ControlText }
+        if ($null -eq $color2) { $color2 = [System.Drawing.Color]::Black }
+
+        # Triple-flash: Cyan -> final color (6 ticks at 180ms each)
+        $script:testGroup.ForeColor = $color1
         try { $script:testGroup.Refresh() } catch {}
         $script:testGroupFlashTick = 0
         $script:testGroupFlashTimer = New-Object System.Windows.Forms.Timer
         $script:testGroupFlashTimer.Interval = 180
+        $script:testGroupFlashTimer.Tag = [PSCustomObject]@{
+            Color1 = $color1
+            Color2 = $color2
+        }
         $script:testGroupFlashTimer.add_Tick({
+                param($sender, $e)
                 $script:testGroupFlashTick++
+                $colors = $sender.Tag
                 if ($script:testGroupFlashTick % 2 -eq 0) {
-                    $script:testGroup.ForeColor = $BrandCyan
+                    $script:testGroup.ForeColor = $colors.Color1
                 }
                 else {
-                    $script:testGroup.ForeColor = [System.Drawing.SystemColors]::ControlText
+                    $script:testGroup.ForeColor = $colors.Color2
                 }
                 if ($script:testGroupFlashTick -ge 5) {
-                    $script:testGroup.ForeColor = [System.Drawing.SystemColors]::ControlText
+                    $script:testGroup.ForeColor = $colors.Color2
                     try {
                         if ($script:testGroupFlashTimer) {
                             $script:testGroupFlashTimer.Stop()
@@ -460,7 +510,7 @@ function Update-TestGroupState {
             try { $script:testGroupFlashTimer.Stop(); $script:testGroupFlashTimer.Dispose() } catch {}
             $script:testGroupFlashTimer = $null
         }
-        $script:testGroup.ForeColor = [System.Drawing.Color]::Gray
+        $script:testGroup.ForeColor = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.Color]::Gray }
     }
 
     # --- Rebuild the target dropdown ---
@@ -629,35 +679,43 @@ $deviceGroup.Controls.Add($profilesPanel)
 
 # Details panel
 $detailsPanel = New-Object System.Windows.Forms.Panel
-$detailsPanel.Location = New-Object System.Drawing.Point(350, 25)
-$detailsPanel.Size = New-Object System.Drawing.Size(315, 120)
+$detailsPanel.Location = New-Object System.Drawing.Point(350, 30)
+$detailsPanel.Size = New-Object System.Drawing.Size(315, 128)
 $deviceGroup.Controls.Add($detailsPanel)
 
 $lblDetailsTitle = New-Object System.Windows.Forms.Label
-$lblDetailsTitle.Text = "Selected Profile"
+$lblDetailsTitle.Text = "Selected Profile:"
 $lblDetailsTitle.AutoSize = $true
-$lblDetailsTitleFont = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$lblDetailsTitleFont = New-Object System.Drawing.Font("Segoe UI", 8.25, [System.Drawing.FontStyle]::Bold)
 $script:MainFormGdiResources.Add($lblDetailsTitleFont)
 $lblDetailsTitle.Font = $lblDetailsTitleFont
-$lblDetailsTitle.Location = New-Object System.Drawing.Point(0, 0)
+$lblDetailsTitle.Location = New-Object System.Drawing.Point(0, 2)
 $detailsPanel.Controls.Add($lblDetailsTitle)
+
+$detailsFont = New-Object System.Drawing.Font("Segoe UI", 7.5)
+$script:MainFormGdiResources.Add($detailsFont)
 
 $lblProc = New-Object System.Windows.Forms.Label
 $lblProc.Text = "Process: (unknown)"
+$lblProc.Font = $detailsFont
 $lblProc.AutoSize = $true
-$lblProc.Location = New-Object System.Drawing.Point(0, 18)
+$lblProc.Location = New-Object System.Drawing.Point(0, 16)
 $detailsPanel.Controls.Add($lblProc)
+
 $lblPath = New-Object System.Windows.Forms.Label
 $lblPath.Text = "Path: (unknown)"
-$lblPath.AutoSize = $true
-$lblPath.MaximumSize = New-Object System.Drawing.Size(340, 0)
-$lblPath.Location = New-Object System.Drawing.Point(0, 36)
+$lblPath.Font = $detailsFont
+$lblPath.AutoSize = $false
+$lblPath.AutoEllipsis = $true
+$lblPath.Size = New-Object System.Drawing.Size(305, 20)
+$lblPath.Location = New-Object System.Drawing.Point(0, 32)
 $detailsPanel.Controls.Add($lblPath)
 
 $lblCaps = New-Object System.Windows.Forms.Label
 $lblCaps.Text = "Supports: (unknown)"
+$lblCaps.Font = $detailsFont
 $lblCaps.AutoSize = $true
-$lblCaps.Location = New-Object System.Drawing.Point(0, 68)
+$lblCaps.Location = New-Object System.Drawing.Point(0, 54)
 $detailsPanel.Controls.Add($lblCaps)
 
 function Set-ProfileDetails {
@@ -666,31 +724,49 @@ function Set-ProfileDetails {
     if (-not $profileObj) {
         $lblProc.Text = "Process: (unknown)"
         $lblPath.Text = "Path: (unknown)"
+        $tooltip.SetToolTip($lblPath, $null)
         $lblCaps.Text = "Supports: (unknown)"
-        return
     }
+    else {
+        try {
+            $p = $profileObj.Raw
+            $t = $null
+            if ($p.targets -and $p.targets.Count -gt 0) { $t = $p.targets[0] }
 
-    try {
-        $p = $profileObj.Raw
-        $t = $null
-        if ($p.targets -and $p.targets.Count -gt 0) { $t = $p.targets[0] }
+            $proc = $(if ($t -and $t.processName) { [string]$t.processName } else { "(unknown)" })
+            $path = $(if ($t -and $t.defaultExePath) { [string]$t.defaultExePath } else { "(unknown)" })
 
-        $proc = $(if ($t -and $t.processName) { [string]$t.processName } else { "(unknown)" })
-        $path = $(if ($t -and $t.defaultExePath) { [string]$t.defaultExePath } else { "(unknown)" })
+            $g = $(if ($t -and $t.supportsGraceful) { "Graceful" } else { "" })
+            $c = $(if ($t -and $t.supportsClassic) { "Classic" } else { "" })
+            $caps = ($g, $c | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ", "
+            if ([string]::IsNullOrWhiteSpace($caps)) { $caps = "(unknown)" }
 
-        $g = $(if ($t -and $t.supportsGraceful) { "Graceful" } else { "" })
-        $c = $(if ($t -and $t.supportsClassic) { "Classic" } else { "" })
-        $caps = ($g, $c | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ", "
-        if ([string]::IsNullOrWhiteSpace($caps)) { $caps = "(unknown)" }
-
-        $lblProc.Text = "Process: $proc"
-        $lblPath.Text = "Path: $path"
-        $lblCaps.Text = "Supports: $caps"
+            $lblProc.Text = "Process: $proc"
+            $lblPath.Text = "Path: $path"
+            $tooltip.SetToolTip($lblPath, "Full path: $path")
+            $lblCaps.Text = "Supports: $caps"
+        }
+        catch {
+            $lblProc.Text = "Process: (unknown)"
+            $lblPath.Text = "Path: (unknown)"
+            $tooltip.SetToolTip($lblPath, $null)
+            $lblCaps.Text = "Supports: (unknown)"
+        }
     }
-    catch {
-        $lblProc.Text = "Process: (unknown)"
-        $lblPath.Text = "Path: (unknown)"
-        $lblCaps.Text = "Supports: (unknown)"
+    if (-not $script:ProfileDetailsInitialized) {
+        # Force WinForms to calculate AutoSize bounds immediately
+        [System.Windows.Forms.Application]::DoEvents()
+ 
+        # Dynamically stack labels perfectly at any DPI scaling factor
+        $lblProc.Top = $lblDetailsTitle.Bottom + 4
+ 
+        # Path is AutoSize=$false (for ellipsis), so it must borrow the scaled height of Proc
+        $lblPath.Height = $lblProc.Height 
+        $lblPath.Top = $lblProc.Bottom + 2
+ 
+        $lblCaps.Top = $lblPath.Bottom + 4
+ 
+        $script:ProfileDetailsInitialized = $true
     }
 }
 
@@ -759,6 +835,18 @@ function Build-ProfilesUI {
             }
             elseif ($p.Id -eq "DEMO") {
                 $tooltip.SetToolTip($rb, "Demo Device (UI Test):`nUse this profile to test the SAMISH user interface, simulated sleep blocker scans, and wake/resume action simulation. This profile also serves as a developer template to model custom device adapter modules from.")
+            }
+            elseif ($p.Id -eq "Voicemeeter") {
+                $tooltip.SetToolTip($rb, "To set up the recommended configuration for Voicemeeter:`n1. Select the Voicemeeter profile under Device Settings.`n2. Select Graceful operating mode (sends WM_CLOSE to gracefully save settings and shut down Voicemeeter, preventing device hangs and distorted audio on wake).`n3. Click 'Install / Update'.`nNote: Voicemeeter will be restarted automatically on system wake.")
+            }
+            elseif ($p.Id -eq "WaveLink") {
+                $tooltip.SetToolTip($rb, "To set up the recommended configuration for Elgato Wave Link:`n1. Select the Wave Link profile under Device Settings.`n2. Select Graceful operating mode (safely terminates WaveLink.exe to preserve active stream/mic routing settings).`n3. Click 'Install / Update'.`nNote: Wave Link is automatically restarted on system resume to restore microphone and output feeds.")
+            }
+            elseif ($p.Id -eq "GoXLR") {
+                $tooltip.SetToolTip($rb, "To set up the recommended configuration for GoXLR App:`n1. Select the GoXLR profile under Device Settings.`n2. Select Graceful operating mode to cleanly terminate the GoXLR App.`n3. Click 'Install / Update'.`nNote: Relaunches on wake to restore profiles and motor-fader positions.")
+            }
+            elseif ($p.Id -eq "Custom") {
+                $tooltip.SetToolTip($rb, "Custom Device (Advanced User Mode):`nAllows you to control any unsupported mixer or application.`n`nTo configure:`n1. Open and edit the profile config file in your installation directory:`n   %APPDATA%\SAMISH\Profiles\Custom-Device.json`n2. Modify the Display Name, Process Name, and executable path.`n3. Click 'Read Setup Status' in Setup to apply changes instantly.`n`n*Tip: Run 'Configure-CustomProfile.bat' in the install folder for an interactive, guided setup helper.")
             }
 
             $rb.add_CheckedChanged({
@@ -903,14 +991,14 @@ function Apply-UIFromConfigIfPresent {
         $cfg = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
 
         # Load MonitoredApps from config
-        if ($cfg.PSObject.Properties.Name -contains "MonitoredApps" -and $cfg.MonitoredApps) {
+        if ($null -ne $cfg -and $null -ne $cfg.MonitoredApps) {
             $script:MonitoredApps = @(foreach ($app in $cfg.MonitoredApps) {
                     if ($null -eq $app.PSObject.Properties['OnWakeAction']) {
                         $onWake = "Smart"
-                        if ($app.PSObject.Properties['NoRestartOnWake'] -and $app.NoRestartOnWake) {
+                        if ($null -ne $app.NoRestartOnWake -and $app.NoRestartOnWake) {
                             $onWake = "KeepClosed"
                         }
-                        elseif ($app.PSObject.Properties['ForcePlayOnWake'] -and $app.ForcePlayOnWake) {
+                        elseif ($null -ne $app.ForcePlayOnWake -and $app.ForcePlayOnWake) {
                             $onWake = "Play"
                         }
                         $app | Add-Member -MemberType NoteProperty -Name "OnWakeAction" -Value $onWake -Force
@@ -935,10 +1023,10 @@ function Apply-UIFromConfigIfPresent {
             $rbHidden.Checked = $true
         }
         else {
-            if (
-                ($cfg.PSObject.Properties.Name -contains "EnableTrayIcon" -and $cfg.EnableTrayIcon) -or
-                ($cfg.PSObject.Properties.Name -contains "EnableHotkey" -and $cfg.EnableHotkey)
-            ) {
+            if ($null -ne $cfg -and (
+                ($null -ne $cfg.EnableTrayIcon -and $cfg.EnableTrayIcon) -or
+                ($null -ne $cfg.EnableHotkey -and $cfg.EnableHotkey)
+            )) {
                 $rbInteractive.Checked = $true
             }
             else {
@@ -947,7 +1035,7 @@ function Apply-UIFromConfigIfPresent {
         }
 
         # --- Operating Mode radios ---
-        if ($cfg.PSObject.Properties.Name -contains "OperatingMode") {
+        if ($null -ne $cfg -and $null -ne $cfg.OperatingMode) {
             if ($cfg.OperatingMode -eq "Classic") {
                 $rbOpClassic.Checked = $true
             }
@@ -955,13 +1043,19 @@ function Apply-UIFromConfigIfPresent {
                 $rbOpGraceful.Checked = $true
             }
         }
-
-        # --- Logging ---
-        if ($cfg.PSObject.Properties.Name -contains "EnableLogging") {
-            $cbLogging.Checked = [bool]$cfg.EnableLogging
+        else {
+            $rbOpGraceful.Checked = $true  # Default
         }
 
-        if ($cfg.PSObject.Properties.Name -contains "LogEverySeconds") {
+        # --- Logging ---
+        if ($null -ne $cfg -and $null -ne $cfg.EnableLogging) {
+            $cbLogging.Checked = [bool]$cfg.EnableLogging
+        }
+        else {
+            $cbLogging.Checked = $false
+        }
+
+        if ($null -ne $cfg -and $null -ne $cfg.LogEverySeconds) {
             $val = 30
             try {
                 $rawVal = "$($cfg.LogEverySeconds)"
@@ -998,27 +1092,37 @@ function Apply-UIFromConfigIfPresent {
                 $tbLogCustom.Enabled = $true
             }
         }
-
-        # --- Tray / Hotkey ---
-        if ($cfg.PSObject.Properties.Name -contains "EnableTrayIcon") {
-            $cbTray.Checked = [bool]$cfg.EnableTrayIcon
+        else {
+            $ddLogInterval.SelectedItem = "Every 30 seconds"
+            $tbLogCustom.Text = "30"
+            $tbLogCustom.Enabled = $false
         }
 
-        if ($cfg.PSObject.Properties.Name -contains "EnableHotkey") {
+        # --- Tray / Hotkey ---
+        if ($null -ne $cfg -and $null -ne $cfg.EnableTrayIcon) {
+            $cbTray.Checked = [bool]$cfg.EnableTrayIcon
+        }
+        else {
+            $cbTray.Checked = $false
+        }
+
+        if ($null -ne $cfg -and $null -ne $cfg.EnableHotkey) {
             $cbHotkey.Checked = [bool]$cfg.EnableHotkey
+        }
+        else {
+            $cbHotkey.Checked = $false
         }
 
         # --- Hotkey mode ---
-        if ($cfg.PSObject.Properties.Name -contains "HotkeyMode") {
+        if ($null -ne $cfg -and $null -ne $cfg.HotkeyMode) {
             $ddHotkey.SelectedItem = [string]$cfg.HotkeyMode
+        }
+        else {
+            $ddHotkey.SelectedItem = "ScrollLock"
         }
 
         # --- Custom hotkey textbox reverse-map (VK -> friendly) ---
-        if (
-            ($cfg.PSObject.Properties.Name -contains "HotkeyMode") -and
-            ($cfg.HotkeyMode -eq "Custom") -and
-            ($cfg.PSObject.Properties.Name -contains "CustomHotkeyVirtualKey")
-        ) {
+        if ($null -ne $cfg -and $null -ne $cfg.HotkeyMode -and $cfg.HotkeyMode -eq "Custom" -and $null -ne $cfg.CustomHotkeyVirtualKey) {
             $vk = [int]$cfg.CustomHotkeyVirtualKey
             $friendlyKey = $null
             try {
@@ -1028,6 +1132,9 @@ function Apply-UIFromConfigIfPresent {
                 $friendlyKey = "0x{0:X}" -f $vk
             }
             $tbCustomKey.Text = $friendlyKey
+        }
+        else {
+            $tbCustomKey.Text = "F8"
         }
 
         # --- Apply enable/disable states WITHOUT clobbering values ---
@@ -1050,9 +1157,9 @@ function Apply-UIFromConfigIfPresent {
         }
     }
     catch {
-        if ($statusBox) {
-            $statusBox.AppendText("`r`n[DEBUG] Apply-UIFromConfigIfPresent Exception: " + $_.Exception.Message + " at " + $_.ScriptStackTrace + "`r`n")
-        }
+        $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+        Out-File -FilePath $errPath -Append `
+            -InputObject "[$(Get-Date -Format 'HH:mm:ss')] Apply-UIFromConfigIfPresent Exception: $($_.Exception.Message) at $($_.ScriptStackTrace)"
     }
     finally {
         $script:IsApplyingConfig = $false
@@ -1456,14 +1563,14 @@ $btnUninstall.Location = New-Object System.Drawing.Point(230, 410)
 $tooltip.SetToolTip($btnUninstall, "Remove SAMISH. To temporarily stop SAMISH from launching on boot, click Uninstall. You will have the option to save your profiles and configuration settings to be automatically reapplied on reinstall.")
 
 # Right Column
-$deviceGroup.Size = New-Object System.Drawing.Size(370, 180)
+$deviceGroup.Size = New-Object System.Drawing.Size(370, 185)
 $deviceGroup.Location = New-Object System.Drawing.Point(395, 10)
 
-$profilesPanel.Location = New-Object System.Drawing.Point(10, 20)
-$profilesPanel.Size = New-Object System.Drawing.Size(350, 65)
+$profilesPanel.Location = New-Object System.Drawing.Point(10, 16)
+$profilesPanel.Size = New-Object System.Drawing.Size(350, 79)
 
-$detailsPanel.Location = New-Object System.Drawing.Point(10, 90)
-$detailsPanel.Size = New-Object System.Drawing.Size(350, 85)
+$detailsPanel.Location = New-Object System.Drawing.Point(10, 96)
+$detailsPanel.Size = New-Object System.Drawing.Size(350, 86)
 
 $statusGroup.Size = New-Object System.Drawing.Size(370, 195)
 $statusGroup.Location = New-Object System.Drawing.Point(395, 200)
@@ -1911,25 +2018,49 @@ $lblOnWake.Location = New-Object System.Drawing.Point(10, 118)
 $grpOperatingMode.Controls.Add($lblOnWake)
 $tooltip.SetToolTip($lblOnWake, "Choose what action SAMISH will perform when the system wakes: Smart Restore restores the pre-sleep state; Always Play forces playback; Always Pause keeps media paused; Keep Closed prevents app restart; Reopen Only restarts the app but keeps media paused.")
 
-$pnlOnWakeBorder = New-Object System.Windows.Forms.Panel
-$pnlOnWakeBorder.Name = "pnlOnWakeBorder"
-$pnlOnWakeBorder.Size = New-Object System.Drawing.Size(350, 24)
-$pnlOnWakeBorder.Location = New-Object System.Drawing.Point(10, 138)
-$pnlOnWakeBorder.BackColor = [System.Drawing.Color]::DarkGray
-$grpOperatingMode.Controls.Add($pnlOnWakeBorder)
-$script:pnlDiagOnWakeBorder = $pnlOnWakeBorder
-
 $ddOnWakeAction = New-Object System.Windows.Forms.ComboBox
+$ddOnWakeAction.Name = "ddOnWakeAction"
 $ddOnWakeAction.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $ddOnWakeAction.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
 $ddOnWakeAction.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$ddOnWakeAction.Size = New-Object System.Drawing.Size(348, 22)
-$ddOnWakeAction.Location = New-Object System.Drawing.Point(1, 1)
+$ddOnWakeAction.Size = New-Object System.Drawing.Size(330, 24)
+$ddOnWakeAction.Location = New-Object System.Drawing.Point(10, 145)
 $ddOnWakeAction.Items.Add("- Select App -") | Out-Null
 $ddOnWakeAction.SelectedIndex = 0
-$pnlOnWakeBorder.Controls.Add($ddOnWakeAction)
+$grpOperatingMode.Controls.Add($ddOnWakeAction)
 $script:ddDiagOnWakeAction = $ddOnWakeAction
+$script:pnlDiagOnWakeBorder = $null
 $tooltip.SetToolTip($ddOnWakeAction, "Choose what action SAMISH will perform when the system wakes.")
+
+# Wake-dropdown interaction state.
+# We keep ddOnWakeAction.Enabled=$true permanently so the OS never renders the
+# "disabled" chrome (which causes a thicker/lighter border in neon mode).
+# A flag + SelectionChangeCommitted hook guards against unintended interaction.
+$script:wakeDropdownActive   = $false   # true when an automated app is selected
+$script:wakeDropdownFallback = $false   # true if hook registration fails; reverts to Enabled toggling
+
+try {
+    $ddOnWakeAction.add_SelectionChangeCommitted({
+        try {
+            if (-not $script:wakeDropdownActive) {
+                # Revert any selection made while the dropdown is logically inactive
+                $script:ddDiagOnWakeAction.SelectedIndex = 0
+            }
+        } catch {
+            $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+            Out-File -FilePath $errPath -Append `
+                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown revert error: $($_.Exception.Message)"
+            # Fail forward: selection stays changed but is harmless — next app-selection event resets it
+        }
+    })
+} catch {
+    $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+    Out-File -FilePath $errPath -Append `
+        -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown hook registration failed: $($_.Exception.Message)"
+    # Safety net: signal Set-OperatingModeBoxState to use Enabled toggling instead
+    $script:wakeDropdownFallback = $true
+    try { $ddOnWakeAction.Enabled = $false } catch {}
+}
 
 # Bottom Action Row (Page 2 Right Column)
 $btnDiagAdvanced = New-Object System.Windows.Forms.Button
@@ -1988,12 +2119,38 @@ $tooltip.SetToolTip($grpTest, "Perform interactive test actions on the selected 
 $ddTestTarget = New-Object System.Windows.Forms.ComboBox
 $ddTestTarget.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $ddTestTarget.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
+$ddTestTarget.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $ddTestTarget.Size = New-Object System.Drawing.Size(330, 24)
 $ddTestTarget.Location = New-Object System.Drawing.Point(15, 22)
-$ddTestTarget.Enabled = $false
+$ddTestTarget.Enabled = $true
 $grpTest.Controls.Add($ddTestTarget)
 $script:ddTestTarget = $ddTestTarget
 $tooltip.SetToolTip($ddTestTarget, "Select which configured application or device profile driver to test.")
+
+# Operating Mode Tests dropdown interaction state
+$script:testDropdownActive   = $false
+$script:testDropdownFallback = $false
+
+try {
+    $ddTestTarget.add_SelectionChangeCommitted({
+        try {
+            if (-not $script:testDropdownActive) {
+                # Revert any selection made while the dropdown is logically inactive
+                $script:ddTestTarget.SelectedIndex = 0
+            }
+        } catch {
+            $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+            Out-File -FilePath $errPath -Append `
+                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown revert error: $($_.Exception.Message)"
+        }
+    })
+} catch {
+    $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+    Out-File -FilePath $errPath -Append `
+                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown hook registration failed: $($_.Exception.Message)"
+    $script:testDropdownFallback = $true
+    try { $ddTestTarget.Enabled = $false } catch {}
+}
 
 $btnTestSleep = New-Object System.Windows.Forms.Button
 $btnTestSleep.Text = "Test Sleep/Hibernate"
@@ -2058,7 +2215,7 @@ $tooltip.SetToolTip($btnTestForce, "Test close app (classic) behavior, forcing i
 # System Sleep & Wake Telemetry GroupBox
 $grpTelemetry = New-Object System.Windows.Forms.GroupBox
 $grpTelemetry.Text = "System Sleep && Wake Analysis"
-$grpTelemetry.Size = New-Object System.Drawing.Size(360, 225)
+$grpTelemetry.Size = New-Object System.Drawing.Size(360, 235)
 $grpTelemetry.Location = New-Object System.Drawing.Point(0, 160)
 $grpAdvancedDiag.Controls.Add($grpTelemetry)
 $tooltip.SetToolTip($grpTelemetry, "Analyze active wake timers, armed hardware devices, and supported system sleep states.")
@@ -2066,7 +2223,7 @@ $tooltip.SetToolTip($grpTelemetry, "Analyze active wake timers, armed hardware d
 $lblTelemetryStates = New-Object System.Windows.Forms.Label
 $lblTelemetryStates.Text = "Querying sleep states..."
 $lblTelemetryStates.AutoSize = $false
-$lblTelemetryStates.Size = New-Object System.Drawing.Size(330, 32)
+$lblTelemetryStates.Size = New-Object System.Drawing.Size(330, 18)
 $lblTelemetryStates.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblTelemetryStates.ForeColor = $BrandPurple
 $lblTelemetryStates.Location = New-Object System.Drawing.Point(15, 20)
@@ -2075,9 +2232,9 @@ $script:lblTelemetryStates = $lblTelemetryStates
 $tooltip.SetToolTip($lblTelemetryStates, "Sleep states supported by your system's hardware configuration.")
 
 $lblLastWakeTitle = New-Object System.Windows.Forms.Label
-$lblLastWakeTitle.Text = "Last Wake Source:"
+$lblLastWakeTitle.Text = "Sleep/Wake History (Last 5 Cycles):"
 $lblLastWakeTitle.AutoSize = $true
-$lblLastWakeTitle.Location = New-Object System.Drawing.Point(15, 58)
+$lblLastWakeTitle.Location = New-Object System.Drawing.Point(15, 42)
 $grpTelemetry.Controls.Add($lblLastWakeTitle)
 
 $txtLastWake = New-Object System.Windows.Forms.TextBox
@@ -2085,8 +2242,9 @@ $txtLastWake.Name = "txtLastWake"
 $txtLastWake.Multiline = $true
 $txtLastWake.ScrollBars = "Vertical"
 $txtLastWake.ReadOnly = $true
-$txtLastWake.Size = New-Object System.Drawing.Size(330, 42)
-$txtLastWake.Location = New-Object System.Drawing.Point(15, 78)
+$txtLastWake.Size = New-Object System.Drawing.Size(330, 72)
+$txtLastWake.Location = New-Object System.Drawing.Point(15, 60)
+$txtLastWake.Font = New-Object System.Drawing.Font("Consolas", 8.5)
 $txtLastWake.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $grpTelemetry.Controls.Add($txtLastWake)
 $script:txtLastWake = $txtLastWake
@@ -2095,8 +2253,8 @@ $tooltip.SetToolTip($txtLastWake, "The driver, device, or component that woke yo
 # Nested TabControl inside Telemetry box for Timers and Armed Devices
 $tabTelemetryPanel = New-Object System.Windows.Forms.Panel
 $tabTelemetryPanel.Name = "tabTelemetryPanel"
-$tabTelemetryPanel.Size = New-Object System.Drawing.Size(302, 55)
-$tabTelemetryPanel.Location = New-Object System.Drawing.Point(19, 159)
+$tabTelemetryPanel.Size = New-Object System.Drawing.Size(302, 53)
+$tabTelemetryPanel.Location = New-Object System.Drawing.Point(19, 170)
 $tabTelemetryPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::None
 $grpTelemetry.Controls.Add($tabTelemetryPanel)
 
@@ -2104,7 +2262,7 @@ $tabTelemetryDetails = New-Object System.Windows.Forms.TabControl
 $tabTelemetryDetails.SizeMode = [System.Windows.Forms.TabSizeMode]::Fixed
 $tabTelemetryDetails.ItemSize = New-Object System.Drawing.Size(0, 1)
 $tabTelemetryDetails.Appearance = [System.Windows.Forms.TabAppearance]::FlatButtons
-$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 63)
+$tabTelemetryDetails.Size = New-Object System.Drawing.Size(310, 61)
 $tabTelemetryDetails.Location = New-Object System.Drawing.Point(-4, -4)
 $tooltip.SetToolTip($tabTelemetryDetails, "Switch between active wake timers and armed hardware devices.")
 
@@ -2120,13 +2278,13 @@ $tabPageArmed.BackColor = [System.Drawing.SystemColors]::Control
 [void]$tabTelemetryDetails.TabPages.Add($tabPageArmed)
 $tabTelemetryPanel.Controls.Add($tabTelemetryDetails)
 
-# Custom header buttons at Y = 120
+# Custom header buttons at Y = 136
 $btnTelemetryTabTimers = New-Object System.Windows.Forms.Button
 $btnTelemetryTabTimers.Name = "btnTelemetryTabTimers"
 $btnTelemetryTabTimers.Text = "Wake Timers"
 $btnTelemetryTabTimers.Font = $boldFont
 $btnTelemetryTabTimers.Size = New-Object System.Drawing.Size(90, 22)
-$btnTelemetryTabTimers.Location = New-Object System.Drawing.Point(15, 120)
+$btnTelemetryTabTimers.Location = New-Object System.Drawing.Point(15, 136)
 $btnTelemetryTabTimers.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnTelemetryTabTimers.FlatAppearance.BorderSize = 0
 $btnTelemetryTabTimers.BackColor = [System.Drawing.SystemColors]::Control
@@ -2139,32 +2297,32 @@ $tooltip.SetToolTip($btnTelemetryTabTimers, "View active wake timers that can wa
 $btnTelemetryTabArmed = New-Object System.Windows.Forms.Button
 $btnTelemetryTabArmed.Name = "btnTelemetryTabArmed"
 $btnTelemetryTabArmed.Text = "Armed Devices"
-$btnTelemetryTabArmed.Font = $font
+$btnTelemetryTabArmed.Font = $boldFont
 $btnTelemetryTabArmed.Size = New-Object System.Drawing.Size(115, 22)
-$btnTelemetryTabArmed.Location = New-Object System.Drawing.Point(110, 120)
+$btnTelemetryTabArmed.Location = New-Object System.Drawing.Point(110, 136)
 $btnTelemetryTabArmed.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnTelemetryTabArmed.FlatAppearance.BorderSize = 0
 $btnTelemetryTabArmed.BackColor = [System.Drawing.SystemColors]::Control
-$btnTelemetryTabArmed.ForeColor = [System.Drawing.Color]::DimGray
+$btnTelemetryTabArmed.ForeColor = [System.Drawing.SystemColors]::ControlText
 $btnTelemetryTabArmed.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
 $grpTelemetry.Controls.Add($btnTelemetryTabArmed)
 $script:btnTelemetryTabArmed = $btnTelemetryTabArmed
 $tooltip.SetToolTip($btnTelemetryTabArmed, "View hardware devices configured to wake the system from sleep.")
 
-# Telemetry underline indicator Y = 142
+# Telemetry underline indicator Y = 158
 $telemetryTabIndicator = New-Object System.Windows.Forms.Label
 $telemetryTabIndicator.Name = "telemetryTabIndicator"
 $telemetryTabIndicator.Size = New-Object System.Drawing.Size(90, 2)
-$telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 142)
+$telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 158)
 $telemetryTabIndicator.BackColor = $BrandPurple
 $grpTelemetry.Controls.Add($telemetryTabIndicator)
 $script:telemetryTabIndicator = $telemetryTabIndicator
 
-# Telemetry sub-separator line under the sub-tab buttons (mirroring subSep)
+# Telemetry sub-separator line under the sub-tab buttons (mirroring subSep) Y = 164
 $telemetrySubSep = New-Object System.Windows.Forms.Label
 $telemetrySubSep.Name = "telemetrySubSep"
 $telemetrySubSep.Size = New-Object System.Drawing.Size(330, 2)
-$telemetrySubSep.Location = New-Object System.Drawing.Point(15, 148)
+$telemetrySubSep.Location = New-Object System.Drawing.Point(15, 164)
 $telemetrySubSep.BackColor = $BrandCyan
 $grpTelemetry.Controls.Add($telemetrySubSep)
 $script:telemetrySubSep = $telemetrySubSep
@@ -2175,7 +2333,7 @@ $txtWakeTimers.Name = "txtWakeTimers"
 $txtWakeTimers.Multiline = $true
 $txtWakeTimers.ScrollBars = "Vertical"
 $txtWakeTimers.ReadOnly = $true
-$txtWakeTimers.Size = New-Object System.Drawing.Size(298, 48)
+$txtWakeTimers.Size = New-Object System.Drawing.Size(298, 46)
 $txtWakeTimers.Location = New-Object System.Drawing.Point(4, 4)
 $txtWakeTimers.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $tabPageTimers.Controls.Add($txtWakeTimers)
@@ -2183,7 +2341,7 @@ $script:txtWakeTimers = $txtWakeTimers
 $tooltip.SetToolTip($txtWakeTimers, "Lists active system wake timers that can wake the PC from sleep automatically.")
 
 $listArmedDevices = New-Object System.Windows.Forms.ListBox
-$listArmedDevices.Size = New-Object System.Drawing.Size(298, 48)
+$listArmedDevices.Size = New-Object System.Drawing.Size(298, 46)
 $listArmedDevices.Location = New-Object System.Drawing.Point(4, 4)
 $listArmedDevices.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $listArmedDevices.DrawMode = [System.Windows.Forms.DrawMode]::OwnerDrawFixed
@@ -2251,6 +2409,7 @@ function Reset-MainFormChildControls {
     foreach ($ctrl in $container.Controls) {
         if ($ctrl -isnot [System.Windows.Forms.GroupBox] -and
             $ctrl.Name -ne "statusBox" -and $ctrl.Name -ne "txtLiveLog" -and
+            $ctrl.Name -ne "txtLastWake" -and
             $ctrl.Name -ne "btnSubTabTools" -and $ctrl.Name -ne "btnSubTabLive" -and
             $ctrl.Name -ne "advancedTabIndicator" -and
             $ctrl.Name -ne "btnTelemetryTabTimers" -and $ctrl.Name -ne "btnTelemetryTabArmed" -and

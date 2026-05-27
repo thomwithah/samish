@@ -406,7 +406,9 @@ $script:PowerPlanBackupPath = Join-Path $InstallDir "powerplan_backup.json"
 $RuntimeFiles = @(
     "SAMISH.ps1",
     "SAMISH-HiddenTask.xml",
-    "SAMISH-InteractiveTask.xml"
+    "SAMISH-InteractiveTask.xml",
+    "Configure-CustomProfile.ps1",
+    "Configure-CustomProfile.bat"
 )
 
 # ---------- Core helpers ----------
@@ -1121,11 +1123,11 @@ $script:ProfilesEnabled = @("BEACN")
 $script:ProfileMetaById = @{}
 
 function Get-ProfileDirectoryForSetup {
-    $installed = Join-Path $InstallDir "Profiles"
-    if (Test-Path -LiteralPath $installed) { return $installed }
-
     $pkg = Join-Path $PackageDir "Profiles"
     if (Test-Path -LiteralPath $pkg) { return $pkg }
+
+    $installed = Join-Path $InstallDir "Profiles"
+    if (Test-Path -LiteralPath $installed) { return $installed }
 
     return $null
 }
@@ -1155,7 +1157,13 @@ function Get-AvailableProfiles {
         catch {}
     }
 
-    return $profiles
+    $order = @("BEACN", "Voicemeeter", "GoXLR", "WaveLink", "Custom", "DEMO")
+    $sortedProfiles = $profiles | Sort-Object {
+        $idx = $order.IndexOf($_.Id)
+        if ($idx -lt 0) { 0.5 } else { $idx }
+    }
+
+    return @($sortedProfiles)
 }
 
 function Load-ProfileSelectionFromConfigIntoSetup {

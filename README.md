@@ -31,9 +31,9 @@ Version: 1.2.3
 If BEACN is preventing your PC from sleeping properly or behaving incorrectly after sleep, run SAMISH in Hidden mode and click Install.
 
 SAMISH will:
-- Ensure your system can sleep correctly
-- Reduce common sleep-related issues caused by audio interface software
-- Keep your setup stable without needing ongoing interaction
+- Help ensure your system can sleep correctly
+- Help reduce common sleep-related issues caused by audio interface software
+- Help keep your setup stable without needing ongoing interaction
 - Help reduce cases where BEACN fails to recover after sleep
 
 Most users never need to open it again after setup.
@@ -68,17 +68,15 @@ Some streaming audio device software can unintentionally interfere with normal W
 
 SAMISH helps restore normal sleep behavior by coordinating how Windows transitions into and out of idle states.
 
-SAMISH is currently tested and confirmed working with BEACN software. Support for additional audio interfaces and their software will be expanded in future releases.
-
-If you are using BEACN and experiencing sleep-related issues, SAMISH provides a simple fix.
+SAMISH currently supports **BEACN** software out of the box, and includes new, beta-state support (actively seeking user feedback) for **Voicemeeter**, **GoXLR**, and **Elgato Wave Link** software, with options to define custom profiles for any arbitrary audio control interface.
 
 ---
 
 ## What it does
 
-- Reduce common sleep-related issues caused by audio interface software
-- Help reduce cases where BEACN or other audio interfaces fails to recover after sleep
-- Helps ensure a stable runtime environment so audio software behaves more consistently when returning from sleep
+- Helps reduce common sleep-related issues caused by audio interface software
+- Helps ensure audio mixers, interfaces, and control panels recover and restart cleanly after sleep or hibernation
+- Helps maintain a stable runtime environment so audio routing behaves consistently upon wake
 - Runs via Windows Task Scheduler so it operates silently in the background
 
 ---
@@ -87,10 +85,10 @@ If you are using BEACN and experiencing sleep-related issues, SAMISH provides a 
 
 Keep these files and folders together in the same directory:
 - Assets/
-- GUIstuff/
 - Modules/
 - Profiles/
-- Workspace/
+- Configure-CustomProfile.bat
+- Configure-CustomProfile.ps1
 - Install-SAMISH-Hidden.bat
 - Install-SAMISH-Interactive.bat
 - Uninstall-SAMISH.bat
@@ -101,7 +99,7 @@ Keep these files and folders together in the same directory:
 - SAMISH-InteractiveTask.xml
 - README.txt
 - README.md
-- SAMISH.exe (compiled version of SAMISH.ps1; requires same folder structure with Assets/, Modules/, Profiles/ etc.)
+- Setup.exe
 - LICENSE
 - COMMERCIAL-LICENSE.md
 
@@ -191,13 +189,42 @@ Created by thomwithah
 
 ---
 
-## Roadmap (light touch)
+## Device Profiles Setup Guide
 
-SAMISH is designed to become device-agnostic over time.
+SAMISH includes out-of-the-box support for the most popular streaming and audio control software. Here is how each profile operates:
 
-Support currently exists for BEACN software, with additional audio interface ecosystems planned for future releases.
+### 1. BEACN (All Devices)
+* **How it blocks sleep**: The BEACN App registers Windows power requests that prevent the system from entering idle sleep.
+* **SAMISH Adapter Actions**: 
+  * Automatically closes the BEACN app before sleep (Graceful close is recommended to save configurations).
+  * Automatically restarts the BEACN app on wake, restoring your mixer states and interface routing cleanly.
+* **Setup**: Select **BEACN** under *Device Settings*, choose **Graceful** mode, and click **Install / Update**.
+
+### 2. Voicemeeter (Potato / Banana / Standard) (Beta - Seeking Feedback)
+* **How it blocks sleep**: Voicemeeter keeps audio engine loops active, which Windows can interpret as active playback even when no music is playing.
+* **SAMISH Adapter Actions**:
+  * Helps release active locks by restarting the Voicemeeter audio engine before sleep, or gracefully closes/reopens Voicemeeter if requested.
+* **Setup**: Select **Voicemeeter (Potato/Banana)** under *Device Settings*, and click **Install / Update**.
+
+### 3. GoXLR App (Beta - Seeking Feedback)
+* **How it blocks sleep**: The TC-Helicon GoXLR App keeps hardware USB channels open and actively locked. If the computer forces sleep, the GoXLR hardware often gets disconnected, causing profile or routing loss on wake.
+* **SAMISH Adapter Actions**:
+  * Helps store active profiles by gracefully closing the GoXLR App before sleep.
+  * Helps reload your profile cleanly by restarting the GoXLR App on wake and resetting the USB bus state.
+* **Setup**: Select **GoXLR App** under *Device Settings*, and click **Install / Update**.
+
+### 4. Elgato Wave Link (Beta - Seeking Feedback)
+* **How it blocks sleep**: Wave Link keeps virtual audio cables open, which prevents the computer from sleeping when the app is running in the background.
+* **SAMISH Adapter Actions**:
+  * Gracefully shuts down the Wave Link server before sleep to release virtual cable locks.
+  * Restarts the Wave Link background service and user interface on wake to restore routing.
+* **Setup**: Select **Elgato Wave Link** under *Device Settings*, and click **Install / Update**.
+
+### 5. Custom / Developer Profiles
+* **Adding your own**: You can define custom behavior for any software by running the included `Configure-CustomProfile.bat` or editing/creating a `.json` profile inside the `Profiles` directory and writing a corresponding adapter script in `Modules\Adapters\`.
 
 ---
+
 ## Sleep & Hibernate Diagnostics Tool
 
 **What it does** – Scans running processes, services, and drivers to pinpoint the exact application or component that blocks Windows from entering sleep or hibernate. It reports the offending process name, PID, and the power‑request type (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
@@ -206,5 +233,8 @@ Support currently exists for BEACN software, with additional audio interface eco
 
 **Limitations** – Relies on Windows power‑reporting APIs; low‑level driver bugs that do not expose a wake source may be missed.
 
-**Future roadmap** – Planned adapters for Elgato, GoXLR, and other popular mixers will integrate directly with this diagnostics engine. The **Demo‑Only** adapter demonstrates how developers can add new device adapters with minimal code.
 ---
+
+## Roadmap
+
+SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **Demo‑Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.

@@ -8,6 +8,37 @@
 # Temporarily bypass execution policy for the current process to ensure dot-sourced modules can load (crucial for PS2EXE compiled EXEs)
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
 
+# Ensure WinForms assembly is loaded for the power state form type definition
+Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+
+# ---------- POWER STATE INTERCEPTOR TYPE ----------
+$PowerTypeSig = @"
+using System;
+using System.Windows.Forms;
+
+public class PowerEventArgs : EventArgs {
+    public int EventType { get; set; }
+    public PowerEventArgs(int eventType) {
+        this.EventType = eventType;
+    }
+}
+
+public class PowerNotificationForm : Form {
+    public event EventHandler<PowerEventArgs> PowerEventOccurred;
+
+    protected override void WndProc(ref Message m) {
+        if (m.Msg == 0x0218) { // WM_POWERBROADCAST
+            int wp = m.WParam.ToInt32();
+            if (PowerEventOccurred != null) {
+                PowerEventOccurred(this, new PowerEventArgs(wp));
+            }
+        }
+        base.WndProc(ref m);
+    }
+}
+"@
+Add-Type -TypeDefinition $PowerTypeSig -ReferencedAssemblies "System.Windows.Forms" -ErrorAction SilentlyContinue
+
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
 $ScriptVersion = "v1.2.3"
@@ -1233,10 +1264,48 @@ public static class KeyState {
     $lastRefresh = Get-Date "2000-01-01"
     $activeScheme = $null
     $killThresholdSeconds = $null
-    $mixerStopped = $false
-    $mixerStoppedAt = $null
-    $stopLatchedThisIdleStretch = $false
+    $script:mixerStopped = $false
+    $script:mixerStoppedAt = $null
+    $script:stopLatchedThisIdleStretch = $false
     $script:LastBlockerLogTime = $null
+
+    # ---------- INITIALIZE POWER STATE INTERCEPTOR ----------
+    try {
+        Log-Always "Initializing Power State Interceptor (WM_POWERBROADCAST)..."
+        $script:PowerForm = New-Object PowerNotificationForm
+        # Accessing the handle forces creation of the window and its handle
+        $null = $script:PowerForm.Handle
+        
+        $script:PowerFormEventJob = Register-ObjectEvent -InputObject $script:PowerForm -EventName "PowerEventOccurred" -Action {
+            $eventType = $EventArgs.EventType
+            # $eventType: 4 = PBT_APMSUSPEND, 18 = PBT_APMRESUMEAUTOMATIC, 7 = PBT_APMRESUMESUSPEND
+            if ($eventType -eq 4) {
+                Log-Always "[Power Event] WM_POWERBROADCAST: PBT_APMSUSPEND detected. Preemptively shutting down mixer."
+                Write-EventLogEntry -Message "System suspend detected via WM_POWERBROADCAST. Preemptively stopping mixer applications." -EntryType "Information" -EventId 202
+                if (Invoke-MixerStop) {
+                    $script:mixerStopped = $true
+                    $script:mixerStoppedAt = Get-Date
+                    $script:stopLatchedThisIdleStretch = $true
+                }
+            }
+            elseif ($eventType -eq 18 -or $eventType -eq 7) {
+                Log-Always "[Power Event] WM_POWERBROADCAST: System resume detected ($eventType). Instantly starting mixer."
+                Write-EventLogEntry -Message "System resume detected via WM_POWERBROADCAST. Instantly starting mixer applications." -EntryType "Information" -EventId 203
+                
+                # Reset idle latch state and set mixerStopped to true so start guard resolves correctly
+                $script:stopLatchedThisIdleStretch = $false
+                $script:mixerStopped = $true
+                $script:mixerStoppedAt = Get-Date "2000-01-01"
+                
+                if (Invoke-MixerStart) {
+                    $script:mixerStopped = $false
+                }
+            }
+        }
+        Log-Always "Power State Interceptor successfully registered."
+    } catch {
+        Log-Always "WARN: Failed to initialize Power State Interceptor: $_"
+    }
 
     $StartupMessage = "SAMISH engine starting.`nVersion: $ScriptVersion`nOperating Mode: $OperatingMode`nActive Profile: $script:ActiveProfileId`nHotkey Enabled: $EnableHotkey`nTray Enabled: $EnableTrayIcon"
     Write-EventLogEntry -Message $StartupMessage -EntryType "Information" -EventId 100
@@ -1282,7 +1351,7 @@ public static class KeyState {
         $idle = Get-IdleSeconds
         Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds"
 
-        if ($idle -le 1) { $stopLatchedThisIdleStretch = $false }
+        if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
 
         if (-not $killThresholdSeconds) {
             Start-Sleep -Milliseconds 100
@@ -1290,7 +1359,7 @@ public static class KeyState {
         }
 
         $blockerActive = $false
-        if (-not $stopLatchedThisIdleStretch -and $idle -ge ($killThresholdSeconds - $ToleranceSeconds)) {
+        if (-not $script:stopLatchedThisIdleStretch -and $idle -ge ($killThresholdSeconds - $ToleranceSeconds)) {
             $blockers = Test-ActiveSleepBlockerExists
             if ($blockers) {
                 $blockerActive = $true
@@ -1306,19 +1375,19 @@ public static class KeyState {
                 }
             } else {
                 if (Invoke-MixerStop) {
-                    $mixerStopped = $true
-                    $mixerStoppedAt = Get-Date
+                    $script:mixerStopped = $true
+                    $script:mixerStoppedAt = Get-Date
                     Write-EventLogEntry -Message "Mixer applications stopped successfully due to system idle." -EntryType "Information" -EventId 200
                 }
-                $stopLatchedThisIdleStretch = $true
+                $script:stopLatchedThisIdleStretch = $true
             }
         }
 
-        if ($mixerStopped -and $idle -le $RestartWhenIdleLE) {
-            $elapsed = if ($mixerStoppedAt) { ((Get-Date) - $mixerStoppedAt).TotalSeconds } else { 9999 }
+        if ($script:mixerStopped -and $idle -le $RestartWhenIdleLE) {
+            $elapsed = if ($script:mixerStoppedAt) { ((Get-Date) - $script:mixerStoppedAt).TotalSeconds } else { 9999 }
             if ($elapsed -ge $RestartGuardSecondsAfterStop) {
                 if (Invoke-MixerStart) {
-                    $mixerStopped = $false
+                    $script:mixerStopped = $false
                     Write-EventLogEntry -Message "Mixer applications started successfully on system wake." -EntryType "Information" -EventId 201
                 }
             }
@@ -1326,7 +1395,7 @@ public static class KeyState {
 
         # Dynamic sleep throttle calculation
         $sleepMs = 100
-        if (-not $mixerStopped -and $killThresholdSeconds) {
+        if (-not $script:mixerStopped -and $killThresholdSeconds) {
             $threshold = $killThresholdSeconds - $ToleranceSeconds
             $timeToThreshold = $threshold - $idle
 
@@ -1351,9 +1420,7 @@ public static class KeyState {
         # even when the main loop interval is several seconds.
         $sleptMs = 0
         while ($sleptMs -lt $sleepMs) {
-            if ($EnableTrayIcon) {
-                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
-            }
+            try { [System.Windows.Forms.Application]::DoEvents() } catch {}
 
             if ($script:ExitRequested -or $script:TrayEnabled -eq $false) {
                 break
@@ -1375,6 +1442,15 @@ public static class KeyState {
 }
 finally {
     Write-EventLogEntry -Message "SAMISH engine shutdown." -EntryType "Information" -EventId 101
+    if ($null -ne $script:PowerFormEventJob) {
+        try { Unregister-Event -SourceIdentifier $script:PowerFormEventJob.SourceIdentifier -ErrorAction SilentlyContinue } catch {}
+    }
+    if ($null -ne $script:PowerForm) {
+        try {
+            $script:PowerForm.Close()
+            $script:PowerForm.Dispose()
+        } catch {}
+    }
     if ($null -ne $script:icon) {
         try {
             $script:icon.Visible = $false

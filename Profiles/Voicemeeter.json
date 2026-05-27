@@ -1,0 +1,16 @@
+{
+  "id": "Voicemeeter",
+  "displayName": "Voicemeeter (Potato/Banana) [Beta]",
+  "targets": [
+    {
+      "processName": "voicemeeter8x64",
+      "defaultExePath": "C:\\Program Files (x86)\\VB\\Voicemeeter\\voicemeeter8x64.exe",
+      "supportsGraceful": true,
+      "supportsClassic": true
+    }
+  ],
+  "defaults": {
+    "GracefulWindowWakeDelayMs": 1500,
+    "GracefulShutdownWaitMs": 1500
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "GoXLR",
+  "displayName": "GoXLR App [Beta]",
+  "targets": [
+    {
+      "processName": "GoXLR App",
+      "defaultExePath": "C:\\Program Files\\TC-Helicon\\GoXLR\\GoXLR App.exe",
+      "supportsGraceful": true,
+      "supportsClassic": true
+    }
+  ],
+  "defaults": {
+    "GracefulWindowWakeDelayMs": 1000,
+    "GracefulShutdownWaitMs": 1000
+  }
+}

@@ -404,6 +404,127 @@ function Get-SystemPowerDiagnostics {
         }
     }
 
+    # 2.5 Historical Sleep/Wake cycles (Kernel-Power Event Logs)
+    $historyList = @()
+    try {
+        $events = Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName=@('Microsoft-Windows-Kernel-Power', 'Microsoft-Windows-Power-Troubleshooter'); Id=@(1,42)} -MaxEvents 100 -ErrorAction SilentlyContinue
+        if ($events) {
+            # Sort events descending (newest first)
+            $events = @($events) | Sort-Object TimeCreated -Descending
+            
+            $i = 0
+            while ($i -lt $events.Count) {
+                $e = $events[$i]
+                if ($e.Id -eq 1) {
+                    $wakeTime = $e.TimeCreated
+                    
+                    # Parse Wake Source friendly text
+                    $wakeSource = "Unknown"
+                    try {
+                        $xml = [xml]$e.ToXml()
+
+                        # 1. Try WakeSourceText (most descriptive — e.g. device name or timer owner)
+                        $sourceNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='WakeSourceText']")
+                        if ($sourceNode -and -not [string]::IsNullOrEmpty($sourceNode.InnerText.Trim())) {
+                            $wakeSource = $sourceNode.InnerText.Trim()
+                        }
+
+                        # 2. Try WakeTimerOwner (set when a scheduled task or app triggered the wake)
+                        if ([string]::IsNullOrEmpty($wakeSource) -or $wakeSource -eq "Unknown") {
+                            $timerOwnerNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='WakeTimerOwner']")
+                            $timerContextNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='WakeTimerContext']")
+                            $ownerText = if ($timerOwnerNode) { $timerOwnerNode.InnerText.Trim() } else { "" }
+                            $contextText = if ($timerContextNode) { $timerContextNode.InnerText.Trim() } else { "" }
+                            if (-not [string]::IsNullOrEmpty($ownerText)) {
+                                $wakeSource = if (-not [string]::IsNullOrEmpty($contextText)) {
+                                    "Wake Timer: $ownerText ($contextText)"
+                                } else {
+                                    "Wake Timer: $ownerText"
+                                }
+                            }
+                        }
+
+                        # 3. Try WakeSourceType numeric code (hardware device types)
+                        if ([string]::IsNullOrEmpty($wakeSource) -or $wakeSource -eq "Unknown") {
+                            $typeNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='WakeSourceType']")
+                            if ($typeNode) {
+                                $wakeSource = switch ($typeNode.InnerText.Trim()) {
+                                    "1" { "Power Button" }
+                                    "2" { "Sleep Timer" }
+                                    "3" { "Screen Input / Lid" }
+                                    "4" { "Hardware Device" }
+                                    "5" { "Wake Timer" }
+                                    "6" { "RTC Alarm" }
+                                    "7" { "Battery / Charge" }
+                                    default { "" }  # fall through to state-based decoding
+                                }
+                            }
+                        }
+
+                        # 4. Decode EffectiveState / TargetState and HiberPagesWritten for friendly fallback
+                        if ([string]::IsNullOrEmpty($wakeSource) -or $wakeSource -eq "Unknown") {
+                            $effectiveStateNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='EffectiveState']")
+                            $targetStateNode    = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='TargetState']")
+                            $hiberPagesNode     = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='HiberPagesWritten']")
+
+                            $effectiveState = if ($effectiveStateNode) { [int]$effectiveStateNode.InnerText } else { -1 }
+                            $targetState    = if ($targetStateNode)    { [int]$targetStateNode.InnerText }    else { -1 }
+                            $hiberPages     = if ($hiberPagesNode)     { [int64]$hiberPagesNode.InnerText }   else { 0 }
+
+                            # EffectiveState/TargetState: 0=S0(Working), 1=S1, 2=S2, 3=S3(Sleep), 4=S4(Hibernate), 5=S5(Off)
+                            # HiberPagesWritten > 0 is the strongest signal of a real hibernate cycle
+                            if ($hiberPages -gt 0 -or $effectiveState -eq 4 -or $targetState -eq 4) {
+                                $wakeSource = "Resume from Hibernate"
+                            } elseif ($effectiveState -eq 3 -or $targetState -eq 3) {
+                                $wakeSource = "Resume from Sleep (S3)"
+                            } elseif ($effectiveState -eq 1 -or $effectiveState -eq 2) {
+                                $wakeSource = "Resume from Light Sleep (S$effectiveState)"
+                            } elseif ($effectiveState -eq 0) {
+                                $wakeSource = "Fast Resume (Connected Standby)"
+                            } else {
+                                $wakeSource = "Resume (source not logged)"
+                            }
+                        }
+                    } catch {
+                        $wakeSource = "Unknown (parse error)"
+                    }
+                    
+                    $sleepTime = $null
+                    $durationStr = "N/A"
+                    
+                    # Find the next oldest Sleep event (Event 42)
+                    $j = $i + 1
+                    while ($j -lt $events.Count) {
+                        if ($events[$j].Id -eq 42) {
+                            $sleepTime = $events[$j].TimeCreated
+                            $i = $j # Skip past this sleep event in outer loop
+                            break
+                        }
+                        $j++
+                    }
+                    
+                    if ($sleepTime) {
+                        $diff = $wakeTime - $sleepTime
+                        $durationStr = "{0:d2}:{1:d2}:{2:d2}" -f $diff.Hours, $diff.Minutes, $diff.Seconds
+                        if ($diff.Days -gt 0) {
+                            $durationStr = "{0}d " -f $diff.Days + $durationStr
+                        }
+                    }
+                    
+                    $historyList += [pscustomobject]@{
+                        SleepTime   = if ($sleepTime) { $sleepTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "Unknown" }
+                        WakeTime    = $wakeTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        Duration    = $durationStr
+                        WakeSource  = $wakeSource
+                    }
+                    
+                    if ($historyList.Count -ge 5) { break }
+                }
+                $i++
+            }
+        }
+    } catch {}
+
     # 3. Armed Wake Devices
     $armedDevicesLines = powercfg /devicequery wake_armed 2>$null
     $armedDevices = @()
@@ -437,5 +558,6 @@ function Get-SystemPowerDiagnostics {
         LastWake = $lastWake
         ArmedDevices = $armedDevices
         WakeTimers = $wakeTimers
+        SleepHistory = $historyList
     }
 }
