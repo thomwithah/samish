@@ -151,10 +151,12 @@ function global:Run-TakeoverAnimation {
         $g = $e.Graphics
         $g.Clear($s.FlashColor)
         if ($null -ne $s.LogoImage -and $s.LogoSize -gt 0) {
-            $sz = [int]$s.LogoSize
-            $x  = [int](($sender.Width  - $sz) / 2)
-            $y  = [int](($sender.Height - $sz) / 2)
-            $g.DrawImage($s.LogoImage, $x, $y, $sz, $sz)
+            try {
+                $sz = [int]$s.LogoSize
+                $x  = [int](($sender.Width  - $sz) / 2)
+                $y  = [int](($sender.Height - $sz) / 2)
+                $g.DrawImage($s.LogoImage, $x, $y, $sz, $sz)
+            } catch {}
         }
     })
 
@@ -295,7 +297,12 @@ function global:Run-TakeoverAnimation {
                     }
 
                     # Dispose the logo image now that we're done with the overlay
-                    try { if ($state.LogoImage) { $state.LogoImage.Dispose() } } catch {}
+                    try {
+                        if ($state.LogoImage) {
+                            $state.LogoImage.Dispose()
+                            $state.LogoImage = $null
+                        }
+                    } catch {}
 
                     Run-DropAnimation -Form $state.Form -FadeForm $state.FadeForm -Reverting $state.Reverting
                 }
@@ -304,7 +311,12 @@ function global:Run-TakeoverAnimation {
             Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Takeover Error: $($_.Exception.ToString())" -Append
             try { $sender.Stop() } catch {}
             try { if ($state -and $state.FadeForm -and -not $state.FadeForm.IsDisposed) { $state.FadeForm.Close(); $state.FadeForm.Dispose() } } catch {}
-            try { if ($state -and $state.LogoImage) { $state.LogoImage.Dispose() } } catch {}
+            try {
+                if ($state -and $state.LogoImage) {
+                    $state.LogoImage.Dispose()
+                    $state.LogoImage = $null
+                }
+            } catch {}
             $global:IsThemeAnimating = $false
         }
     }

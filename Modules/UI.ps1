@@ -93,7 +93,7 @@ $script:BrandCyan = $BrandCyan
 $script:MonitoredApps = @()
 
 $form = New-Object System.Windows.Forms.Form
-$form.DoubleBuffered = $true
+$form.GetType().GetProperty("DoubleBuffered", [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic).SetValue($form, $true, $null)
 $form.Text = "$ProductName - Setup"
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
