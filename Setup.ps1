@@ -1,4 +1,4 @@
-# ==========================================
+﻿# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
 # Version: 1.2.3
@@ -349,7 +349,7 @@ $tooltip = New-Object System.Windows.Forms.ToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.2.4"
+$ProductVersion = "v1.2.5"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -960,7 +960,7 @@ function Enter-LiveLogMode {
     $script:SavedStatusFore = $statusBox.ForeColor
     $script:SavedStatusFont = $statusBox.Font
 
-    # Dark â€œliveâ€ theme
+    # Dark Ã¢â‚¬Å“liveÃ¢â‚¬Â theme
     $statusBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
     $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
     if (-not $script:LiveLogFont) {
@@ -1698,7 +1698,7 @@ function Build-DiagnosticsHeader {
         $lines += "Tray Icon: " + ($(if ([bool]$cfg.EnableTrayIcon) { "Enabled" } else { "Disabled" }))
     }
 
-    # âœ… Startup shortcut (Scheduled-task-only for Interactive)
+    # Ã¢Å“â€¦ Startup shortcut (Scheduled-task-only for Interactive)
     if (-not $installed) {
         $lines += "Startup shortcut: Not Installed"
     }
@@ -1723,7 +1723,7 @@ function Build-DiagnosticsHeader {
     }
 
 
-    # âœ… Tasks â€” NO "Missing"
+    # Ã¢Å“â€¦ Tasks Ã¢â‚¬â€ NO "Missing"
     if (-not $installed) {
         $lines += "Task (Hidden): Not Installed"
         $lines += "Task (Interactive): Not Installed"

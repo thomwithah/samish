@@ -1,6 +1,6 @@
-SAMISH (Streaming Audio Mixer Interface Sleep Helper)
+﻿SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 Created by thomwithah
-Version: 1.2.4
+Version: 1.2.5
 
 A lightweight helper that helps restore normal Windows sleep behavior for streaming audio hardware.
 
@@ -17,7 +17,7 @@ Quick start (for BEACN users):
 - Click Install / Update
 - Accept the Power Plan fix if prompted
 
-That’s it. SAMISH will run silently in the background.
+Thatâ€™s it. SAMISH will run silently in the background.
 
 For full documentation, see README.md
 
@@ -28,17 +28,17 @@ Uninstall:
 ## Sleep & Hibernate Diagnostics Tool ##
 
 **What it does** 
-    – Scans running processes, services, and drivers to identify exactly which application or component is preventing Windows from entering sleep or hibernate. 
-    – It reports the offending process name, PID, and the type of power‑request (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
+    â€“ Scans running processes, services, and drivers to identify exactly which application or component is preventing Windows from entering sleep or hibernate. 
+    â€“ It reports the offending process name, PID, and the type of powerâ€‘request (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
 
 **Why it matters** 
-    – Audio‑mixing programs such as **Wave Control**, **Elgato Wave Link**, **GoXLR**, **Voicemeeter** and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** often hold a wake‑lock, keeping the PC awake even after the app is closed. 
-    – The diagnostics tool lets you pinpoint those culprits so you can close or re‑configure them, adjust the power plan, or let SAMISH’s device‑adapter help clear the lock.
+    â€“ Audioâ€‘mixing programs such as **Waveâ€¯Control**, **Elgatoâ€¯Waveâ€¯Link**, **GoXLR**, **Voicemeeter** and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** often hold a wakeâ€‘lock, keeping the PC awake even after the app is closed. 
+    â€“ The diagnostics tool lets you pinpoint those culprits so you can close or reâ€‘configure them, adjust the power plan, or let SAMISHâ€™s deviceâ€‘adapter help clear the lock.
 
 **Limitations** 
-    – Relies on Windows power‑reporting APIs; low‑level driver bugs that do not expose a wake source may be missed.
+    â€“ Relies on Windows powerâ€‘reporting APIs; lowâ€‘level driver bugs that do not expose a wake source may be missed.
 **Roadmap** 
-    – SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock Demo-Only adapter and drop new .json configurations into the Profiles/ folder.
+    â€“ SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock Demo-Only adapter and drop new .json configurations into the Profiles/ folder.
 
 For commercial licensing inquiries:
 https://forms.gle/BYfxQqKgUpYfiyUo8

@@ -1,4 +1,4 @@
-# ---------- UI ----------
+﻿# ---------- UI ----------
 $script:MainFormGdiResources = New-Object System.Collections.Generic.List[System.IDisposable]
 
 # ---------- TOOLTIP WORD-WRAP HELPER ----------
@@ -105,7 +105,8 @@ $graphics = $form.CreateGraphics()
 $script:DpiScale = 1.0
 try {
     $script:DpiScale = $graphics.DpiX / 96.0
-} catch {}
+}
+catch {}
 $graphics.Dispose()
 
 $script:IsWindowExpanded = $false
@@ -116,21 +117,21 @@ $formIconPath = Join-Path $PackageDir "Assets\128x128.ico"
 if (Test-Path -LiteralPath $formIconPath) {
     try {
         $formIcon = New-Object System.Drawing.Icon($formIconPath)
-        $script:MainFormGdiResources.Add($formIcon)
+        [void]$script:MainFormGdiResources.Add($formIcon)
         $form.Icon = $formIcon
     }
     catch { }
 }
 
 $font = New-Object System.Drawing.Font("Segoe UI", 10)
-$script:MainFormGdiResources.Add($font)
+[void]$script:MainFormGdiResources.Add($font)
 $boldFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$script:MainFormGdiResources.Add($boldFont)
+[void]$script:MainFormGdiResources.Add($boldFont)
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = "$ProductName"
 $titleFont = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold)
-$script:MainFormGdiResources.Add($titleFont)
+[void]$script:MainFormGdiResources.Add($titleFont)
 $title.Font = $titleFont
 $title.ForeColor = $BrandPurple
 $title.AutoSize = $true
@@ -141,7 +142,7 @@ $subtitle = New-Object System.Windows.Forms.Label
 $subtitle.Name = "subtitle"
 $subtitle.Text = ""
 $subtitleFont = New-Object System.Drawing.Font("Segoe UI", 10)
-$script:MainFormGdiResources.Add($subtitleFont)
+[void]$script:MainFormGdiResources.Add($subtitleFont)
 $subtitle.Font = $subtitleFont
 $subtitle.ForeColor = $BrandCyan
 $subtitle.AutoSize = $false
@@ -150,47 +151,47 @@ $subtitle.UseMnemonic = $false
 $subtitle.Location = New-Object System.Drawing.Point(20, 60)
 
 $subtitle.add_Paint({
-    param($sender, $e)
-    $normalFont = $sender.Font
-    $boldFont = New-Object System.Drawing.Font($normalFont.FontFamily, $normalFont.Size, [System.Drawing.FontStyle]::Bold)
+        param($sender, $e)
+        $normalFont = $sender.Font
+        $boldFont = New-Object System.Drawing.Font($normalFont.FontFamily, $normalFont.Size, [System.Drawing.FontStyle]::Bold)
     
-    $words = @(
-        @{ Init = "S"; Rest = "treaming" },
-        @{ Init = "A"; Rest = "udio" },
-        @{ Init = "M"; Rest = "ixer" },
-        @{ Init = "I"; Rest = "nterface" },
-        @{ Init = "S"; Rest = "leep" },
-        @{ Init = "H"; Rest = "elper" }
-    )
+        $words = @(
+            @{ Init = "S"; Rest = "treaming" },
+            @{ Init = "A"; Rest = "udio" },
+            @{ Init = "M"; Rest = "ixer" },
+            @{ Init = "I"; Rest = "nterface" },
+            @{ Init = "S"; Rest = "leep" },
+            @{ Init = "H"; Rest = "elper" }
+        )
     
-    $brush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
-    $sf = [System.Drawing.StringFormat]::GenericTypographic
-    $x = 0.0
-    $y = 0.0
-    $spaceWidth = 5.0
+        $brush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
+        $sf = [System.Drawing.StringFormat]::GenericTypographic
+        $x = 0.0
+        $y = 0.0
+        $spaceWidth = 5.0
     
-    for ($i = 0; $i -lt $words.Count; $i++) {
-        $w = $words[$i]
+        for ($i = 0; $i -lt $words.Count; $i++) {
+            $w = $words[$i]
         
-        # Draw bold initial
-        $e.Graphics.DrawString($w.Init, $boldFont, $brush, $x, $y, $sf)
-        $initSize = $e.Graphics.MeasureString($w.Init, $boldFont, [System.Drawing.PointF]::Empty, $sf)
-        $x += $initSize.Width
+            # Draw bold initial
+            $e.Graphics.DrawString($w.Init, $boldFont, $brush, $x, $y, $sf)
+            $initSize = $e.Graphics.MeasureString($w.Init, $boldFont, [System.Drawing.PointF]::Empty, $sf)
+            $x += $initSize.Width
         
-        # Draw normal rest
-        $e.Graphics.DrawString($w.Rest, $normalFont, $brush, $x, $y, $sf)
-        $restSize = $e.Graphics.MeasureString($w.Rest, $normalFont, [System.Drawing.PointF]::Empty, $sf)
-        $x += $restSize.Width
+            # Draw normal rest
+            $e.Graphics.DrawString($w.Rest, $normalFont, $brush, $x, $y, $sf)
+            $restSize = $e.Graphics.MeasureString($w.Rest, $normalFont, [System.Drawing.PointF]::Empty, $sf)
+            $x += $restSize.Width
         
-        # Add space after word (except for the last word)
-        if ($i -lt $words.Count - 1) {
-            $x += $spaceWidth
+            # Add space after word (except for the last word)
+            if ($i -lt $words.Count - 1) {
+                $x += $spaceWidth
+            }
         }
-    }
     
-    $brush.Dispose()
-    $boldFont.Dispose()
-})
+        $brush.Dispose()
+        $boldFont.Dispose()
+    })
 
 $form.Controls.Add($subtitle)
 
@@ -203,7 +204,7 @@ $logoPath = Join-Path $PackageDir "Assets\SAMISH-SQUARE-STYLIZED.png"
 if (Test-Path -LiteralPath $logoPath) {
     $logoImg = Get-HighQualityScaledImage -Path $logoPath -Width 64 -Height 64
     if ($logoImg) {
-        $script:MainFormGdiResources.Add($logoImg)
+        [void]$script:MainFormGdiResources.Add($logoImg)
         $logo.Image = $logoImg
     }
 }
@@ -429,11 +430,13 @@ function Update-TestGroupState {
                 try {
                     if ($script:testDropdownFallback) {
                         $ctrl.Enabled = $shouldEnable
-                    } else {
+                    }
+                    else {
                         $ctrl.Enabled = $true
                         $script:testDropdownActive = $shouldEnable
                     }
-                } catch {
+                }
+                catch {
                     $script:testDropdownFallback = $true
                     try { $ctrl.Enabled = $shouldEnable } catch {}
                 }
@@ -441,16 +444,19 @@ function Update-TestGroupState {
                 if ($global:ThemeNeonActive) {
                     $ctrl.BackColor = if ($shouldEnable) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
                     $ctrl.ForeColor = if ($shouldEnable) { $global:NeonCyan } else { [System.Drawing.Color]::Gray }
-                } else {
+                }
+                else {
                     if ($shouldEnable) {
                         $ctrl.ResetBackColor()
                         $ctrl.ResetForeColor()
-                    } else {
+                    }
+                    else {
                         $ctrl.BackColor = [System.Drawing.SystemColors]::Control
                         $ctrl.ForeColor = [System.Drawing.SystemColors]::GrayText
                     }
                 }
-            } else {
+            }
+            else {
                 $ctrl.Enabled = $shouldEnable
             }
         }
@@ -687,13 +693,13 @@ $lblDetailsTitle = New-Object System.Windows.Forms.Label
 $lblDetailsTitle.Text = "Selected Profile:"
 $lblDetailsTitle.AutoSize = $true
 $lblDetailsTitleFont = New-Object System.Drawing.Font("Segoe UI", 8.25, [System.Drawing.FontStyle]::Bold)
-$script:MainFormGdiResources.Add($lblDetailsTitleFont)
+[void]$script:MainFormGdiResources.Add($lblDetailsTitleFont)
 $lblDetailsTitle.Font = $lblDetailsTitleFont
 $lblDetailsTitle.Location = New-Object System.Drawing.Point(0, 2)
 $detailsPanel.Controls.Add($lblDetailsTitle)
 
 $detailsFont = New-Object System.Drawing.Font("Segoe UI", 7.5)
-$script:MainFormGdiResources.Add($detailsFont)
+[void]$script:MainFormGdiResources.Add($detailsFont)
 
 $lblProc = New-Object System.Windows.Forms.Label
 $lblProc.Text = "Process: (unknown)"
@@ -821,7 +827,7 @@ function Build-ProfilesUI {
                     ) | Out-Null
                 })
 
-            # Active radio (single-target today) — all radios share same parent ($profilesPanel)
+            # Active radio (single-target today) â€” all radios share same parent ($profilesPanel)
             $rb = New-Object System.Windows.Forms.RadioButton
             $rb.Text = $p.DisplayName
             $rb.AutoSize = $true
@@ -935,7 +941,7 @@ $statusBox.WordWrap = $true
 $statusBox.BorderStyle = "FixedSingle"
 $statusBox.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 250)
 $statusBoxFont = New-Object System.Drawing.Font("Consolas", 9)
-$script:MainFormGdiResources.Add($statusBoxFont)
+[void]$script:MainFormGdiResources.Add($statusBoxFont)
 $statusBox.Font = $statusBoxFont
 $statusBox.Size = New-Object System.Drawing.Size(650, 110)
 $statusBox.Location = New-Object System.Drawing.Point(15, 30)
@@ -1024,9 +1030,9 @@ function Apply-UIFromConfigIfPresent {
         }
         else {
             if ($null -ne $cfg -and (
-                ($null -ne $cfg.EnableTrayIcon -and $cfg.EnableTrayIcon) -or
-                ($null -ne $cfg.EnableHotkey -and $cfg.EnableHotkey)
-            )) {
+                    ($null -ne $cfg.EnableTrayIcon -and $cfg.EnableTrayIcon) -or
+                    ($null -ne $cfg.EnableHotkey -and $cfg.EnableHotkey)
+                )) {
                 $rbInteractive.Checked = $true
             }
             else {
@@ -1149,7 +1155,8 @@ function Apply-UIFromConfigIfPresent {
         $ddLogInterval.Enabled = $cbLogging.Checked
         if ($cbLogging.Checked) {
             $tbLogCustom.Enabled = ($ddLogInterval.SelectedItem.ToString() -eq "Custom seconds...")
-        } else {
+        }
+        else {
             $tbLogCustom.Enabled = $false
         }
 
@@ -1404,7 +1411,7 @@ function Handle-PowerPlanPromptIfNeeded {
                 return Restore-PowerPlanFromBackup
             }
             else {
-                # ✅ Continue path (no dead-end)
+                # âœ… Continue path (no dead-end)
                 return Apply-PowerPlanFixWithBackup -PromptUser:$true -AutoMode:$AutoMode
             }
         }
@@ -1469,13 +1476,13 @@ $form.Controls.Add($pnlTabWrapper)
 $script:pnlTabWrapper = $pnlTabWrapper
 
 $pnlTabWrapper.add_Paint({
-    param($sender, $e)
-    if ($global:ThemeNeonActive) {
-        $pen = New-Object System.Drawing.Pen($global:NeonPurple, 1)
-        $e.Graphics.DrawRectangle($pen, 0, 0, $sender.Width - 1, $sender.Height - 1)
-        $pen.Dispose()
-    }
-})
+        param($sender, $e)
+        if ($global:ThemeNeonActive) {
+            $pen = New-Object System.Drawing.Pen($global:NeonPurple, 1)
+            $e.Graphics.DrawRectangle($pen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+            $pen.Dispose()
+        }
+    })
 
 # Create borderless TabControl (clipped inside wrapper panel)
 $tabControl = New-Object System.Windows.Forms.TabControl
@@ -1949,7 +1956,7 @@ $grpAutomated.Controls.Add($listAutomated)
 $script:listAutomated = $listAutomated
  
 $btnDiagStopAuto = New-Object System.Windows.Forms.Button
-$btnDiagStopAuto.Text = "Remove from Automation"
+$btnDiagStopAuto.Text = "Deactivate Automation"
 $btnDiagStopAuto.Font = $font
 $btnDiagStopAuto.Size = New-Object System.Drawing.Size(170, 32)
 $btnDiagStopAuto.Location = New-Object System.Drawing.Point(10, 159)
@@ -2046,24 +2053,26 @@ $tooltip.SetToolTip($ddOnWakeAction, "Choose what action SAMISH will perform whe
 # We keep ddOnWakeAction.Enabled=$true permanently so the OS never renders the
 # "disabled" chrome (which causes a thicker/lighter border in neon mode).
 # A flag + SelectionChangeCommitted hook guards against unintended interaction.
-$script:wakeDropdownActive   = $false   # true when an automated app is selected
+$script:wakeDropdownActive = $false   # true when an automated app is selected
 $script:wakeDropdownFallback = $false   # true if hook registration fails; reverts to Enabled toggling
 
 try {
     $ddOnWakeAction.add_SelectionChangeCommitted({
-        try {
-            if (-not $script:wakeDropdownActive) {
-                # Revert any selection made while the dropdown is logically inactive
-                $script:ddDiagOnWakeAction.SelectedIndex = 0
+            try {
+                if (-not $script:wakeDropdownActive) {
+                    # Revert any selection made while the dropdown is logically inactive
+                    $script:ddDiagOnWakeAction.SelectedIndex = 0
+                }
             }
-        } catch {
-            $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
-            Out-File -FilePath $errPath -Append `
-                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown revert error: $($_.Exception.Message)"
-            # Fail forward: selection stays changed but is harmless — next app-selection event resets it
-        }
-    })
-} catch {
+            catch {
+                $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+                Out-File -FilePath $errPath -Append `
+                    -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown revert error: $($_.Exception.Message)"
+                # Fail forward: selection stays changed but is harmless â€” next app-selection event resets it
+            }
+        })
+}
+catch {
     $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
     Out-File -FilePath $errPath -Append `
         -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown hook registration failed: $($_.Exception.Message)"
@@ -2108,12 +2117,12 @@ $grpAdvancedDiag.Size = New-Object System.Drawing.Size(360, 436)
 $grpAdvancedDiag.Location = New-Object System.Drawing.Point(790, 10)
 $grpAdvancedDiag.Visible = $false
 $grpAdvancedDiag.add_Paint({
-    param($sender, $e)
-    $color = if ($global:ThemeNeonActive) { $global:NeonBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
-    $brush = New-Object System.Drawing.SolidBrush($color)
-    $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)
-    $brush.Dispose()
-})
+        param($sender, $e)
+        $color = if ($global:ThemeNeonActive) { $global:NeonBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
+        $brush = New-Object System.Drawing.SolidBrush($color)
+        $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)
+        $brush.Dispose()
+    })
 $tabPage2.Controls.Add($grpAdvancedDiag)
 $script:grpAdvancedDiag = $grpAdvancedDiag
 
@@ -2138,26 +2147,28 @@ $script:ddTestTarget = $ddTestTarget
 $tooltip.SetToolTip($ddTestTarget, "Select which configured application or device profile driver to test.")
 
 # Operating Mode Tests dropdown interaction state
-$script:testDropdownActive   = $false
+$script:testDropdownActive = $false
 $script:testDropdownFallback = $false
 
 try {
     $ddTestTarget.add_SelectionChangeCommitted({
-        try {
-            if (-not $script:testDropdownActive) {
-                # Revert any selection made while the dropdown is logically inactive
-                $script:ddTestTarget.SelectedIndex = 0
+            try {
+                if (-not $script:testDropdownActive) {
+                    # Revert any selection made while the dropdown is logically inactive
+                    $script:ddTestTarget.SelectedIndex = 0
+                }
             }
-        } catch {
-            $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
-            Out-File -FilePath $errPath -Append `
-                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown revert error: $($_.Exception.Message)"
-        }
-    })
-} catch {
+            catch {
+                $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
+                Out-File -FilePath $errPath -Append `
+                    -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown revert error: $($_.Exception.Message)"
+            }
+        })
+}
+catch {
     $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
     Out-File -FilePath $errPath -Append `
-                -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown hook registration failed: $($_.Exception.Message)"
+        -InputObject "[$(Get-Date -Format 'HH:mm:ss')] TestDropdown hook registration failed: $($_.Exception.Message)"
     $script:testDropdownFallback = $true
     try { $ddTestTarget.Enabled = $false } catch {}
 }
@@ -2463,4 +2474,5 @@ else {
     $btnCleanReset.Enabled = $false
     $tooltip.SetToolTip($btnCleanReset, "SAMISH is not installed - clean reset unavailable.")
 }
+
 

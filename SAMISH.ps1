@@ -1,4 +1,4 @@
-# Suggested filename: SAMISH.ps1
+﻿# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -46,8 +46,8 @@ catch {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.2.4"
-$ReleaseDate   = "2026-05-26"
+$ScriptVersion = "v1.2.5"
+$ReleaseDate   = "2026-05-27"
 
 # ---------- PATH RESOLUTION ----------
 $PackageDir = $PSScriptRoot
@@ -75,7 +75,7 @@ function Apply-ConfigFromFile {
             }
         }
 
-        # ✅ Map OperatingMode -> OperatingMode (so engine behavior actually changes)
+        # âœ… Map OperatingMode -> OperatingMode (so engine behavior actually changes)
         if ($cfg.PSObject.Properties.Name -contains "OperatingMode") {
             if (Get-Variable -Name "OperatingMode" -Scope Script -ErrorAction SilentlyContinue) {
                 $script:OperatingMode = [string]$cfg.OperatingMode
@@ -1057,7 +1057,7 @@ public static class IdleNative {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "$ScriptName $ScriptVersion"
+        $script:icon.Text = "SAMISH v1.2.5"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         

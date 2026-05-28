@@ -1,11 +1,11 @@
-# SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-Created by thomwithah | Version: 1.2.4
+﻿# SAMISH (Streaming Audio Mixer Interface Sleep Helper)
+Created by thomwithah | Version: 1.2.5
 
 **Are you having trouble getting Windows to sleep or turn off your screens while your virtual audio mixer (BEACN, Voicemeeter, GoXLR, or Wave Link) is open?**
 
 SAMISH is a lightweight, open-source utility that solves persistent system sleep issues caused by hardware audio routers.
 
-> SAMISH helps your PC, well, act the "same(-ish)" by coaxing your mixer hardware’s software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
+> SAMISH helps your PC, well, act the "same(-ish)" by coaxing your mixer hardwareâ€™s software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
@@ -45,9 +45,9 @@ Most users never need to open it again after setup.
 
 ## Why SAMISH exists
 
-I ran into issues where BEACN was preventing my PC from sleeping properly and sometimes didn’t behave correctly after sleep.
+I ran into issues where BEACN was preventing my PC from sleeping properly and sometimes didnâ€™t behave correctly after sleep.
 
-I also saw other users reporting similar problems, especially cases where BEACN didn’t recover cleanly after sleep or hibernation.
+I also saw other users reporting similar problems, especially cases where BEACN didnâ€™t recover cleanly after sleep or hibernation.
 
 I built this, a small tool called SAMISH, to stabilize how Windows handles sleep around audio devices.
 
@@ -57,11 +57,11 @@ If you just want the simple fix:
 - Click Install / Update
 - Accept the power plan fix if prompted
 
-That’s it.
+Thatâ€™s it.
 
 It runs silently in the background and keeps things working.
 
-It doesn’t modify BEACN directly, but it removes the conditions that typically cause these problems and helps prevent the “doesn’t come back after sleep” issue.
+It doesnâ€™t modify BEACN directly, but it removes the conditions that typically cause these problems and helps prevent the â€œdoesnâ€™t come back after sleepâ€ issue.
 
 ---
 
@@ -230,14 +230,28 @@ SAMISH includes out-of-the-box support for the most popular streaming and audio 
 
 ## Sleep & Hibernate Diagnostics Tool
 
-**What it does** – Scans running processes, services, and drivers to pinpoint the exact application or component that blocks Windows from entering sleep or hibernate. It reports the offending process name, PID, and the power‑request type (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
+**What it does** â€“ Scans running processes, services, and drivers to pinpoint the exact application or component that blocks Windows from entering sleep or hibernate. It reports the offending process name, PID, and the powerâ€‘request type (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
 
-**Why it matters** – Streaming‑audio tools such as **Wave Control**, **Elgato Wave Link**, **GoXLR**, **Voicemeeter**, and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** can hold a wake‑lock, keeping the PC awake even after the app is closed. This tool helps you identify those culprits so you can close, re‑configure, or let SAMISH’s adapter automatically clear the lock.
+**Why it matters** â€“ Streamingâ€‘audio tools such as **Waveâ€¯Control**, **Elgatoâ€¯Waveâ€¯Link**, **GoXLR**, **Voicemeeter**, and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** can hold a wakeâ€‘lock, keeping the PC awake even after the app is closed. This tool helps you identify those culprits so you can close, reâ€‘configure, or let SAMISHâ€™s adapter automatically clear the lock.
 
-**Limitations** – Relies on Windows power‑reporting APIs; low‑level driver bugs that do not expose a wake source may be missed.
+**Limitations** â€“ Relies on Windows powerâ€‘reporting APIs; lowâ€‘level driver bugs that do not expose a wake source may be missed.
 
 ---
 
 ## Roadmap
 
-SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **Demo‑Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.
+SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **Demoâ€‘Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.
+
+---
+âš ï¸ Note on Installation & Windows SmartScreen
+Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the installer (SAMISH_Setup_v1.2.4.exe) does not currently have an expensive digital signature. As a result, Windows and your web browser will likely flag it as an "unrecognized app" until it builds up a download reputation.
+
+When downloading and installing, you can expect the following:
+
+Browser Warning: Chrome or Edge might say the file "is not commonly downloaded." You will need to click the options menu (three dots) and select Keep to finish the download.
+
+Windows SmartScreen: When you run the installer, Windows may show a blue "Windows protected your PC" screen. Click More info, then click Run anyway.
+
+User Account Control (UAC): SAMISH requires Administrator rights to help configure your Windows power profiles (so it can manage your screen sleep timers). You will see a standard Windows prompt asking to allow the app to make changes. Click Yes.
+
+Transparency is important to us! If you are ever uncomfortable bypassing these warnings, the complete, uncompiled PowerShell source code is always available in this repository for you to review and run manually.
