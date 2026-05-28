@@ -409,8 +409,10 @@ function global:Run-DropAnimation {
                 if ($state.Reverting) {
                     $global:ThemeNeonActive = $false
                     $global:OriginalControlStyles.Clear()
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsNeon $false }
                 } else {
                     $global:ThemeNeonActive = $true
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsNeon $true }
                 }
                 $global:IsThemeAnimating = $false
             }
@@ -615,4 +617,30 @@ function global:Set-BrandTheme {
     if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
         try { Update-TestGroupState } catch {}
     }
+}
+
+function global:Save-ThemePreference {
+    param([bool]$IsNeon)
+    try {
+        $cfgPath = $null
+        if ($global:PackageDir) {
+            $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+        } else {
+            $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+        }
+        
+        $cfg = @{}
+        if (Test-Path -LiteralPath $cfgPath) {
+            try { $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json } catch { $cfg = @{} }
+        } else {
+            $dir = Split-Path -Parent $cfgPath
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        }
+        
+        $themeVal = if ($IsNeon) { "Neon" } else { "Normal" }
+        $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $themeVal -Force
+        
+        $json = $cfg | ConvertTo-Json -Depth 6
+        Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8
+    } catch {}
 }

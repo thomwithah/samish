@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
 # Version: 1.2.3
@@ -848,6 +848,13 @@ function Write-ConfigJson {
         })
     }
 
+    $themeVal = "Normal"
+    if ($null -ne $global:ThemeNeonActive) {
+        $themeVal = if ($global:ThemeNeonActive) { "Neon" } else { "Normal" }
+    } elseif ($existing -and $existing.PSObject.Properties.Name -contains "Theme" -and $existing.Theme) {
+        $themeVal = $existing.Theme
+    }
+
     $cfg = [ordered]@{
         EnableLogging          = $EnableLogging
         LogEverySeconds        = $LogEverySeconds
@@ -861,6 +868,7 @@ function Write-ConfigJson {
         ActiveProfileId        = $ActiveProfileId
         ProfilesEnabled        = @($ProfilesEnabled)
         MonitoredApps          = $monitoredApps
+        Theme                  = $themeVal
     }
 
     $json = $cfg | ConvertTo-Json -Depth 6
@@ -1962,6 +1970,13 @@ $form.add_Shown({
         try { Update-TestGroupState } catch {}
     }
 })
+
+if ($global:ThemeNeonActive) {
+    if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot "Modules\Theme-Extension.ps1")
+    }
+    try { Set-BrandTheme -Form $form -IsNeon $true } catch {}
+}
 
 [void]$form.ShowDialog()
 Complete-SamishSetupUi -Form $form

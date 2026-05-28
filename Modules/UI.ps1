@@ -1,4 +1,4 @@
-﻿# ---------- UI ----------
+# ---------- UI ----------
 $script:MainFormGdiResources = New-Object System.Collections.Generic.List[System.IDisposable]
 
 # ---------- TOOLTIP WORD-WRAP HELPER ----------
@@ -1167,6 +1167,11 @@ function Apply-UIFromConfigIfPresent {
             $isCustomHotkey = ($ddHotkey.SelectedItem.ToString() -eq "Custom")
         }
         $tbCustomKey.Enabled = $isCustomHotkey
+
+        # --- Theme ---
+        if ($null -ne $cfg -and $null -ne $cfg.Theme) {
+            $global:ThemeNeonActive = ($cfg.Theme -eq "Neon")
+        }
 
         # Refresh the test group now that MonitoredApps and profile data are loaded.
         if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
