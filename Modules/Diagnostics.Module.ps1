@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH Sleep & Hibernate Diagnostics Module
 # ==========================================
 
@@ -407,7 +407,8 @@ function Get-SystemPowerDiagnostics {
     # 2.5 Historical Sleep/Wake cycles (Kernel-Power Event Logs)
     $historyList = @()
     try {
-        $events = Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName=@('Microsoft-Windows-Kernel-Power', 'Microsoft-Windows-Power-Troubleshooter'); Id=@(1,42)} -MaxEvents 100 -ErrorAction SilentlyContinue
+        # Query S3 sleep/wake (42/1) and Modern Standby sleep/wake (506/507)
+        $events = Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName=@('Microsoft-Windows-Kernel-Power', 'Microsoft-Windows-Power-Troubleshooter'); Id=@(1,42,506,507)} -MaxEvents 100 -ErrorAction SilentlyContinue
         if ($events) {
             # Sort events descending (newest first)
             $events = @($events) | Sort-Object TimeCreated -Descending
@@ -415,7 +416,8 @@ function Get-SystemPowerDiagnostics {
             $i = 0
             while ($i -lt $events.Count) {
                 $e = $events[$i]
-                if ($e.Id -eq 1) {
+                # Event 1 and 507 represent wake transitions
+                if ($e.Id -eq 1 -or $e.Id -eq 507) {
                     $wakeTime = $e.TimeCreated
                     
                     # Parse Wake Source friendly text
@@ -461,6 +463,30 @@ function Get-SystemPowerDiagnostics {
                             }
                         }
 
+                        # 3.5 Decode ExitReason specifically for Modern Standby (Event 507)
+                        if ($e.Id -eq 507 -and ([string]::IsNullOrEmpty($wakeSource) -or $wakeSource -eq "Unknown")) {
+                            $exitReasonNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='ExitReason']")
+                            if ($exitReasonNode) {
+                                $wakeSource = switch ($exitReasonNode.InnerText.Trim()) {
+                                    "1" { "Power Button" }
+                                    "2" { "Keyboard / Mouse" }
+                                    "3" { "Input Device" }
+                                    "4" { "Sleep Timer" }
+                                    "5" { "Wake Timer" }
+                                    "6" { "RTC Alarm" }
+                                    "7" { "Battery State" }
+                                    "8" { "AC/DC Charge Transition" }
+                                    "9" { "Lid" }
+                                    "10" { "Thermal" }
+                                    "11" { "Network" }
+                                    "12" { "AC/DC Power Transition" }
+                                    default { "Resume from Modern Standby" }
+                                }
+                            } else {
+                                $wakeSource = "Resume from Modern Standby"
+                            }
+                        }
+
                         # 4. Decode EffectiveState / TargetState and HiberPagesWritten for friendly fallback
                         if ([string]::IsNullOrEmpty($wakeSource) -or $wakeSource -eq "Unknown") {
                             $effectiveStateNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='EffectiveState']")
@@ -492,10 +518,10 @@ function Get-SystemPowerDiagnostics {
                     $sleepTime = $null
                     $durationStr = "N/A"
                     
-                    # Find the next oldest Sleep event (Event 42)
+                    # Find the next oldest Sleep event (Event 42 or 506)
                     $j = $i + 1
                     while ($j -lt $events.Count) {
-                        if ($events[$j].Id -eq 42) {
+                        if ($events[$j].Id -eq 42 -or $events[$j].Id -eq 506) {
                             $sleepTime = $events[$j].TimeCreated
                             $i = $j # Skip past this sleep event in outer loop
                             break
@@ -523,7 +549,9 @@ function Get-SystemPowerDiagnostics {
                 $i++
             }
         }
-    } catch {}
+    } catch {
+        # Fail forward gracefully: if log is corrupted/locked, keep historyList empty instead of crashing setup
+    }
 
     # 3. Armed Wake Devices
     $armedDevicesLines = powercfg /devicequery wake_armed 2>$null

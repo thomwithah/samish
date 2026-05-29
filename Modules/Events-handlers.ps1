@@ -882,11 +882,10 @@ function Flash-DiagnosticsStatus {
 }
 
 function Complete-SleepDiagnosticsListsUpdate {
-    param([hashtable]$SyncState)
-
-    $script:listBlockers.Items.Clear()
-    $script:listOverrides.Items.Clear()
-    $script:listAutomated.Items.Clear()
+    param(
+        [hashtable]$SyncState,
+        [switch]$Silent
+    )
 
     # Disable buttons until selection is made
     if ($script:btnDiagAutomate) {
@@ -900,9 +899,12 @@ function Complete-SleepDiagnosticsListsUpdate {
     Set-OperatingModeBoxState -Enabled $false
 
     # ---- Active Blockers ----
+    $newBlockersItems = @()
     $script:ActiveBlockersList = @()
     if ($SyncState.Error) {
-        $script:lblDiagDetail.Text = "Error scanning blockers: $($SyncState.Error)"
+        if (-not $Silent) {
+            $script:lblDiagDetail.Text = "Error scanning blockers: $($SyncState.Error)"
+        }
     }
     else {
         if ($SyncState.Blockers) {
@@ -938,49 +940,157 @@ function Complete-SleepDiagnosticsListsUpdate {
                         default { "[?]" }
                     }
                 }
-                $script:listBlockers.Items.Add("$icon $($b.DisplayName)") | Out-Null
+                $newBlockersItems += "$icon $($b.DisplayName)"
             }
         }
     }
-    if ($script:listBlockers.Items.Count -eq 0) {
-        $script:listBlockers.Items.Add("(No active blockers found - your system can sleep!)") | Out-Null
+    if ($newBlockersItems.Count -eq 0) {
+        $newBlockersItems += "(No active blockers found - your system can sleep!)"
     }
 
     # ---- System Overrides ----
+    $newOverridesItems = @()
     $script:SystemOverridesList = @()
     if ($SyncState.Overrides) {
         foreach ($ov in $SyncState.Overrides) {
             if ($ov.Name -like "*BEACN*") { continue }
             $script:SystemOverridesList += $ov
-            $script:listOverrides.Items.Add($ov.DisplayLabel) | Out-Null
+            $newOverridesItems += $ov.DisplayLabel
         }
     }
-    if ($script:listOverrides.Items.Count -eq 0) {
-        $script:listOverrides.Items.Add("(No custom overrides configured)") | Out-Null
+    if ($newOverridesItems.Count -eq 0) {
+        $newOverridesItems += "(No custom overrides configured)"
     }
 
     # ---- Automated Apps ----
+    $newAutomatedItems = @()
     if ($script:MonitoredApps) {
         foreach ($app in $script:MonitoredApps) {
             $label = Get-AutomatedAppDisplayLabel -app $app
-            $script:listAutomated.Items.Add($label) | Out-Null
+            $newAutomatedItems += $label
         }
     }
-    if ($script:listAutomated.Items.Count -eq 0) {
-        $script:listAutomated.Items.Add("(No apps automated by SAMISH yet)") | Out-Null
+    if ($newAutomatedItems.Count -eq 0) {
+        $newAutomatedItems += "(No apps automated by SAMISH yet)"
+    }
+
+    # Update list boxes with fail-forward try/catch and diff-based check
+    try {
+        if ($Silent) {
+            # listBlockers update
+            $currentBlockers = @($script:listBlockers.Items)
+            $blockersChanged = $false
+            if ($currentBlockers.Count -ne $newBlockersItems.Count) {
+                $blockersChanged = $true
+            } else {
+                for ($k = 0; $k -lt $newBlockersItems.Count; $k++) {
+                    if ($currentBlockers[$k] -ne $newBlockersItems[$k]) {
+                        $blockersChanged = $true
+                        break
+                    }
+                }
+            }
+            if ($blockersChanged) {
+                try {
+                    $script:listBlockers.BeginUpdate()
+                    $script:listBlockers.Items.Clear()
+                    foreach ($item in $newBlockersItems) {
+                        $script:listBlockers.Items.Add($item) | Out-Null
+                    }
+                } finally {
+                    $script:listBlockers.EndUpdate()
+                }
+            }
+
+            # listOverrides update
+            $currentOverrides = @($script:listOverrides.Items)
+            $overridesChanged = $false
+            if ($currentOverrides.Count -ne $newOverridesItems.Count) {
+                $overridesChanged = $true
+            } else {
+                for ($k = 0; $k -lt $newOverridesItems.Count; $k++) {
+                    if ($currentOverrides[$k] -ne $newOverridesItems[$k]) {
+                        $overridesChanged = $true
+                        break
+                    }
+                }
+            }
+            if ($overridesChanged) {
+                try {
+                    $script:listOverrides.BeginUpdate()
+                    $script:listOverrides.Items.Clear()
+                    foreach ($item in $newOverridesItems) {
+                        $script:listOverrides.Items.Add($item) | Out-Null
+                    }
+                } finally {
+                    $script:listOverrides.EndUpdate()
+                }
+            }
+
+            # listAutomated update
+            $currentAutomated = @($script:listAutomated.Items)
+            $automatedChanged = $false
+            if ($currentAutomated.Count -ne $newAutomatedItems.Count) {
+                $automatedChanged = $true
+            } else {
+                for ($k = 0; $k -lt $newAutomatedItems.Count; $k++) {
+                    if ($currentAutomated[$k] -ne $newAutomatedItems[$k]) {
+                        $automatedChanged = $true
+                        break
+                    }
+                }
+            }
+            if ($automatedChanged) {
+                try {
+                    $script:listAutomated.BeginUpdate()
+                    $script:listAutomated.Items.Clear()
+                    foreach ($item in $newAutomatedItems) {
+                        $script:listAutomated.Items.Add($item) | Out-Null
+                    }
+                } finally {
+                    $script:listAutomated.EndUpdate()
+                }
+            }
+        } else {
+            # Non-silent path: always clear and redraw
+            $script:listBlockers.Items.Clear()
+            foreach ($item in $newBlockersItems) { $script:listBlockers.Items.Add($item) | Out-Null }
+            
+            $script:listOverrides.Items.Clear()
+            foreach ($item in $newOverridesItems) { $script:listOverrides.Items.Add($item) | Out-Null }
+
+            $script:listAutomated.Items.Clear()
+            foreach ($item in $newAutomatedItems) { $script:listAutomated.Items.Add($item) | Out-Null }
+        }
+    } catch {
+        # Fail forward fallback: if diff logic throws, redraw lists directly to maintain reliability
+        try {
+            $script:listBlockers.Items.Clear()
+            foreach ($item in $newBlockersItems) { $script:listBlockers.Items.Add($item) | Out-Null }
+            $script:listOverrides.Items.Clear()
+            foreach ($item in $newOverridesItems) { $script:listOverrides.Items.Add($item) | Out-Null }
+            $script:listAutomated.Items.Clear()
+            foreach ($item in $newAutomatedItems) { $script:listAutomated.Items.Add($item) | Out-Null }
+        } catch {}
     }
 }
 
 function Update-SleepDiagnosticsListsAsync {
-    $script:listBlockers.Items.Clear()
-    $script:listOverrides.Items.Clear()
-    $script:listAutomated.Items.Clear()
-    $script:listBlockers.Items.Add("(Scanning for active blockers in background...)") | Out-Null
-    $script:listOverrides.Items.Add("(Scanning for overrides...)") | Out-Null
-    $script:listAutomated.Items.Add("(Scanning automated apps...)") | Out-Null
+    param(
+        [switch]$Silent
+    )
 
-    $script:lblDiagDetail.Text = "Scanning system blockers in background... Please wait."
-    $script:btnDiagScan.Enabled = $false
+    if (-not $Silent) {
+        $script:listBlockers.Items.Clear()
+        $script:listOverrides.Items.Clear()
+        $script:listAutomated.Items.Clear()
+        $script:listBlockers.Items.Add("(Scanning for active blockers in background...)") | Out-Null
+        $script:listOverrides.Items.Add("(Scanning for overrides...)") | Out-Null
+        $script:listAutomated.Items.Add("(Scanning automated apps...)") | Out-Null
+
+        $script:lblDiagDetail.Text = "Scanning system blockers in background... Please wait."
+        $script:btnDiagScan.Enabled = $false
+    }
 
     $script:DiagSyncState = [hashtable]::Synchronized(@{
             "DiagModulePath"    = $DiagModulePath
@@ -989,58 +1099,70 @@ function Update-SleepDiagnosticsListsAsync {
             "Error"             = $null
             "Complete"          = $false
             "AutomatedAppNames" = @($script:MonitoredApps | ForEach-Object { $_.ProcessName })
+            "Silent"            = [bool]$Silent
         })
 
-    $script:DiagRunspace = [runspacefactory]::CreateRunspace()
-    $script:DiagRunspace.ApartmentState = "STA"
-    $script:DiagRunspace.ThreadOptions = "ReuseThread"
-    $script:DiagRunspace.Open()
-    $script:DiagRunspace.SessionStateProxy.SetVariable("SyncState", $script:DiagSyncState)
+    try {
+        $script:DiagRunspace = [runspacefactory]::CreateRunspace()
+        $script:DiagRunspace.ApartmentState = "STA"
+        $script:DiagRunspace.ThreadOptions = "ReuseThread"
+        $script:DiagRunspace.Open()
+        $script:DiagRunspace.SessionStateProxy.SetVariable("SyncState", $script:DiagSyncState)
 
-    $script:DiagPowerShell = [powershell]::Create()
-    $script:DiagPowerShell.Runspace = $script:DiagRunspace
+        $script:DiagPowerShell = [powershell]::Create()
+        $script:DiagPowerShell.Runspace = $script:DiagRunspace
 
-    $script:DiagPowerShell.AddScript({
-            try {
-                if (Test-Path -LiteralPath $SyncState.DiagModulePath) {
-                    . $SyncState.DiagModulePath
-                }
-                $SyncState.Blockers = Get-ActiveSleepBlockers -AutomatedAppNames $SyncState.AutomatedAppNames
-                $SyncState.Overrides = Get-SystemOverrides
-            }
-            catch {
-                $SyncState.Error = $_.Exception.Message
-            }
-            finally {
-                $SyncState.Complete = $true
-            }
-        }) | Out-Null
-
-    $script:DiagAsyncResult = $script:DiagPowerShell.BeginInvoke()
-
-    $script:DiagTimer = New-Object System.Windows.Forms.Timer
-    $script:DiagTimer.Interval = 100
-    $script:DiagTimer.add_Tick({
-            if ($script:DiagSyncState.Complete) {
-                $script:DiagTimer.Stop()
-                $script:DiagTimer.Dispose()
-                $script:DiagTimer = $null
-
+        $script:DiagPowerShell.AddScript({
                 try {
-                    $null = $script:DiagPowerShell.EndInvoke($script:DiagAsyncResult)
+                    if (Test-Path -LiteralPath $SyncState.DiagModulePath) {
+                        . $SyncState.DiagModulePath
+                    }
+                    $SyncState.Blockers = Get-ActiveSleepBlockers -AutomatedAppNames $SyncState.AutomatedAppNames
+                    $SyncState.Overrides = Get-SystemOverrides
                 }
-                catch {}
-                $script:DiagPowerShell.Dispose()
-                $script:DiagRunspace.Close()
-                $script:DiagRunspace.Dispose()
+                catch {
+                    $SyncState.Error = $_.Exception.Message
+                }
+                finally {
+                    $SyncState.Complete = $true
+                }
+            }) | Out-Null
 
-                Complete-SleepDiagnosticsListsUpdate -SyncState $script:DiagSyncState
-                $script:lblDiagDetail.Text = "Last scan completed at $(Get-Date -Format 'HH:mm:ss')."
-                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
-                $script:btnDiagScan.Enabled = $true
-            }
-        })
-    $script:DiagTimer.Start()
+        $script:DiagAsyncResult = $script:DiagPowerShell.BeginInvoke()
+
+        $script:DiagTimer = New-Object System.Windows.Forms.Timer
+        $script:DiagTimer.Interval = 100
+        $script:DiagTimer.add_Tick({
+                if ($script:DiagSyncState.Complete) {
+                    $script:DiagTimer.Stop()
+                    $script:DiagTimer.Dispose()
+                    $script:DiagTimer = $null
+
+                    try {
+                        $null = $script:DiagPowerShell.EndInvoke($script:DiagAsyncResult)
+                    }
+                    catch {}
+                    $script:DiagPowerShell.Dispose()
+                    $script:DiagRunspace.Close()
+                    $script:DiagRunspace.Dispose()
+
+                    $isSilent = $script:DiagSyncState.Silent
+                    Complete-SleepDiagnosticsListsUpdate -SyncState $script:DiagSyncState -Silent $isSilent
+                    
+                    if (-not $isSilent) {
+                        $script:lblDiagDetail.Text = "Last scan completed at $(Get-Date -Format 'HH:mm:ss')."
+                        $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                        $script:btnDiagScan.Enabled = $true
+                    }
+                }
+            })
+        $script:DiagTimer.Start()
+    }
+    catch {
+        # Fail forward gracefully: clean up runspaces and restore button state if execution fails
+        if ($script:btnDiagScan) { $script:btnDiagScan.Enabled = $true }
+        if ($script:lblDiagDetail) { $script:lblDiagDetail.Text = "Failed to launch scanner: $($_.Exception.Message)" }
+    }
 }
 
 function Save-MonitoredAppsToConfig {
@@ -1337,6 +1459,16 @@ function Init-SleepDiagnosticsEventHandlers {
     if ($script:listHardwareScans) { $script:listHardwareScans.add_DrawItem($lbDrawItem) }
     if ($script:listWakeTimers) { $script:listWakeTimers.add_DrawItem($lbDrawItem) }
  
+    # Helper to set the dynamic tooltip safely
+    function script:Update-TelemetryActionTooltip {
+        param([string]$text)
+        try {
+            if ($tooltip -and $script:btnTelemetryAction) {
+                $tooltip.SetToolTip($script:btnTelemetryAction, $text)
+            }
+        } catch {}
+    }
+
     # ---------- Symmetrical Telemetry Selection Handling ----------
     $script:listArmedDevices.add_SelectedIndexChanged({
         if ($script:diagListMutex) { return }
@@ -1353,12 +1485,14 @@ function Init-SleepDiagnosticsEventHandlers {
                 $script:btnTelemetryAction.Enabled = $true
                 $script:lblDiagDetail.Text = "Hardware Device: $selectedItem"
                 $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                Update-TelemetryActionTooltip -text "Disables the wake capability for the selected hardware device to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
                 return
             }
         }
         
         $script:btnTelemetryAction.Text = "Select Item..."
         $script:btnTelemetryAction.Enabled = $false
+        Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
     })
 
     if ($script:listHardwareScans) {
@@ -1377,12 +1511,14 @@ function Init-SleepDiagnosticsEventHandlers {
                     $script:btnTelemetryAction.Enabled = $true
                     $script:lblDiagDetail.Text = "USB Hub: $($Matches[1])"
                     $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                    Update-TelemetryActionTooltip -text "Toggles USB Selective Suspend for the selected USB Hub to allow Windows to suspend the device when idle, saving power and preventing wake-locks. Creates a backup of the configuration that can be restored later."
                     return
                 }
             }
 
             $script:btnTelemetryAction.Text = "Select Item..."
             $script:btnTelemetryAction.Enabled = $false
+            Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
         })
     }
 
@@ -1402,12 +1538,14 @@ function Init-SleepDiagnosticsEventHandlers {
                     $script:btnTelemetryAction.Enabled = $true
                     $script:lblDiagDetail.Text = "Active Wake Timer: $selectedItem"
                     $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                    Update-TelemetryActionTooltip -text "Disables the scheduled task associated with the active wake timer to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
                     return
                 }
             }
 
             $script:btnTelemetryAction.Text = "Select Item..."
             $script:btnTelemetryAction.Enabled = $false
+            Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
         })
     }
 
@@ -3545,7 +3683,10 @@ if ($script:btnDrawer2TabSystem) {
         if ($script:pnlTelemetryHardware) { $script:pnlTelemetryHardware.Visible = $false }
         if ($script:drawer2TabIndicator)  { $script:drawer2TabIndicator.Location = New-Object System.Drawing.Point([int](5 * $script:DpiScale), [int](154 * $script:DpiScale)) }
         # Reset action button — context changes when switching tabs
-        if ($script:btnTelemetryAction) { $script:btnTelemetryAction.Text = "Select Item..." }
+        if ($script:btnTelemetryAction) { 
+            $script:btnTelemetryAction.Text = "Select Item..." 
+            Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
+        }
         Update-SecondaryTabStyles
     })
 }
@@ -3555,7 +3696,10 @@ if ($script:btnDrawer2TabHardware) {
         if ($script:pnlTelemetryHardware) { $script:pnlTelemetryHardware.Visible = $true }
         if ($script:drawer2TabIndicator)  { $script:drawer2TabIndicator.Location = New-Object System.Drawing.Point([int](190 * $script:DpiScale), [int](154 * $script:DpiScale)) }
         # Reset action button — context changes when switching tabs
-        if ($script:btnTelemetryAction) { $script:btnTelemetryAction.Text = "Select Item..." }
+        if ($script:btnTelemetryAction) { 
+            $script:btnTelemetryAction.Text = "Select Item..." 
+            Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
+        }
         Update-SecondaryTabStyles
     })
 }
@@ -3829,7 +3973,7 @@ function Restore-UsbSuspendFromBackup {
 }
 
 # ---------- Active Sleep Blocker Auto-Refresh Timer ----------
-$script:TelemetryAutoRefreshIntervalSec = 30
+$script:TelemetryAutoRefreshIntervalSec = 10
 $script:ActiveBlockerTimer = $null
 
 $form.add_Shown({
@@ -3850,8 +3994,8 @@ $form.add_Shown({
                 return
             }
 
-            # Trigger the scan asynchronously
-            Update-SleepDiagnosticsListsAsync
+            # Trigger the scan asynchronously and silently
+            Update-SleepDiagnosticsListsAsync -Silent
         })
         $script:ActiveBlockerTimer.Start()
     }
