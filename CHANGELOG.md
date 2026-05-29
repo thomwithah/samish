@@ -1,19 +1,25 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.5] - 2026-05-28
+## [1.2.5] - 2026-05-29
 
 ### Added
-- 
+- **Application Auto-Recovery**: Implemented background crash monitoring and automatic recovery for both the main mixer software and targeted automated applications.
+- **Opt-in Recovery Controls**: Added settings to enable recovery globally (General Settings) and per-application (App Override Settings).
 
 ### Changed
+- **Non-Destructive Portal Script**: Configured browser automation to locate and reuse existing tabs rather than overwriting the user's active session.
 - **UI Button Text Update**: Renamed the "Remove from Automation" button in the Automated Apps panel to "Deactivate Automation" to prevent text clipping.
 
 ### Fixed
+- **Responsiveness on Tests**: Resolved UI freezes during sleep/wake test actions by adopting non-blocking event loops instead of synchronous sleeps.
+- **Immediate Config Sync**: Configured the background recovery loop to dynamically reload changes in the application configuration.
+- **UI Drawing & Color Exceptions**: Fixed an unhandled drawing exception where the panel border and combobox dropdowns crashed on startup under specific configuration environments.
+- **UI Formatting Warning**: Removed a minor warning caused by an undefined formatting variable in the GroupBox layout loop.
 - **Stray Startup Index Output**: Fixed a bug where dynamic font and image objects appended to the GDI resource garbage collection list (`ArrayList.Add()`) leaked array index integers to the pipeline. These integers were inadvertently captured by `ps2exe` and displayed as an empty `0` MessageBox before the Setup GUI launched.
 
 ## [1.2.4] - 2026-05-27
@@ -40,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Wake Dropdown Active Enablement**: Fixed a bug where the "On Wake/Resume" dropdown remained physically disabled after selecting an automated app.
-- **Neon Mode Test Box Title Color**: Fixed the "Operating Mode Tests" GroupBox title color resetting to system default dark text (ControlText) after finishing its flash sequence or when disabled in Neon mode. It now resolves correctly to Neon Pink.
+- **Themed Test Box Title Color**: Fixed the "Operating Mode Tests" GroupBox title color resetting to system default dark text (ControlText) after finishing its flash sequence or when disabled. It now resolves correctly to the themed color.
 - **High-DPI Profile Details Coordinate Lock**: Wrapped the dynamic positioning of the profile details labels in a startup-only check (`$script:ProfileDetailsInitialized`). This preserves the perfectly scaled layout coordinates at startup, resolving overlapping text and clipping on selecting a profile.
 - **Device Settings Checkbox Clipping**: Widened `$profilesPanel` to height `79` to prevent the third bubble checkbox (`Demo Device`) from being clipped, and moved `$detailsPanel` to `Y=96` with height `86` to maintain clean, proportional layout bounds.
 
