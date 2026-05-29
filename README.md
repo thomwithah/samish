@@ -9,17 +9,17 @@ SAMISH is a lightweight, open-source utility that solves persistent system sleep
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
-<img width="800" alt="Setup Collapsed" src="Assets/screenshots/1.png" />
+<img width="800" alt="Setup Collapsed" src="App/Assets/screenshots/1.png" />
 
-<img width="800" alt="Diagnostics Collapsed" src="Assets/screenshots/2.png" />
+<img width="800" alt="Diagnostics Collapsed" src="App/Assets/screenshots/2.png" />
 
-<img width="1180" alt="Setup Expanded Tools" src="Assets/screenshots/3.png" />
+<img width="1180" alt="Setup Expanded Tools" src="App/Assets/screenshots/3.png" />
 
-<img width="1180" alt="Setup Expanded Live Log" src="Assets/screenshots/4.png" />
+<img width="1180" alt="Setup Expanded Live Log" src="App/Assets/screenshots/4.png" />
 
-<img width="1180" alt="Diagnostics System Telemetry" src="Assets/screenshots/5.png" />
+<img width="1180" alt="Diagnostics System Telemetry" src="App/Assets/screenshots/5.png" />
 
-<img width="1180" alt="Diagnostics Hardware Telemetry" src="Assets/screenshots/6.png" />
+<img width="1180" alt="Diagnostics Hardware Telemetry" src="App/Assets/screenshots/6.png" />
 
 ---
 
