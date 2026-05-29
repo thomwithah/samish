@@ -172,8 +172,14 @@ function Restore-PowerPlanFromBackup {
     Set-PowerSettingSecondsAC -SchemeGuid $b.SchemeGuid -SubGuid $SUB_VIDEO -SettingGuid $VIDEOIDLE -Seconds ([int]$b.DisplayOffSeconds)
     Set-PowerSettingSecondsAC -SchemeGuid $b.SchemeGuid -SubGuid $SUB_SLEEP -SettingGuid $STANDBYIDLE -Seconds ([int]$b.SleepIdleSeconds)
     Set-PowerSettingSecondsAC -SchemeGuid $b.SchemeGuid -SubGuid $SUB_SLEEP -SettingGuid $HIBERNATEIDLE -Seconds ([int]$b.HibernateIdleSeconds)
-
     powercfg /setactive $b.SchemeGuid 2>$null | Out-Null
+
+    if ($b.PSObject.Properties.Match('UsbSelectiveSuspendSettingIndex')) {
+        $usbVal = [int]$b.UsbSelectiveSuspendSettingIndex
+        powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 $usbVal 2>$null | Out-Null
+        powercfg /setactive SCHEME_CURRENT 2>$null | Out-Null
+    }
+
     Remove-Item -LiteralPath $PowerPlanBackupPath -Force -ErrorAction SilentlyContinue
 
     $msg = "Power plan restored.`r`nYour previous settings have been applied."

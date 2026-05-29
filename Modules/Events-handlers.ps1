@@ -26,17 +26,18 @@ $comboDrawItem = {
         [System.Drawing.Color]::Black
     } elseif (-not $sender.Enabled) {
         if ($global:ThemeNeonActive) {
-            $global:NeonCyan
+            if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
         } else {
             [System.Drawing.Color]::Gray
         }
     } else {
         if ($global:ThemeNeonActive) {
-            $global:NeonCyan
+            if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
         } else {
             $sender.ForeColor
         }
     }
+    if ($null -eq $foreColor) { $foreColor = [System.Drawing.Color]::Black }
     $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
     
     $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
@@ -182,6 +183,72 @@ $btnOpenTS.add_Click({ Start-Process "taskschd.msc" | Out-Null })
 # --- Power plan tool ---
 $btnPowerPlan.add_Click({
         try {
+            # Check for telemetry backups and offer restoration
+            $hasPowerPlanUsbBackup = $false
+            if (Test-Path -LiteralPath $script:PowerPlanBackupPath) {
+                try {
+                    $ppRaw = Get-Content -LiteralPath $script:PowerPlanBackupPath -Raw
+                    $ppObj = $ppRaw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    $hasPowerPlanUsbBackup = ($null -ne $ppObj) -and ($ppObj.PSObject.Properties.Match('UsbSelectiveSuspendSettingIndex').Count -gt 0)
+                } catch {}
+            }
+
+            if ((Test-Path -LiteralPath $script:DeviceWakeBackupPath) -or (Test-Path -LiteralPath $script:TaskWakeBackupPath) -or $hasPowerPlanUsbBackup) {
+                $restorePrompt = "SAMISH found backups of system telemetry modifications (disabled wake devices, wake timers, or USB selective suspend settings).`r`n`r`nWould you like to restore these system settings back to their original defaults now?`r`n`r`nIf you choose No, SAMISH will continue to verify your power plan compatibility settings."
+                $restoreChoice = Show-YesNoDialog `
+                    -Title "Restore Telemetry Settings?" `
+                    -Message $restorePrompt `
+                    -Icon ([System.Windows.Forms.MessageBoxIcon]::Question)
+            
+                if ($restoreChoice -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    $messages = @()
+                    $hasFailures = $false
+                    try {
+                        if (Test-Path -LiteralPath $script:DeviceWakeBackupPath) {
+                            $res = Restore-DeviceWakeFromBackup
+                            $messages += $res.StatusMessage
+                            if ($res.Failed) { $hasFailures = $true }
+                        }
+                        if (Test-Path -LiteralPath $script:TaskWakeBackupPath) {
+                            $res = Restore-ScheduledTasksFromBackup
+                            $messages += $res.StatusMessage
+                            if ($res.Failed) { $hasFailures = $true }
+                        }
+                        if ($hasPowerPlanUsbBackup) {
+                            $res = Restore-UsbSuspendFromBackup
+                            $messages += $res.StatusMessage
+                            if ($res.Failed) { $hasFailures = $true }
+                        }
+                        
+                        if ($hasFailures) {
+                            Set-StatusText("Telemetry settings restore completed with warnings.")
+                            [void][System.Windows.Forms.MessageBox]::Show(
+                                "Some telemetry settings could not be restored.`r`n`r`n" + ($messages -join "`r`n"),
+                                "SAMISH Telemetry Restore Warning",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Warning
+                            )
+                        } else {
+                            Set-StatusText("Telemetry settings restored successfully.")
+                            [void][System.Windows.Forms.MessageBox]::Show(
+                                "Telemetry settings restored successfully.`r`n`r`n" + ($messages -join "`r`n"),
+                                "SAMISH Telemetry Restore",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Information
+                            )
+                        }
+
+                        # Refresh telemetry lists to reflect restored state
+                        if ($script:btnTelemetryRefresh) { $script:btnTelemetryRefresh.PerformClick() }
+                        return
+                    }
+                    catch {
+                        Set-StatusText("Failed to restore telemetry settings.")
+                        Write-SetupLog "Telemetry restore failed: $($_.Exception.Message)"  
+                    }
+                }
+            }
+
             Set-StatusText("Checking power plan settings...")
 
             # Determine operating mode from config (do not infer)
@@ -385,7 +452,8 @@ $btnInstall.add_Click({
                 -OperatingMode:$operatingMode `
                 -SetupPath:$script:SetupExecutablePath `
                 -ActiveProfileId $script:ActiveProfileId `
-                -ProfilesEnabled $script:ProfilesEnabled
+                -ProfilesEnabled $script:ProfilesEnabled `
+                -EnableAutoRecovery:$($cbAutoRecovery.Checked)
 
             Set-StatusText("Installing...")
             Register-SamishEventSource
@@ -489,6 +557,11 @@ If you switch to Classic mode, run ""Power Plan: Check / Restore"" to ensure pro
             Set-StatusText("Install failed.`r`nSee details below:`r`n$($_.Exception.Message)")
             Write-SetupLog ("Install failed: " + $_.Exception.Message)
         }
+
+        # Sync Neon tab indicator in case theme is active
+        if ($global:ThemeNeonActive) {
+            if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) { try { Update-TabIndicator } catch {} }
+        }
     })
 
 # ---------- UNINSTALL ----------
@@ -525,6 +598,44 @@ $btnUninstall.add_Click({
                     }
                     catch {
                         Write-SetupLog "Uninstall: Power plan restore failed: $($_.Exception.Message)"
+                    }
+                }
+            }
+
+            # Offer to restore telemetry backups if present
+            $hasPowerPlanUsbBackup = $false
+            if (Test-Path -LiteralPath $script:PowerPlanBackupPath) {
+                try {
+                    $ppRaw = Get-Content -LiteralPath $script:PowerPlanBackupPath -Raw
+                    $ppObj = $ppRaw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    $hasPowerPlanUsbBackup = ($null -ne $ppObj) -and ($ppObj.PSObject.Properties.Match('UsbSelectiveSuspendSettingIndex').Count -gt 0)
+                } catch {}
+            }
+
+            if ((Test-Path -LiteralPath $script:DeviceWakeBackupPath) -or (Test-Path -LiteralPath $script:TaskWakeBackupPath) -or $hasPowerPlanUsbBackup) {
+                $restorePrompt = "SAMISH found backups of system telemetry modifications (disabled wake devices, wake timers, or USB selective suspend settings).`r`n`r`nWould you like to restore all settings back to their original defaults now?"
+                $restoreChoice = Show-YesNoDialog `
+                    -Title "Restore Telemetry Settings?" `
+                    -Message $restorePrompt `
+                    -Icon ([System.Windows.Forms.MessageBoxIcon]::Question)
+            
+                if ($restoreChoice -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    try {
+                        if (Test-Path -LiteralPath $script:DeviceWakeBackupPath) {
+                            $res = Restore-DeviceWakeFromBackup
+                            Write-SetupLog "Uninstall: Telemetry devices restored: $($res.StatusMessage)"
+                        }
+                        if (Test-Path -LiteralPath $script:TaskWakeBackupPath) {
+                            $res = Restore-ScheduledTasksFromBackup
+                            Write-SetupLog "Uninstall: Telemetry tasks restored: $($res.StatusMessage)"
+                        }
+                        if ($hasPowerPlanUsbBackup) {
+                            $res = Restore-UsbSuspendFromBackup
+                            Write-SetupLog "Uninstall: USB suspend restored: $($res.StatusMessage)"
+                        }
+                    }
+                    catch {
+                        Write-SetupLog "Uninstall: Telemetry restore failed: $($_.Exception.Message)"
                     }
                 }
             }
@@ -590,6 +701,11 @@ No  = Standard uninstall (keeps configuration files for future installations)."
         catch {
             Set-StatusText("Uninstall failed.`r`nSee details below:`r`n$($_.Exception.Message)")
             Write-SetupLog ("Uninstall failed: " + $_.Exception.Message)
+        }
+
+        # Sync Neon tab indicator in case theme is active
+        if ($global:ThemeNeonActive) {
+            if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) { try { Update-TabIndicator } catch {} }
         }
     })
 
@@ -993,7 +1109,7 @@ function Set-OperatingModeBoxState {
                 }
             }
         }
-        elseif ($ctrl -is [System.Windows.Forms.RadioButton] -or $ctrl -is [System.Windows.Forms.Label]) {
+        elseif ($ctrl -is [System.Windows.Forms.RadioButton] -or $ctrl -is [System.Windows.Forms.Label] -or $ctrl -is [System.Windows.Forms.CheckBox]) {
             if ($global:ThemeNeonActive) {
                 $ctrl.Enabled = $true
                 $ctrl.ForeColor = if ($Enabled) { $global:NeonText } else { [System.Drawing.Color]::FromArgb(100, 100, 110) }
@@ -1007,7 +1123,7 @@ function Set-OperatingModeBoxState {
                     $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
                 }
                 elseif ($ctrl -is [System.Windows.Forms.Label]) {
-                    # Leave ForeColor untouched — startup Reset-MainFormChildControls already set it correctly
+                    # Leave ForeColor untouched - startup Reset-MainFormChildControls already set it correctly
                 }
             }
         }
@@ -1069,7 +1185,7 @@ function Set-OperatingModeBoxState {
             $script:diagFlashTimer.Dispose()
             $script:diagFlashTimer = $null
         }
-        $script:grpDiagOperatingMode.ForeColor = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.Color]::Gray }
+        $script:grpDiagOperatingMode.ForeColor = if ($global:ThemeNeonActive) { if ($global:NeonPink) { $global:NeonPink } else { [System.Drawing.Color]::FromArgb(255, 0, 102) } } else { [System.Drawing.Color]::Gray }
     }
 }
 
@@ -1218,6 +1334,234 @@ function Init-SleepDiagnosticsEventHandlers {
     if ($script:listOverrides) { $script:listOverrides.add_DrawItem($lbDrawItem) }
     if ($script:listAutomated) { $script:listAutomated.add_DrawItem($lbDrawItem) }
     if ($script:listArmedDevices) { $script:listArmedDevices.add_DrawItem($lbDrawItem) }
+    if ($script:listHardwareScans) { $script:listHardwareScans.add_DrawItem($lbDrawItem) }
+    if ($script:listWakeTimers) { $script:listWakeTimers.add_DrawItem($lbDrawItem) }
+ 
+    # ---------- Symmetrical Telemetry Selection Handling ----------
+    $script:listArmedDevices.add_SelectedIndexChanged({
+        if ($script:diagListMutex) { return }
+        $script:diagListMutex = $true
+        if ($script:listHardwareScans) { $script:listHardwareScans.ClearSelected() }
+        if ($script:listWakeTimers) { $script:listWakeTimers.ClearSelected() }
+        $script:diagListMutex = $false
+
+        $idx = $script:listArmedDevices.SelectedIndex
+        if ($idx -ge 0 -and $idx -lt $script:listArmedDevices.Items.Count) {
+            $selectedItem = $script:listArmedDevices.Items[$idx].ToString()
+            if ($selectedItem -ne "No devices armed to wake the system.") {
+                $script:btnTelemetryAction.Text = "Disable Wake"
+                $script:btnTelemetryAction.Enabled = $true
+                $script:lblDiagDetail.Text = "Hardware Device: $selectedItem"
+                $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                return
+            }
+        }
+        
+        $script:btnTelemetryAction.Text = "Select Item..."
+        $script:btnTelemetryAction.Enabled = $false
+    })
+
+    if ($script:listHardwareScans) {
+        $script:listHardwareScans.add_SelectedIndexChanged({
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            if ($script:listArmedDevices) { $script:listArmedDevices.ClearSelected() }
+            if ($script:listWakeTimers) { $script:listWakeTimers.ClearSelected() }
+            $script:diagListMutex = $false
+
+            $idx = $script:listHardwareScans.SelectedIndex
+            if ($idx -ge 0 -and $idx -lt $script:listHardwareScans.Items.Count) {
+                $selectedItem = $script:listHardwareScans.Items[$idx].ToString()
+                if ($selectedItem -match "^USB:\s*(.+)$") {
+                    $script:btnTelemetryAction.Text = "Toggle Suspend"
+                    $script:btnTelemetryAction.Enabled = $true
+                    $script:lblDiagDetail.Text = "USB Hub: $($Matches[1])"
+                    $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                    return
+                }
+            }
+
+            $script:btnTelemetryAction.Text = "Select Item..."
+            $script:btnTelemetryAction.Enabled = $false
+        })
+    }
+
+    if ($script:listWakeTimers) {
+        $script:listWakeTimers.add_SelectedIndexChanged({
+            if ($script:diagListMutex) { return }
+            $script:diagListMutex = $true
+            if ($script:listArmedDevices) { $script:listArmedDevices.ClearSelected() }
+            if ($script:listHardwareScans) { $script:listHardwareScans.ClearSelected() }
+            $script:diagListMutex = $false
+
+            $idx = $script:listWakeTimers.SelectedIndex
+            if ($idx -ge 0 -and $idx -lt $script:listWakeTimers.Items.Count) {
+                $selectedItem = $script:listWakeTimers.Items[$idx].ToString()
+                if ($selectedItem -ne "No active wake timers." -and $selectedItem -match 'NT TASK\\([^\''"]+)') {
+                    $script:btnTelemetryAction.Text = "Disable Timer"
+                    $script:btnTelemetryAction.Enabled = $true
+                    $script:lblDiagDetail.Text = "Active Wake Timer: $selectedItem"
+                    $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                    return
+                }
+            }
+
+            $script:btnTelemetryAction.Text = "Select Item..."
+            $script:btnTelemetryAction.Enabled = $false
+        })
+    }
+
+    # ---------- Dynamic Telemetry Action Click Handler ----------
+    if ($script:btnTelemetryAction) {
+        $script:btnTelemetryAction.add_Click({
+            if ($script:btnTelemetryAction.Text -eq "Disable Wake") {
+                $idx = $script:listArmedDevices.SelectedIndex
+                if ($idx -ge 0 -and $idx -lt $script:listArmedDevices.Items.Count) {
+                    $selectedItem = $script:listArmedDevices.Items[$idx].ToString()
+                    if ($selectedItem -eq "No devices armed to wake the system.") { return }
+
+                    $confirm = Show-YesNoDialog `
+                        -Title "Disable Wake Confirmation" `
+                        -Message "Are you sure you want to disable wake capabilities for:`r`n`"$selectedItem`"?`r`n`r`nSAMISH will create a backup of this configuration before applying the change.`r`n`r`nTo restore this backup later, you can use the `"Verify & Restore Settings`" button on Page 1, or you will be prompted to restore it if you choose to uninstall SAMISH." `
+                        -Icon ([System.Windows.Forms.MessageBoxIcon]::Warning)
+
+                    if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+                        try {
+                            Backup-DeviceWakeState -DeviceName $selectedItem
+                            powercfg /devicedisablewake $selectedItem 2>$null | Out-Null
+                            
+                            Write-SetupLog "Disabled wake for '$selectedItem' (backup created)."
+                            $script:lblDiagDetail.Text = "Disabled wake for $selectedItem (Backup created)."
+                            
+                            [void][System.Windows.Forms.MessageBox]::Show(
+                                "Successfully disabled wake for `"$selectedItem`".`r`n`r`nA backup has been created in:`r`n`"$script:DeviceWakeBackupPath`"",
+                                "SAMISH Telemetry Fix",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Information
+                            )
+
+                            $script:btnTelemetryRefresh.PerformClick()
+                        }
+                        catch {
+                            [void][System.Windows.Forms.MessageBox]::Show(
+                                "Failed to disable wake for `"$selectedItem`":`r`n$($_.Exception.Message)",
+                                "Error",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Error
+                            )
+                        }
+                    }
+                }
+            }
+            elseif ($script:btnTelemetryAction.Text -eq "Disable Timer") {
+                $idx = $script:listWakeTimers.SelectedIndex
+                if ($idx -ge 0 -and $idx -lt $script:listWakeTimers.Items.Count) {
+                    $selectedItem = $script:listWakeTimers.Items[$idx].ToString()
+                    if ($selectedItem -eq "No active wake timers.") { return }
+
+                    if ($selectedItem -match 'NT TASK\\([^\''"]+)') {
+                        $fullPath = $Matches[1]
+                        $lastSlash = $fullPath.LastIndexOf('\')
+                        if ($lastSlash -ge 0) {
+                            $taskPath = '\' + $fullPath.Substring(0, $lastSlash) + '\'
+                            $taskName = $fullPath.Substring($lastSlash + 1)
+                        } else {
+                            $taskPath = '\'
+                            $taskName = $fullPath
+                        }
+
+                        $confirm = Show-YesNoDialog `
+                            -Title "Disable Timer Confirmation" `
+                            -Message "Are you sure you want to disable the scheduled task:`r`n`"$taskPath$taskName`"?`r`n`r`nSAMISH will create a backup of this configuration before applying the change.`r`n`r`nTo restore this backup later, you can use the `"Verify & Restore Settings`" button on Page 1, or you will be prompted to restore it if you choose to uninstall SAMISH." `
+                            -Icon ([System.Windows.Forms.MessageBoxIcon]::Warning)
+
+                        if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+                            try {
+                                Backup-ScheduledTaskState -TaskPath $taskPath -TaskName $taskName
+                                Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop | Out-Null
+                                
+                                Write-SetupLog "Disabled scheduled task '$taskPath$taskName' (backup created)."
+                                $script:lblDiagDetail.Text = "Disabled task $taskName (Backup created)."
+                                
+                                [void][System.Windows.Forms.MessageBox]::Show(
+                                    "Successfully disabled scheduled task `"$taskPath$taskName`".`r`n`r`nA backup has been created in:`r`n`"$script:TaskWakeBackupPath`"",
+                                    "SAMISH Telemetry Fix",
+                                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                                    [System.Windows.Forms.MessageBoxIcon]::Information
+                                )
+
+                                $script:btnTelemetryRefresh.PerformClick()
+                            }
+                            catch {
+                                [void][System.Windows.Forms.MessageBox]::Show(
+                                    "Failed to disable scheduled task `"$taskPath$taskName`":`r`n$($_.Exception.Message)",
+                                    "Error",
+                                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                                    [System.Windows.Forms.MessageBoxIcon]::Error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            elseif ($script:btnTelemetryAction.Text -eq "Toggle Suspend") {
+                $idx = $script:listHardwareScans.SelectedIndex
+                if ($idx -ge 0 -and $idx -lt $script:listHardwareScans.Items.Count) {
+                    $selectedItem = $script:listHardwareScans.Items[$idx].ToString()
+                    if ($selectedItem -match "^USB:\s*(.+)$") {
+                        $hubName = $Matches[1]
+                        $currentVal = Get-UsbSelectiveSuspend
+                        if ($null -eq $currentVal) {
+                            [void][System.Windows.Forms.MessageBox]::Show(
+                                "Failed to retrieve current USB Selective Suspend status from system power configuration.",
+                                "Error",
+                                [System.Windows.Forms.MessageBoxButtons]::OK,
+                                [System.Windows.Forms.MessageBoxIcon]::Error
+                            )
+                            return
+                        }
+
+                        $currentState = if ($currentVal -eq 1) { "Enabled" } else { "Disabled" }
+                        $newState = if ($currentVal -eq 1) { "Disabled" } else { "Enabled" }
+                        $newVal = if ($currentVal -eq 1) { 0 } else { 1 }
+
+                        $confirm = Show-YesNoDialog `
+                            -Title "Toggle USB Suspend Confirmation" `
+                            -Message "USB Selective Suspend is currently $currentState.`r`n`r`nWould you like to change it to $newState now for device `"$hubName`"?`r`n`r`nSAMISH will create a backup of your power plan configuration before applying this change.`r`n`r`nTo restore this backup later, you can use the `"Verify & Restore Settings`" button on Page 1, or you will be prompted to restore it if you choose to uninstall SAMISH." `
+                            -Icon ([System.Windows.Forms.MessageBoxIcon]::Warning)
+
+                        if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+                            try {
+                                Backup-UsbSuspendState
+                                powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 $newVal 2>$null | Out-Null
+                                powercfg /setactive SCHEME_CURRENT 2>$null | Out-Null
+                                
+                                Write-SetupLog "Toggled USB selective suspend to $newState for device '$hubName' (backup created)."
+                                $script:lblDiagDetail.Text = "USB Suspend: $newState (Backup created)."
+                                
+                                [void][System.Windows.Forms.MessageBox]::Show(
+                                    "Successfully toggled USB Selective Suspend to $newState for device `"$hubName`".`r`n`r`nA backup of your previous setting ($currentState) has been merged into:`r`n`"$script:PowerPlanBackupPath`"",
+                                    "SAMISH Telemetry Fix",
+                                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                                    [System.Windows.Forms.MessageBoxIcon]::Information
+                                )
+
+                                $script:btnTelemetryRefresh.PerformClick()
+                            }
+                            catch {
+                                [void][System.Windows.Forms.MessageBox]::Show(
+                                    "Failed to toggle USB Selective Suspend for device `"$hubName`":`r`n$($_.Exception.Message)",
+                                    "Error",
+                                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                                    [System.Windows.Forms.MessageBoxIcon]::Error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
 
     # Guard flag: prevents the two list selection handlers from triggering each other
     $script:diagListMutex = $false
@@ -1376,6 +1720,14 @@ function Init-SleepDiagnosticsEventHandlers {
                     }
 
                     Populate-OnWakeActionDropdown -beforeSleepMode $mode -selectedValue $onWake
+
+                    if ($script:cbDiagAutoRecover) {
+                        $autoRecVal = $false
+                        if ($app.PSObject.Properties.Match('AutoRecover').Count -gt 0) {
+                            $autoRecVal = [bool]$app.AutoRecover
+                        }
+                        $script:cbDiagAutoRecover.Checked = $autoRecVal
+                    }
                 }
                 finally {
                     $script:diagSyncingControls = $false
@@ -1383,6 +1735,9 @@ function Init-SleepDiagnosticsEventHandlers {
             }
             else {
                 # Nothing selected - grey the box back out
+                $script:diagSyncingControls = $true
+                if ($script:cbDiagAutoRecover) { $script:cbDiagAutoRecover.Checked = $false }
+                $script:diagSyncingControls = $false
                 Set-OperatingModeBoxState -Enabled $false
             }
         })
@@ -1725,6 +2080,53 @@ function Init-SleepDiagnosticsEventHandlers {
     if ($script:rbDiagGraceful) { $script:rbDiagGraceful.add_CheckedChanged($saveRecoveryMode) }
     if ($script:rbDiagClassic) { $script:rbDiagClassic.add_CheckedChanged($saveRecoveryMode) }
     if ($script:rbDiagPauseMedia) { $script:rbDiagPauseMedia.add_CheckedChanged($saveRecoveryMode) }
+
+    if ($script:cbDiagAutoRecover) {
+        $script:cbDiagAutoRecover.add_CheckedChanged({
+            if ($script:diagSyncingControls) { return }
+
+            $idx = $script:listAutomated.SelectedIndex
+            if ($idx -lt 0 -or $idx -ge $script:MonitoredApps.Count) {
+                $script:diagSyncingControls = $true
+                $script:cbDiagAutoRecover.Checked = $false
+                $script:diagSyncingControls = $false
+                return
+            }
+
+            $app = $script:MonitoredApps[$idx]
+            $autoRecVal = $script:cbDiagAutoRecover.Checked
+            if ($app.PSObject.Properties.Match('AutoRecover').Count -gt 0) {
+                if ($app.AutoRecover -eq $autoRecVal) { return }
+                $app.AutoRecover = $autoRecVal
+            } else {
+                $app | Add-Member -MemberType NoteProperty -Name "AutoRecover" -Value $autoRecVal -Force
+            }
+            $script:MonitoredApps[$idx] = $app
+            Save-MonitoredAppsToConfig
+            
+            $statusMsg = if ($autoRecVal) { "Enabled Monitor & Auto-Relaunch" } else { "Disabled Monitor & Auto-Relaunch" }
+            Flash-DiagnosticsStatus "$statusMsg for $($app.ProcessName)."
+        })
+    }
+
+    if ($script:cbAutoRecovery) {
+        $script:cbAutoRecovery.add_CheckedChanged({
+            Ensure-InstallFolder
+            try {
+                $cfg = @{}
+                if (Test-Path -LiteralPath $ConfigPath) {
+                    $cfg = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
+                }
+                $cfg.EnableAutoRecovery = [bool]$script:cbAutoRecovery.Checked
+                $json = $cfg | ConvertTo-Json -Depth 6
+                if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {
+                    Save-ContentAtomic -Path $ConfigPath -Content $json
+                } else {
+                    Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+                }
+            } catch {}
+        })
+    }
 
     # ---------- Live-save On Wake Action dropdown ----------
     if ($script:ddDiagOnWakeAction) {
@@ -2287,7 +2689,10 @@ $script:btnTestStart.add_Click({
                             $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
                             
                             # Sleep for 250 ms to allow playback state to transition
-                            Start-Sleep -Milliseconds 250
+                            for ($s = 0; $s -lt 5; $s++) {
+                                Start-Sleep -Milliseconds 50
+                                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+                            }
                             
                             # Verify playback state
                             $statusVal = Get-SmtcPlaybackStatus -ProcessName $target.ProcessName
@@ -2298,7 +2703,10 @@ $script:btnTestStart.add_Click({
                         }
                         else {
                             # Wait 250 ms before checking again
-                            Start-Sleep -Milliseconds 250
+                            for ($s = 0; $s -lt 5; $s++) {
+                                Start-Sleep -Milliseconds 50
+                                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+                            }
                         }
                     }
 
@@ -2554,8 +2962,8 @@ function Update-TabIndicator {
 
     if ($tabControl.SelectedIndex -eq 0) {
         if ($global:ThemeNeonActive) {
-            $btnTabSetup.ForeColor = $global:NeonCyan
-            $btnTabDiag.ForeColor  = $global:NeonText
+            $btnTabSetup.ForeColor = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+            $btnTabDiag.ForeColor  = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0
         } else {
             $btnTabSetup.ForeColor = [System.Drawing.SystemColors]::ControlText
             $btnTabDiag.ForeColor  = [System.Drawing.Color]::DimGray
@@ -2563,18 +2971,18 @@ function Update-TabIndicator {
 
         # Setup tab is active
         if ($isExpanded) {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 81)
             $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(190, 2)
         }
         else {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 78)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 81)
             $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(145, 2)
         }
     }
     else {
         if ($global:ThemeNeonActive) {
-            $btnTabDiag.ForeColor  = $global:NeonCyan
-            $btnTabSetup.ForeColor = $global:NeonText
+            $btnTabDiag.ForeColor  = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+            $btnTabSetup.ForeColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0
         } else {
             $btnTabDiag.ForeColor  = [System.Drawing.SystemColors]::ControlText
             $btnTabSetup.ForeColor = [System.Drawing.Color]::DimGray
@@ -2582,11 +2990,11 @@ function Update-TabIndicator {
 
         # Diagnostics tab is active
         if ($isExpanded) {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(530, 78)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(530, 81)
             $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(260, 2)
         }
         else {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(485, 78)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(485, 81)
             $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(180, 2)
         }
     }
@@ -2596,24 +3004,28 @@ function Update-TabIndicator {
 function global:Update-SecondaryTabStyles {
     if ($global:ThemeNeonActive) {
         $secTabBg = [System.Drawing.Color]::FromArgb(35, 35, 40)
-        $activeColor = $global:NeonCyan
-        $inactiveColor = $global:NeonText
+        $activeColor = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+        $inactiveColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0 — inactive tab text
     } else {
         $secTabBg = [System.Drawing.SystemColors]::Control
         $activeColor = [System.Drawing.SystemColors]::ControlText
-        $inactiveColor = [System.Drawing.Color]::DimGray
+        $inactiveColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
     }
 
-    # Telemetry tabs
-    if ($script:btnTelemetryTabTimers -and $script:btnTelemetryTabArmed) {
-        $script:btnTelemetryTabTimers.BackColor = $secTabBg
-        $script:btnTelemetryTabArmed.BackColor = $secTabBg
-        if ($script:tabTelemetryDetails -and $script:tabTelemetryDetails.SelectedIndex -eq 0) {
-            $script:btnTelemetryTabTimers.ForeColor = $activeColor
-            $script:btnTelemetryTabArmed.ForeColor = $inactiveColor
+    # Drawer 2 tab buttons (System vs Hardware telemetry)
+    if ($script:btnDrawer2TabSystem -and $script:btnDrawer2TabHardware) {
+        $script:btnDrawer2TabSystem.BackColor = $secTabBg
+        $script:btnDrawer2TabHardware.BackColor = $secTabBg
+        if ($script:pnlTelemetryHardware -and $script:pnlTelemetryHardware.Visible) {
+            $script:btnDrawer2TabHardware.ForeColor = $activeColor
+            $script:btnDrawer2TabSystem.ForeColor = $inactiveColor
+            $script:btnDrawer2TabHardware.Font = $boldFont
+            $script:btnDrawer2TabSystem.Font = $font
         } else {
-            $script:btnTelemetryTabArmed.ForeColor = $activeColor
-            $script:btnTelemetryTabTimers.ForeColor = $inactiveColor
+            $script:btnDrawer2TabSystem.ForeColor = $activeColor
+            $script:btnDrawer2TabHardware.ForeColor = $inactiveColor
+            $script:btnDrawer2TabSystem.Font = $boldFont
+            $script:btnDrawer2TabHardware.Font = $font
         }
     }
 
@@ -2694,7 +3106,7 @@ function Hide-All-Drawers {
     if ($btnSubTabLive) {
         $btnSubTabLive.Visible = $false
         $btnSubTabLive.Font = $font
-        $btnSubTabLive.ForeColor = [System.Drawing.Color]::DimGray
+        $btnSubTabLive.ForeColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
     }
     if ($script:advancedTabIndicator) {
         $script:advancedTabIndicator.Visible = $false
@@ -2720,7 +3132,7 @@ $btnTabDiag.add_Click({
         $btnTabSetup.Font = $font
         $wasExpanded = $script:IsWindowExpanded
         Hide-All-Drawers
-        # Initialize Page 2 handlers on first visit (was never called — root cause of all Page 2 bugs)
+        # Initialize Page 2 handlers on first visit (was never called - root cause of all Page 2 bugs)
         if (-not $script:diagInitialized) {
             $script:diagInitialized = $true
             Init-SleepDiagnosticsEventHandlers
@@ -2732,7 +3144,7 @@ $btnTabDiag.add_Click({
 
 $btnToolsAdvanced.add_Click({
         if (-not $script:IsWindowExpanded) {
-            # Expand — slide logo to far right of new header space
+            # Expand - slide logo to far right of new header space
             if ($script:pnlTabWrapper) {
                 $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
             }
@@ -2787,7 +3199,7 @@ $btnToolsAdvanced.add_Click({
 
 $btnDiagAdvanced.add_Click({
         if (-not $script:IsWindowExpanded) {
-            # Expand — slide logo to far right of new header space
+            # Expand - slide logo to far right of new header space
             if ($script:pnlTabWrapper) {
                 $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
             }
@@ -2831,16 +3243,21 @@ $btnDiagAdvanced.add_Click({
     })
 
 $script:btnTelemetryRefresh.add_Click({
-        $script:lblTelemetryStates.Text = "Querying system telemetry..."
-        $script:txtLastWake.Text = ""
-        $script:txtWakeTimers.Text = ""
-        $script:listArmedDevices.Items.Clear()
-    
-        # Run async (simulated here with immediate run for brevity, but could use runspace)
+        # ---- System telemetry panel ----
+        if ($script:lblTelemetryStates) { $script:lblTelemetryStates.Text = "Querying system telemetry..." }
+        if ($script:txtLastWake)        { $script:txtLastWake.Text = "" }
+        if ($script:listWakeTimers)     { $script:listWakeTimers.Items.Clear() }
+        if ($script:listArmedDevices)   { $script:listArmedDevices.Items.Clear() }
+        if ($script:listHardwareScans)   { 
+            $script:listHardwareScans.Items.Clear()
+            $script:listHardwareScans.Items.Add("Running deep WMI hardware scan...") | Out-Null
+        }
+
         try {
             $diag = Get-SystemPowerDiagnostics
+
+            # --- Sleep/Wake History ---
             if ($diag.SleepHistory -and $diag.SleepHistory.Count -gt 0) {
-                # Format to a compact ASCII table
                 $tableText = "Wake Time   Duration  Wake Source`r`n"
                 $tableText += "---------   --------  -----------`r`n"
                 foreach ($h in $diag.SleepHistory) {
@@ -2850,41 +3267,87 @@ $script:btnTelemetryRefresh.add_Click({
                             $dt = [DateTime]::Parse($h.WakeTime)
                             $formattedTime = $dt.ToString("MM-dd HH:mm")
                         }
-                        catch {
-                            $formattedTime = $h.WakeTime
-                        }
+                        catch { $formattedTime = $h.WakeTime }
                     }
                     $c1 = $formattedTime.PadRight(12).Substring(0, 12)
                     $c2 = $h.Duration.PadRight(10).Substring(0, 10)
                     $c3 = $h.WakeSource
                     $tableText += "$c1$c2$c3`r`n"
                 }
-                $script:txtLastWake.Text = $tableText.TrimEnd()
+                if ($script:txtLastWake) { $script:txtLastWake.Text = $tableText.TrimEnd() }
             }
-            else {
+            elseif ($script:txtLastWake) {
                 $script:txtLastWake.Text = $diag.LastWake
             }
-        
-            if ($diag.WakeTimers.Count -gt 0) {
-                $script:txtWakeTimers.Text = ($diag.WakeTimers -join "`r`n")
-            }
-            else {
-                $script:txtWakeTimers.Text = "No active wake timers."
-            }
-        
-            if ($diag.ArmedDevices.Count -gt 0) {
-                foreach ($dev in $diag.ArmedDevices) {
-                    $script:listArmedDevices.Items.Add($dev) | Out-Null
+
+            # --- Wake Timers ---
+            if ($script:listWakeTimers) {
+                if ($diag.WakeTimers.Count -gt 0) {
+                    foreach ($timer in $diag.WakeTimers) {
+                        $script:listWakeTimers.Items.Add($timer) | Out-Null
+                    }
+                } else {
+                    $script:listWakeTimers.Items.Add("No active wake timers.") | Out-Null
                 }
             }
-            else {
-                $script:listArmedDevices.Items.Add("No devices armed to wake the system.") | Out-Null
+
+            # --- Armed Devices (Hardware panel) ---
+            if ($script:listArmedDevices) {
+                if ($diag.ArmedDevices.Count -gt 0) {
+                    foreach ($dev in $diag.ArmedDevices) {
+                        $script:listArmedDevices.Items.Add($dev) | Out-Null
+                    }
+                } else {
+                    $script:listArmedDevices.Items.Add("No devices armed to wake the system.") | Out-Null
+                }
             }
-        
-            $script:lblTelemetryStates.Text = "Supported Sleep States: " + ($diag.SleepSupport -join ", ")
+
+            # --- Sleep States banner ---
+            if ($script:lblTelemetryStates) {
+                $script:lblTelemetryStates.Text = "Supported Sleep States: " + ($diag.SleepSupport -join ", ")
+            }
+
+            # --- Deep WMI Hardware Scan (USB / PCIe power states) ---
+            if ($script:listHardwareScans) {
+                $script:listHardwareScans.Items.Clear()
+                try {
+                    $usbLines = @()
+                    $pciLines = @()
+
+                    $usbHubs = Get-WmiObject -Namespace "root\cimv2" -Class "Win32_USBHub" -ErrorAction SilentlyContinue
+                    if ($usbHubs) {
+                        foreach ($hub in $usbHubs) {
+                            $label = if ($hub.Name) { $hub.Name } else { "USB Hub" }
+                            $usbLines += "USB: $label"
+                        }
+                    }
+
+                    $pciDevices = Get-WmiObject -Namespace "root\cimv2" -Class "Win32_PnPEntity" -Filter "ConfigManagerErrorCode=0" -ErrorAction SilentlyContinue |
+                        Where-Object { $_.PNPDeviceID -like "PCI\*" } |
+                        Select-Object -First 10
+                    if ($pciDevices) {
+                        foreach ($dev in $pciDevices) {
+                            $label = if ($dev.Name) { $dev.Name } else { "PCIe Device" }
+                            $pciLines += "PCIe: $label"
+                        }
+                    }
+
+                    $allLines = @()
+                    if ($usbLines.Count -gt 0) { $allLines += $usbLines }
+                    if ($pciLines.Count -gt 0)  { $allLines += $pciLines }
+                    if ($allLines.Count -eq 0)  { $allLines += "No USB/PCIe devices detected via WMI." }
+
+                    foreach ($line in $allLines) {
+                        $script:listHardwareScans.Items.Add($line) | Out-Null
+                    }
+                }
+                catch {
+                    $script:listHardwareScans.Items.Add("WMI scan failed: $($_.Exception.Message)") | Out-Null
+                }
+            }
         }
         catch {
-            $script:lblTelemetryStates.Text = "Failed to query telemetry."
+            if ($script:lblTelemetryStates) { $script:lblTelemetryStates.Text = "Failed to query telemetry: $($_.Exception.Message)" }
         }
     })
 
@@ -3075,24 +3538,24 @@ if ($script:ddTestTarget) {
     })
 }
 
-# Wire custom telemetry sub-tab buttons
-if ($btnTelemetryTabTimers) {
-    $btnTelemetryTabTimers.add_Click({
-        $tabTelemetryDetails.SelectedIndex = 0
-        $btnTelemetryTabTimers.Font = $boldFont
-        $btnTelemetryTabArmed.Font = $font
-        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(15, 158)
-        $telemetryTabIndicator.Width = 90
+# Wire Drawer 2 tab buttons (System Telemetry vs Hardware Telemetry)
+if ($script:btnDrawer2TabSystem) {
+    $script:btnDrawer2TabSystem.add_Click({
+        if ($script:pnlTelemetrySystem)   { $script:pnlTelemetrySystem.Visible = $true }
+        if ($script:pnlTelemetryHardware) { $script:pnlTelemetryHardware.Visible = $false }
+        if ($script:drawer2TabIndicator)  { $script:drawer2TabIndicator.Location = New-Object System.Drawing.Point([int](5 * $script:DpiScale), [int](154 * $script:DpiScale)) }
+        # Reset action button — context changes when switching tabs
+        if ($script:btnTelemetryAction) { $script:btnTelemetryAction.Text = "Select Item..." }
         Update-SecondaryTabStyles
     })
 }
-if ($btnTelemetryTabArmed) {
-    $btnTelemetryTabArmed.add_Click({
-        $tabTelemetryDetails.SelectedIndex = 1
-        $btnTelemetryTabArmed.Font = $boldFont
-        $btnTelemetryTabTimers.Font = $font
-        $telemetryTabIndicator.Location = New-Object System.Drawing.Point(110, 158)
-        $telemetryTabIndicator.Width = 115
+if ($script:btnDrawer2TabHardware) {
+    $script:btnDrawer2TabHardware.add_Click({
+        if ($script:pnlTelemetrySystem)   { $script:pnlTelemetrySystem.Visible = $false }
+        if ($script:pnlTelemetryHardware) { $script:pnlTelemetryHardware.Visible = $true }
+        if ($script:drawer2TabIndicator)  { $script:drawer2TabIndicator.Location = New-Object System.Drawing.Point([int](190 * $script:DpiScale), [int](154 * $script:DpiScale)) }
+        # Reset action button — context changes when switching tabs
+        if ($script:btnTelemetryAction) { $script:btnTelemetryAction.Text = "Select Item..." }
         Update-SecondaryTabStyles
     })
 }
@@ -3110,3 +3573,286 @@ if ($logo) {
 }
 
 
+# =============================================================================
+# SAMISH Telemetry Actions & Backups Helpers
+# =============================================================================
+
+$script:DeviceWakeBackupPath = Join-Path $env:APPDATA "SAMISH\device_wake_backup.json"
+$script:TaskWakeBackupPath   = Join-Path $env:APPDATA "SAMISH\task_wake_backup.json"
+
+function Backup-DeviceWakeState {
+    param([string]$DeviceName)
+
+    Ensure-InstallFolder
+
+    $backupList = @()
+    if (Test-Path -LiteralPath $script:DeviceWakeBackupPath) {
+        try {
+            $raw = Get-Content -LiteralPath $script:DeviceWakeBackupPath -Raw
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $backupList = $raw | ConvertFrom-Json
+            }
+        } catch {}
+    }
+
+    if ($backupList -notcontains $DeviceName) {
+        $backupList += $DeviceName
+    }
+
+    $json = $backupList | ConvertTo-Json -Depth 3
+    Set-Content -LiteralPath $script:DeviceWakeBackupPath -Value $json -Encoding UTF8
+}
+
+function Restore-DeviceWakeFromBackup {
+    if (-not (Test-Path -LiteralPath $script:DeviceWakeBackupPath)) {
+        return @{ StatusMessage = "No device wake backup found." }
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $script:DeviceWakeBackupPath -Raw
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            Remove-Item -LiteralPath $script:DeviceWakeBackupPath -Force -ErrorAction SilentlyContinue
+            return @{ StatusMessage = "Backup file was empty." }
+        }
+
+        $backupList = $raw | ConvertFrom-Json
+        $restoredDevices = @()
+        $failedDevices = @()
+        foreach ($device in $backupList) {
+            $null = powercfg /deviceenablewake $device 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $failedDevices += $device
+            } else {
+                $restoredDevices += $device
+            }
+        }
+
+        if ($failedDevices.Count -gt 0) {
+            $json = $failedDevices | ConvertTo-Json -Depth 3
+            Set-Content -LiteralPath $script:DeviceWakeBackupPath -Value $json -Encoding UTF8
+            
+            $msg = "Failed to restore: $($failedDevices -join ', ')"
+            if ($restoredDevices.Count -gt 0) {
+                $msg = "Restored: $($restoredDevices -join ', '). " + $msg
+            }
+            Write-SetupLog "Device wake settings partially restored. Failed: $($failedDevices -join ', ')."
+            return @{ StatusMessage = $msg; Failed = $true }
+        } else {
+            Remove-Item -LiteralPath $script:DeviceWakeBackupPath -Force -ErrorAction SilentlyContinue
+            Write-SetupLog "Device wake settings restored from backup."
+            return @{ StatusMessage = "Restored wake capabilities for: $($restoredDevices -join ', ')" }
+        }
+    }
+    catch {
+        Write-SetupLog "Failed to restore device wake settings: $($_.Exception.Message)"
+        return @{ StatusMessage = "Failed to restore: $($_.Exception.Message)"; Failed = $true }
+    }
+}
+
+function Backup-ScheduledTaskState {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+
+    Ensure-InstallFolder
+
+    $backupList = @()
+    if (Test-Path -LiteralPath $script:TaskWakeBackupPath) {
+        try {
+            $raw = Get-Content -LiteralPath $script:TaskWakeBackupPath -Raw
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $backupList = $raw | ConvertFrom-Json
+            }
+        } catch {}
+    }
+
+    $alreadyExists = $false
+    foreach ($entry in $backupList) {
+        if ($entry.TaskPath -eq $TaskPath -and $entry.TaskName -eq $TaskName) {
+            $alreadyExists = $true
+            break
+        }
+    }
+
+    if (-not $alreadyExists) {
+        $backupList += [pscustomobject]@{
+            TaskPath = $TaskPath
+            TaskName = $TaskName
+        }
+    }
+
+    $json = $backupList | ConvertTo-Json -Depth 3
+    Set-Content -LiteralPath $script:TaskWakeBackupPath -Value $json -Encoding UTF8
+}
+
+function Restore-ScheduledTasksFromBackup {
+    if (-not (Test-Path -LiteralPath $script:TaskWakeBackupPath)) {
+        return @{ StatusMessage = "No task wake backup found." }
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $script:TaskWakeBackupPath -Raw
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            Remove-Item -LiteralPath $script:TaskWakeBackupPath -Force -ErrorAction SilentlyContinue
+            return @{ StatusMessage = "Backup file was empty." }
+        }
+
+        $backupList = $raw | ConvertFrom-Json
+        $restoredTasks = @()
+        $failedTasks = @()
+        foreach ($task in $backupList) {
+            try {
+                Enable-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName -ErrorAction Stop | Out-Null
+                $restoredTasks += "$($task.TaskPath)$($task.TaskName)"
+            }
+            catch {
+                $failedTasks += $task
+            }
+        }
+
+        if ($failedTasks.Count -gt 0) {
+            $json = $failedTasks | ConvertTo-Json -Depth 3
+            Set-Content -LiteralPath $script:TaskWakeBackupPath -Value $json -Encoding UTF8
+            
+            $failedNames = @(foreach ($t in $failedTasks) { "$($t.TaskPath)$($t.TaskName)" })
+            $msg = "Failed to enable: $($failedNames -join ', ')"
+            if ($restoredTasks.Count -gt 0) {
+                $msg = "Enabled: $($restoredTasks -join ', '). " + $msg
+            }
+            Write-SetupLog "Task wake settings partially restored. Failed: $($failedNames -join ', ')."
+            return @{ StatusMessage = $msg; Failed = $true }
+        } else {
+            Remove-Item -LiteralPath $script:TaskWakeBackupPath -Force -ErrorAction SilentlyContinue
+            Write-SetupLog "Task wake settings restored from backup."
+            return @{ StatusMessage = "Enabled scheduled tasks: $($restoredTasks -join ', ')" }
+        }
+    }
+    catch {
+        Write-SetupLog "Failed to restore task wake settings: $($_.Exception.Message)"
+        return @{ StatusMessage = "Failed to restore: $($_.Exception.Message)"; Failed = $true }
+    }
+}
+
+function Get-UsbSelectiveSuspend {
+    $scheme = Get-ActiveSchemeGuid
+    if ($scheme) {
+        $out = powercfg /query $scheme 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 2>$null
+        $m = ($out | Select-String -Pattern 'Current AC Power Setting Index:\s+0x([0-9a-fA-F]+)' | Select-Object -First 1)
+        if ($m -and $m.Matches.Count -gt 0) {
+            try { return [Convert]::ToInt32($m.Matches[0].Groups[1].Value, 16) } catch {}
+        }
+    }
+    return $null
+}
+
+function Backup-UsbSuspendState {
+    Ensure-InstallFolder
+    
+    $displayOff = 0
+    $sleepIdle = 0
+    $hibernateIdle = 0
+    $schemeGuid = Get-ActiveSchemeGuid
+    if ($schemeGuid) {
+        $displayOff = Get-PowerSettingSecondsAC -SchemeGuid $schemeGuid -SubGuid $SUB_VIDEO -SettingGuid $VIDEOIDLE
+        $sleepIdle = Get-PowerSettingSecondsAC -SchemeGuid $schemeGuid -SubGuid $SUB_SLEEP -SettingGuid $STANDBYIDLE
+        $hibernateIdle = Get-PowerSettingSecondsAC -SchemeGuid $schemeGuid -SubGuid $SUB_SLEEP -SettingGuid $HIBERNATEIDLE
+    }
+    
+    $backup = @{}
+    if (Test-Path -LiteralPath $script:PowerPlanBackupPath) {
+        try {
+            $raw = Get-Content -LiteralPath $script:PowerPlanBackupPath -Raw
+            $backup = $raw | ConvertFrom-Json
+        } catch {}
+    } else {
+        $backup = [ordered]@{
+            SchemeGuid = $schemeGuid
+            DisplayOffSeconds = $displayOff
+            SleepIdleSeconds = $sleepIdle
+            HibernateIdleSeconds = $hibernateIdle
+            Timestamp = (Get-Date).ToString("s")
+        }
+    }
+    
+    $currentVal = Get-UsbSelectiveSuspend
+    if ($null -ne $currentVal) {
+        if (-not $backup.PSObject.Properties.Match('UsbSelectiveSuspendSettingIndex')) {
+            $backup | Add-Member -MemberType NoteProperty -Name "UsbSelectiveSuspendSettingIndex" -Value $currentVal -Force
+        }
+    }
+    
+    $json = $backup | ConvertTo-Json -Depth 3
+    Set-Content -LiteralPath $script:PowerPlanBackupPath -Value $json -Encoding UTF8
+}
+function Restore-UsbSuspendFromBackup {
+    if (-not (Test-Path -LiteralPath $script:PowerPlanBackupPath)) {
+        return @{ StatusMessage = "No USB suspend backup found." }
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $script:PowerPlanBackupPath -Raw
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return @{ StatusMessage = "USB suspend backup file was empty." }
+        }
+
+        $backup = $raw | ConvertFrom-Json
+        if ($null -eq $backup -or -not $backup.PSObject.Properties.Match('UsbSelectiveSuspendSettingIndex')) {
+            return @{ StatusMessage = "No USB selective suspend entry found in backup." }
+        }
+
+        $savedVal = [int]$backup.UsbSelectiveSuspendSettingIndex
+        $label = if ($savedVal -eq 1) { "Enabled" } else { "Disabled" }
+
+        powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 $savedVal 2>$null | Out-Null
+        powercfg /setactive SCHEME_CURRENT 2>$null | Out-Null
+
+        # Remove UsbSelectiveSuspendSettingIndex from the backup JSON
+        $backup.PSObject.Properties.Remove('UsbSelectiveSuspendSettingIndex')
+
+        # If no meaningful keys remain (only metadata like Timestamp), delete the file; otherwise update it
+        $remainingKeys = $backup.PSObject.Properties.Name | Where-Object { $_ -notin @('Timestamp') }
+        if ($remainingKeys.Count -eq 0) {
+            Remove-Item -LiteralPath $script:PowerPlanBackupPath -Force -ErrorAction SilentlyContinue
+        } else {
+            $json = $backup | ConvertTo-Json -Depth 3
+            Set-Content -LiteralPath $script:PowerPlanBackupPath -Value $json -Encoding UTF8
+        }
+
+        Write-SetupLog "USB Selective Suspend restored to $label from backup."
+        return @{ StatusMessage = "USB Selective Suspend restored to: $label" }
+    }
+    catch {
+        Write-SetupLog "Failed to restore USB Selective Suspend: $($_.Exception.Message)"
+        return @{ StatusMessage = "Failed to restore USB Selective Suspend: $($_.Exception.Message)"; Failed = $true }
+    }
+}
+
+# ---------- Active Sleep Blocker Auto-Refresh Timer ----------
+$script:TelemetryAutoRefreshIntervalSec = 30
+$script:ActiveBlockerTimer = $null
+
+$form.add_Shown({
+    if ($null -eq $script:ActiveBlockerTimer) {
+        $script:ActiveBlockerTimer = New-Object System.Windows.Forms.Timer
+        $script:ActiveBlockerTimer.Interval = $script:TelemetryAutoRefreshIntervalSec * 1000
+        $script:ActiveBlockerTimer.add_Tick({
+            # Only run if we are on the Diagnostics tab (SelectedIndex -eq 1)
+            if ($script:tabControl.SelectedIndex -ne 1) { return }
+
+            # Only run if no scan is currently in progress
+            if ($null -ne $script:DiagTimer) { return }
+
+            # Only run if the user has no selection in listBlockers, listOverrides, or listAutomated
+            if ($script:listBlockers.SelectedIndex -ne -1 -or
+                $script:listOverrides.SelectedIndex -ne -1 -or
+                $script:listAutomated.SelectedIndex -ne -1) {
+                return
+            }
+
+            # Trigger the scan asynchronously
+            Update-SleepDiagnosticsListsAsync
+        })
+        $script:ActiveBlockerTimer.Start()
+    }
+})

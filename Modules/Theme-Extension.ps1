@@ -96,7 +96,7 @@ function global:Invoke-BrandSequence {
 
     $targetSize = 789
 
-    # Load the logo image directly into a Drawing.Image — no PictureBox needed.
+    # Load the logo image directly into a Drawing.Image - no PictureBox needed.
     # GDI+ DrawImage handles PNG transparency correctly in one pass.
     $imgPath = if ($global:ThemeNeonActive) { $global:ImgGrayPath } else { $global:ImgColorPath }
     $logoImage = $null
@@ -143,7 +143,7 @@ function global:Run-TakeoverAnimation {
     $FadeForm.Tag = $animState
 
     # Single GDI+ Paint pass: fill background color then draw logo on top.
-    # Both happen in the same WM_PAINT — zero chance of mixed-state frames.
+    # Both happen in the same WM_PAINT - zero chance of mixed-state frames.
     $FadeForm.add_Paint({
         param($sender, $e)
         $s = $sender.Tag
@@ -460,13 +460,13 @@ function global:Set-BrandTheme {
                     $c.ImageLocation = $global:ImgGrayPath
                 }
                 elseif ($c -is [System.Windows.Forms.Button]) {
-                    $c.BackColor = if ($c.Enabled) { [System.Drawing.Color]::FromArgb(35, 35, 40) } else { [System.Drawing.Color]::FromArgb(60, 60, 65) }
+                    $c.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 40)
                     $c.ForeColor = $global:NeonCyan
                     $c.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
                     $c.FlatAppearance.BorderColor = $global:NeonPurple
                     $c.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(50, 50, 60)
                     
-                    if (-not $c.PSObject.Properties.Match('ThemeHooked')) {
+                    if ($c.PSObject.Properties.Match('ThemeHooked').Count -eq 0) {
                         $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
                         $c.add_EnabledChanged({
                             param($sender, $e)
@@ -475,13 +475,43 @@ function global:Set-BrandTheme {
                                     if (Get-Command Update-SecondaryTabStyles -ErrorAction SilentlyContinue) { Update-SecondaryTabStyles }
                                     if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) { Update-TabIndicator }
                                 } else {
-                                    $sender.BackColor = if ($sender.Enabled) { [System.Drawing.Color]::FromArgb(35, 35, 40) } else { [System.Drawing.Color]::FromArgb(60, 60, 65) }
+                                    $sender.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 40)
                                 }
+                                $sender.Invalidate()
+                            }
+                        })
+                        $c.add_Paint({
+                            param($sender, $e)
+                            if ($global:ThemeNeonActive -and -not $sender.Enabled) {
+                                $g = $e.Graphics
+                                # 1. Clear background
+                                $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(35, 35, 40))
+                                $g.FillRectangle($brush, $sender.ClientRectangle)
+                                $brush.Dispose()
+                                
+                                # 2. Draw border (dimmer purple)
+                                $w = [int]$sender.Width
+                                $h = [int]$sender.Height
+                                $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(75, 25, 125), 1)
+                                $rect = New-Object System.Drawing.Rectangle(0, 0, ($w - 1), ($h - 1))
+                                $g.DrawRectangle($pen, $rect)
+                                $pen.Dispose()
+                                
+                                # 3. Draw text — Option B muted teal-gray #73878E (visible but clearly disabled)
+                                $grayColor = [System.Drawing.Color]::FromArgb(115, 135, 145) # #73878E
+                                [System.Windows.Forms.TextRenderer]::DrawText(
+                                    $g,
+                                    $sender.Text,
+                                    $sender.Font,
+                                    $sender.ClientRectangle,
+                                    $grayColor,
+                                    [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter
+                                )
                             }
                         })
                     }
                 }
-                elseif ($c.Name -eq "mainSep" -or $c.Name -eq "subSep" -or $c.Name -eq "telemetrySubSep") {
+                elseif ($c.Name -match "^mainSep$|^subSep$|^telemetrySubSep$|^drawer2TabSep$") {
                     $c.BackColor = $global:NeonCyan
                 }
                 elseif ($c.Name -match "Indicator|advancedTabIndicator|Sep") {
@@ -511,18 +541,14 @@ function global:Set-BrandTheme {
                 elseif ($c -is [System.Windows.Forms.TextBox]) {
                     $c.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 30)
                     $c.ForeColor = $global:NeonCyan
-                    if ($c.Name -eq "txtWakeTimers") {
-                        $c.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-                    } else {
-                        $c.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-                    }
+                    $c.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
                 }
                 elseif ($c -is [System.Windows.Forms.ComboBox]) {
                     $c.BackColor = if ($c.Enabled) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
                     $c.ForeColor = if ($c.Enabled) { $global:NeonCyan } else { [System.Drawing.Color]::Gray }
                     $c.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
                     
-                    if (-not $c.PSObject.Properties.Match('ThemeHooked')) {
+                    if ($c.PSObject.Properties.Match('ThemeHooked').Count -eq 0) {
                         $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
                         $c.add_EnabledChanged({
                             param($sender, $e)
@@ -535,11 +561,25 @@ function global:Set-BrandTheme {
                 }
                 elseif ($c -is [System.Windows.Forms.GroupBox]) {
                     $c.ForeColor = $global:NeonPink
+                    if ($c.PSObject.Properties.Match('ThemeHooked').Count -eq 0) {
+                        $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
+                        $c.add_Paint({
+                            param($sender, $e)
+                            if ($global:ThemeNeonActive) {
+                                $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(45, 45, 50), 1)
+                                $gbW = [int]$sender.Width
+                                $gbH = [int]$sender.Height
+                                $rect = New-Object System.Drawing.Rectangle(0, 7, ($gbW - 1), ($gbH - 8))
+                                $e.Graphics.DrawRectangle($pen, $rect)
+                                $pen.Dispose()
+                            }
+                        })
+                    }
                 }
                 elseif ($c -is [System.Windows.Forms.ListBox]) {
                     $c.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 25)
                     $c.ForeColor = $global:NeonText
-                    $c.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+                    $c.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
                 }
                 elseif ($c -is [System.Windows.Forms.TabControl] -or $c -is [System.Windows.Forms.TabPage] -or $c -is [System.Windows.Forms.Panel]) {
                     if ($c.Name -eq "pnlOnWakeBorder") {

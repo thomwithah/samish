@@ -1,4 +1,4 @@
-# ==========================================
+﻿# ==========================================
 # SAMISH Sleep & Hibernate Diagnostics Module
 # ==========================================
 
@@ -423,7 +423,7 @@ function Get-SystemPowerDiagnostics {
                     try {
                         $xml = [xml]$e.ToXml()
 
-                        # 1. Try WakeSourceText (most descriptive — e.g. device name or timer owner)
+                        # 1. Try WakeSourceText (most descriptive - e.g. device name or timer owner)
                         $sourceNode = $xml.SelectSingleNode("//*[local-name()='Data'][@Name='WakeSourceText']")
                         if ($sourceNode -and -not [string]::IsNullOrEmpty($sourceNode.InnerText.Trim())) {
                             $wakeSource = $sourceNode.InnerText.Trim()

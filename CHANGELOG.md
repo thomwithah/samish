@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -146,7 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Smart Media App Discovery**: Enhanced background blocker scans to detect and list running browser and media apps in SAMIH Blue at the bottom of the active blocker list, even when they are not actively blocking sleep.
 - **WinRT SMTC Integration**: Implemented reflection-based Windows System Media Transport Controls (SMTC) commands to pause playback before sleep and restore it upon waking based on configured preferences.
 - **Multi-Threaded GUI Isolation**: Moved sleep diagnostics and file discovery scans off the main WinForms thread and into asynchronous background PowerShell Runspaces, resolving UI freeze/hang conditions.
-- **Windows Event Log Integration**: Registered `SAMISH` as a Windows Application Event Log source and integrated structured Event IDs (100–201) to log service startup, shutdown, and process actions.
+- **Windows Event Log Integration**: Registered `SAMISH` as a Windows Application Event Log source and integrated structured Event IDs (100-201) to log service startup, shutdown, and process actions.
 - **GDI Resource Leak Protection**: Implemented tracking and disposal routines for GDI fonts, icons, and brushes used in the UI modules, preventing handles and memory exhaustion.
 - **Automatic Log Rotation**: Configured setup and background logs to automatically rotate and archive when file size exceeds 5MB.
 - **Atomic Configuration Writes**: Added a safe write-and-swap utility (`Save-ContentAtomic`) to prevent corruption of `config.json` in the event of sudden power-offs or crashes.

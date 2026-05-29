@@ -38,7 +38,10 @@ param(
 
     # Logging defaults (CLI keeps conservative defaults unless explicitly set)
     [switch]$EnableLogging,
-    [int]$LogEverySeconds = 30
+    [int]$LogEverySeconds = 30,
+
+    # Auto-Recovery
+    [bool]$EnableAutoRecovery = $true
 )
 
 #region Win32 Console Hider
@@ -238,6 +241,15 @@ function Complete-SamishSetupUi {
             $script:LiveLogTimer.Stop()
             $script:LiveLogTimer.Dispose()
             $script:LiveLogTimer = $null
+        }
+    }
+    catch { }
+
+    try {
+        if ($script:ActiveBlockerTimer) {
+            $script:ActiveBlockerTimer.Stop()
+            $script:ActiveBlockerTimer.Dispose()
+            $script:ActiveBlockerTimer = $null
         }
     }
     catch { }
@@ -808,7 +820,8 @@ function Write-ConfigJson {
         [string]$SetupPath,
 
         [string]$ActiveProfileId = "BEACN",
-        [string[]]$ProfilesEnabled = @("BEACN")
+        [string[]]$ProfilesEnabled = @("BEACN"),
+        [bool]$EnableAutoRecovery = $true
     )
 
     Ensure-InstallFolder
@@ -869,6 +882,7 @@ function Write-ConfigJson {
         ProfilesEnabled        = @($ProfilesEnabled)
         MonitoredApps          = $monitoredApps
         Theme                  = $themeVal
+        EnableAutoRecovery     = $EnableAutoRecovery
     }
 
     $json = $cfg | ConvertTo-Json -Depth 6
@@ -1539,7 +1553,8 @@ function Invoke-CliInstallRoute {
         -HotkeyMode:$HotkeyMode `
         -CustomHotkeyVirtualKey:$vk `
         -OperatingMode:$OperatingMode `
-        -SetupPath:$script:SetupExecutablePath
+        -SetupPath:$script:SetupExecutablePath `
+        -EnableAutoRecovery:$EnableAutoRecovery
 
     Write-CliLine "Installing Scheduled Task..."
     Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
@@ -1971,12 +1986,75 @@ $form.add_Shown({
     }
 })
 
+# Pre-initialize Neon theme state from config before form render
+if (Test-Path -LiteralPath $ConfigPath) {
+    try {
+        $cfgBoot = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
+        if ($cfgBoot -and $cfgBoot.PSObject.Properties.Name -contains "Theme") {
+            $global:ThemeNeonActive = ($cfgBoot.Theme -eq "Neon")
+        }
+    } catch {}
+}
+
 if ($global:ThemeNeonActive) {
+    # Initialize Neon colors globally as default fallbacks in case Theme-Extension fails or loading is delayed
+    if ($null -eq $global:NeonBackground) { $global:NeonBackground = [System.Drawing.Color]::FromArgb(15, 15, 18) }
+    if ($null -eq $global:NeonPurple)     { $global:NeonPurple     = [System.Drawing.Color]::FromArgb(153, 51, 255) }
+    if ($null -eq $global:NeonPink)       { $global:NeonPink       = [System.Drawing.Color]::FromArgb(255, 0, 102) }
+    if ($null -eq $global:NeonLime)       { $global:NeonLime       = [System.Drawing.Color]::FromArgb(179, 255, 0) }
+    if ($null -eq $global:NeonCyan)       { $global:NeonCyan       = [System.Drawing.Color]::FromArgb(0, 245, 212) }
+    if ($null -eq $global:NeonText)       { $global:NeonText       = [System.Drawing.Color]::FromArgb(255, 255, 255) }
+
     if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
-        . (Join-Path $PSScriptRoot "Modules\Theme-Extension.ps1")
+        . (Join-Path $PackageDir "Modules\Theme-Extension.ps1")
     }
     try { Set-BrandTheme -Form $form -IsNeon $true } catch {}
+    # Sync the tab indicator after the theme is applied — Set-BrandTheme calls Update-TabIndicator
+    # internally but at that point the form geometry may not be finalised yet; calling it again
+    # after ShowDialog's first paint pass ensures the indicator lands on the correct tab.
+    if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {
+        try { $form.BeginInvoke([Action]{ Update-TabIndicator }) } catch {}
+    }
 }
+
+# Apply modern UX: Hand cursors on all buttons
+$modernHand = [System.Windows.Forms.Cursors]::Hand
+try {
+    if (-not ("SamishCursorHelper" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class SamishCursorHelper {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
+}
+"@
+    }
+    $handle = [SamishCursorHelper]::LoadCursor([IntPtr]::Zero, 32649) # IDC_HAND
+    if ($handle -ne [IntPtr]::Zero) {
+        $modernHand = New-Object System.Windows.Forms.Cursor($handle)
+    }
+} catch {}
+
+function Set-ButtonCursors([System.Windows.Forms.Control]$parent) {
+    foreach ($ctrl in $parent.Controls) {
+        if ($ctrl -is [System.Windows.Forms.Button]) {
+            $ctrl.Cursor = $modernHand
+        }
+        if ($ctrl.HasChildren) {
+            Set-ButtonCursors -parent $ctrl
+        }
+    }
+}
+Set-ButtonCursors -parent $form
+
+# Apply modern UX: Escape key to close
+$form.KeyPreview = $true
+$form.add_KeyDown({
+    if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+        $form.Close()
+    }
+})
 
 [void]$form.ShowDialog()
 Complete-SamishSetupUi -Form $form

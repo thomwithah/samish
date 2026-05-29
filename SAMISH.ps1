@@ -1,4 +1,4 @@
-﻿# Suggested filename: SAMISH.ps1
+# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -162,8 +162,16 @@ $EnableHotkey = $true
 $HotkeyMode = "Custom"
 $CustomHotkeyVirtualKey = 0x76
 
+$EnableAutoRecovery = $true
+$script:LastAutoRecoveryCheckTime = $null
+$script:MonitoredAppPlayStates = @{}
+$script:LastConfigWriteTime = $null
+
 # Load optional config file overrides
 Apply-ConfigFromFile
+if (Test-Path -LiteralPath $ConfigPath) {
+    $script:LastConfigWriteTime = (Get-Item -LiteralPath $ConfigPath).LastWriteTime
+}
 
 $script:HotkeySuffix = Get-HotkeySuffix
 
@@ -855,33 +863,176 @@ public static class IdleNative {
         return $stoppedAny
     }
 
-    function Invoke-MixerStart {
-        $startedAny = $false
-        
-        # 1. Start Main Mixer via active adapter
+    function Start-MainMixer {
         $adapterStartCmd = "Start-$($script:ActiveProfileId)Adapter"
         if (Get-Command $adapterStartCmd -ErrorAction SilentlyContinue) {
             $r = & $adapterStartCmd -ProcessName $script:TargetProcessName -ConfiguredPath $script:TargetExePath
             if ($r) {
-                $startedAny = $true
+                return $true
             } else {
                 Write-EventLogEntry -Message "Adapter failed to start main mixer: $script:TargetProcessName." -EntryType "Error" -EventId 400
             }
         } else {
-            # Fallback to generic start if adapter is missing or has no start func
             Log-Always "No adapter start function ($adapterStartCmd) found for $script:TargetProcessName. Falling back to generic start."
             Write-EventLogEntry -Message "No adapter start function ($adapterStartCmd) found for $script:TargetProcessName. Falling back to generic start." -EntryType "Warning" -EventId 300
             $lookup = Get-AppExecutablePath -ProcessName $script:TargetProcessName -ConfiguredPath $script:TargetExePath
             if ($lookup.IsValid) {
                 $result = Invoke-AppStart -ProcessName $script:TargetProcessName -ExePath $lookup.Path
                 if ($result.Started) {
-                    $startedAny = $true
+                    return $true
                 } else {
                     Write-EventLogEntry -Message "Failed to start main mixer process $script:TargetProcessName via generic start fallback." -EntryType "Error" -EventId 400
                 }
             } else {
                 Write-EventLogEntry -Message "Failed to locate executable path for main mixer process $script:TargetProcessName." -EntryType "Error" -EventId 400
             }
+        }
+        return $false
+    }
+
+    function Relaunch-MonitoredApp {
+        param(
+            $App,
+            [bool]$RestorePlayState
+        )
+
+        $resolvedPath = $App.ExecutablePath
+        $pathValid = $false
+        if (Get-Command Get-AppExecutablePath -ErrorAction SilentlyContinue) {
+            try {
+                $lookup = Get-AppExecutablePath -ProcessName $App.ProcessName -ConfiguredPath $App.ExecutablePath
+                if ($lookup.IsValid) {
+                    $resolvedPath = $lookup.Path
+                    $pathValid = $true
+                }
+            }
+            catch {
+                Log-Always "Error in dynamic lookup during recovery: $($_.Exception.Message)"
+            }
+        }
+        
+        if (-not $pathValid -and $App.ExecutablePath -and (Test-Path $App.ExecutablePath)) {
+            $resolvedPath = $App.ExecutablePath
+            $pathValid = $true
+        }
+
+        if ($pathValid) {
+            Log-Always "Auto-recovering monitored app: $($App.ProcessName) ($resolvedPath)"
+            Write-EventLogEntry -Message "Monitored app $($App.ProcessName) was not running. Automatically recovering process." -EntryType "Warning" -EventId 303
+            $result = Invoke-AppStart -ProcessName $App.ProcessName -ExePath $resolvedPath
+            if ($result.Started) {
+                if ($RestorePlayState) {
+                    Log-Always "Playback restoration requested for $($App.ProcessName) during recovery. Polling for SMTC session (up to 15 seconds)."
+                    $sessionFound = $false
+                    $playConfirmed = $false
+                    $processCrashed = $false
+
+                    for ($i = 0; $i -lt 60; $i++) {
+                        $currentProc = Get-Process -Name $App.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if (-not $currentProc) {
+                            $processCrashed = $true
+                            break
+                        }
+
+                        $session = Get-SmtcSessionForProcess -ProcessName $App.ProcessName
+                        if ($session) {
+                            $sessionFound = $true
+                            $played = Invoke-SmtcActionForProcess -ProcessName $App.ProcessName -Action "Play"
+                            Start-Sleep -Milliseconds 250
+                            
+                            $statusVal = Get-SmtcPlaybackStatus -ProcessName $App.ProcessName
+                            if ($statusVal -eq 4) {
+                                $playConfirmed = $true
+                                break
+                            }
+                        }
+                        else {
+                            Start-Sleep -Milliseconds 250
+                        }
+                    }
+
+                    $loops = if ($i -ge 60) { 60 } else { $i + 1 }
+                    $elapsedMs = $loops * 250
+                    $timeString = if ($elapsedMs -lt 1000) { "$elapsedMs ms" } else { "$([math]::Round($elapsedMs / 1000, 2)) seconds" }
+
+                    if ($processCrashed) {
+                        Log-Always "Playback restoration failed because $($App.ProcessName) process exited or crashed during startup."
+                    }
+                    elseif ($playConfirmed) {
+                        Log-Always "Media Control Confirmed via SMTC for $($App.ProcessName) after $loops loops ($timeString) during recovery."
+                    }
+                    elseif ($sessionFound) {
+                        Log-Always "Play command sent to $($App.ProcessName) but playback state could not be confirmed within 15 seconds."
+                    }
+                    else {
+                        Log-Always "No SMTC session found for $($App.ProcessName) within 15 seconds."
+                    }
+                }
+                return $true
+            } else {
+                Write-EventLogEntry -Message "Failed to start monitored app $($App.ProcessName) at $resolvedPath during recovery." -EntryType "Error" -EventId 400
+            }
+        } else {
+            Log-Always "Executable for $($App.ProcessName) not found at $($App.ExecutablePath) during recovery."
+            Write-EventLogEntry -Message "Executable for custom monitored app $($App.ProcessName) not found at $($App.ExecutablePath) during recovery." -EntryType "Warning" -EventId 300
+        }
+        return $false
+    }
+
+    function Perform-AutoRecoveryCheck {
+        # 1. Main Mixer Auto-Recovery
+        if ($EnableAutoRecovery) {
+            $mixerRunning = (Get-Process -Name $script:TargetProcessName -ErrorAction SilentlyContinue) -ne $null
+            if (-not $mixerRunning) {
+                Log-Always "Main mixer process '$script:TargetProcessName' is not running. Starting recovery..."
+                Write-EventLogEntry -Message "Main mixer process '$script:TargetProcessName' was not running. Automatically recovering process." -EntryType "Warning" -EventId 302
+                
+                $started = Start-MainMixer
+                if ($started) {
+                    Log-Always "Main mixer process '$script:TargetProcessName' recovered successfully."
+                } else {
+                    Log-Always "Failed to recover main mixer process '$script:TargetProcessName'."
+                }
+            }
+        }
+
+        # 2. Monitored Apps Auto-Recovery
+        if ($script:MonitoredApps) {
+            foreach ($app in $script:MonitoredApps) {
+                $autoRecoverEnabled = $false
+                if ($app.PSObject.Properties.Match('AutoRecover').Count -gt 0) {
+                    $autoRecoverEnabled = [bool]$app.AutoRecover
+                }
+
+                $isRunning = (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue) -ne $null
+
+                if ($isRunning) {
+                    # Track play state dynamically
+                    $status = Get-SmtcPlaybackStatus -ProcessName $app.ProcessName
+                    if ($status -eq 4) {
+                        $script:MonitoredAppPlayStates[$app.ProcessName] = $true
+                    } else {
+                        $script:MonitoredAppPlayStates[$app.ProcessName] = $false
+                    }
+                } else {
+                    # Not running. Relaunch if monitoring is enabled.
+                    if ($autoRecoverEnabled) {
+                        $wasPlaying = [bool]$script:MonitoredAppPlayStates[$app.ProcessName]
+                        $recovered = Relaunch-MonitoredApp -App $app -RestorePlayState $wasPlaying
+                        # Clear tracking state after recovery attempt
+                        $script:MonitoredAppPlayStates[$app.ProcessName] = $false
+                    }
+                }
+            }
+        }
+    }
+
+    function Invoke-MixerStart {
+        $startedAny = $false
+        
+        # 1. Start Main Mixer via helper
+        if (Start-MainMixer) {
+            $startedAny = $true
         }
         
         # 2. Start all custom monitored apps
@@ -1078,6 +1229,10 @@ public static class IdleNative {
         $script:icon.ContextMenuStrip = $menu
 
         $script:MenuToggleItem = $toggleItem
+
+        $script:icon.add_DoubleClick({
+            $settingsItem.PerformClick()
+        })
 
         $settingsItem.add_Click({
             $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
@@ -1361,6 +1516,32 @@ public static class KeyState {
             Check-PendingNotification
             Start-Sleep -Milliseconds 100
             continue
+        }
+
+        # Auto-Recovery check (throttled to run every 10 seconds)
+        if ($EnableAutoRecovery -and $script:mixerStopped -eq $false) {
+            $nowTime = Get-Date
+            if ($null -eq $script:LastAutoRecoveryCheckTime) {
+                $script:LastAutoRecoveryCheckTime = $nowTime.AddSeconds(-10)
+            }
+            if (($nowTime - $script:LastAutoRecoveryCheckTime).TotalSeconds -ge 10) {
+                $script:LastAutoRecoveryCheckTime = $nowTime
+                try {
+                    # Dynamically reload configuration if config.json was updated
+                    if (Test-Path -LiteralPath $ConfigPath) {
+                        $writeTime = (Get-Item -LiteralPath $ConfigPath).LastWriteTime
+                        if ($null -eq $script:LastConfigWriteTime -or $writeTime -gt $script:LastConfigWriteTime) {
+                            $script:LastConfigWriteTime = $writeTime
+                            Log-Always "Reloading updated configuration from config.json"
+                            Apply-ConfigFromFile
+                        }
+                    }
+                    Perform-AutoRecoveryCheck
+                }
+                catch {
+                    Log-Always "Error during auto-recovery check: $($_.Exception.Message)"
+                }
+            }
         }
 
         if (((Get-Date) - $lastRefresh).TotalSeconds -ge $RefreshPowerPlanEverySeconds -or -not $activeScheme) {
