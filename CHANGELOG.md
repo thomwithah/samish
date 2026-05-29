@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Opt-in Recovery Controls**: Added settings to enable recovery globally (General Settings) and per-application (App Override Settings).
 
 ### Changed
-- **Non-Destructive Portal Script**: Configured browser automation to locate and reuse existing tabs rather than overwriting the user's active session.
 - **UI Button Text Update**: Renamed the "Remove from Automation" button in the Automated Apps panel to "Deactivate Automation" to prevent text clipping.
 
 ### Fixed
