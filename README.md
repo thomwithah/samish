@@ -88,22 +88,15 @@ SAMISH currently supports **BEACN** software out of the box, and includes new, b
 ## Included files
 
 Keep these files and folders together in the same directory:
-- Assets/
-- Modules/
-- Profiles/
-- Configure-CustomProfile.bat
-- Configure-CustomProfile.ps1
+- App/ (contains the core application components, tasks, and modules)
+- Setup.ps1
+- Setup.bat
+- Setup.exe
 - Install-SAMISH-Hidden.bat
 - Install-SAMISH-Interactive.bat
 - Uninstall-SAMISH.bat
-- Setup.bat
-- Setup.ps1
-- SAMISH.ps1
-- SAMISH-HiddenTask.xml
-- SAMISH-InteractiveTask.xml
 - README.txt
 - README.md
-- Setup.exe
 - LICENSE
 - COMMERCIAL-LICENSE.md
 

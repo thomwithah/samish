@@ -11,49 +11,28 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction S
 # Ensure WinForms assembly is loaded for the power state form type definition
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
 
-# ---------- POWER STATE INTERCEPTOR TYPE ----------
-$PowerTypeSig = @"
-using System;
-using System.Windows.Forms;
-
-public class PowerEventArgs : EventArgs {
-    public int EventType { get; set; }
-    public PowerEventArgs(int eventType) {
-        this.EventType = eventType;
-    }
-}
-
-public class PowerNotificationForm : Form {
-    public event EventHandler<PowerEventArgs> PowerEventOccurred;
-
-    protected override void WndProc(ref Message m) {
-        if (m.Msg == 0x0218) { // WM_POWERBROADCAST
-            int wp = m.WParam.ToInt32();
-            if (PowerEventOccurred != null) {
-                PowerEventOccurred(this, new PowerEventArgs(wp));
-            }
-        }
-        base.WndProc(ref m);
-    }
-}
-"@
-try {
-    Add-Type -TypeDefinition $PowerTypeSig -ReferencedAssemblies "System.Windows.Forms" -ErrorAction Stop
-}
-catch {
-    $script:PowerTypeSigError = $_.Exception.Message
-}
-
-# ---------- VERSION ----------
-$ScriptName    = "SAMISH"
-$ScriptVersion = "v1.2.5"
-$ReleaseDate   = "2026-05-27"
-
 # ---------- PATH RESOLUTION ----------
 $PackageDir = $PSScriptRoot
 if (-not $PackageDir -and $PSCommandPath) { $PackageDir = Split-Path -Parent $PSCommandPath }
 if (-not $PackageDir) { $PackageDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
 if ($PackageDir -and $PackageDir.EndsWith("\")) { $PackageDir = $PackageDir.TrimEnd("\") }
+
+#region Native Methods and Core Modules
+$NativeMethodsPath = Join-Path $PackageDir "Modules\NativeMethods.ps1"
+if (Test-Path -LiteralPath $NativeMethodsPath) {
+    . $NativeMethodsPath
+}
+
+$UwpMediaPath = Join-Path $PackageDir "Modules\UwpMedia.Module.ps1"
+if (Test-Path -LiteralPath $UwpMediaPath) {
+    . $UwpMediaPath
+}
+#endregion
+
+# ---------- VERSION ----------
+$ScriptName    = "SAMISH"
+$ScriptVersion = "v1.2.5"
+$ReleaseDate   = "2026-05-27"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -452,30 +431,11 @@ catch {
 
 try {
     # IDLE DETECTION
-    try {
-        Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class IdleNative {
-  [StructLayout(LayoutKind.Sequential)]
-  public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
-  [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
-  public static uint GetIdleMilliseconds() {
-    LASTINPUTINFO li = new LASTINPUTINFO();
-    li.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(li);
-    GetLastInputInfo(ref li);
-    return (uint)Environment.TickCount - li.dwTime;
-  }
-}
-"@
-    }
-    catch {
-        $script:IdleNativeError = $_.Exception.Message
-    }
+    # (SamishIdleNative loaded via NativeMethods.ps1)
 
     function Get-IdleSeconds {
-        if ($script:IdleNativeError) { return 0 }
-        [math]::Floor([IdleNative]::GetIdleMilliseconds() / 1000)
+        if ($global:IdleNativeError) { return 0 }
+        [math]::Floor([SamishIdleNative]::GetIdleMilliseconds() / 1000)
     }
 
     # POWERCFG
@@ -670,100 +630,6 @@ public static class IdleNative {
     }
 
     # MIXER CONTROL
-
-    function Wait-UwpAsync {
-        param(
-            [Parameter(Mandatory = $true)]
-            $AsyncOp,
-            [Parameter(Mandatory = $true)]
-            [Type]$ResultType
-        )
-        try {
-            [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
-            $asTaskMethods = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" }
-            $asTaskMethod = $asTaskMethods | Where-Object {
-                $params = $_.GetParameters()
-                $params.Count -eq 1 -and $params[0].ParameterType.Name -eq 'IAsyncOperation`1'
-            }
-            if (-not $asTaskMethod) { return $null }
-            $genericMethod = $asTaskMethod.MakeGenericMethod($ResultType)
-            $task = $genericMethod.Invoke($null, @($AsyncOp))
-            $task.Wait()
-            return $task.Result
-        }
-        catch {
-            return $null
-        }
-    }
-
-    function Get-SmtcSessionForProcess {
-        param([string]$ProcessName)
-        if ([string]::IsNullOrWhiteSpace($ProcessName)) { return $null }
-        try {
-            [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
-            $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
-            $asyncOp = $smtcType::RequestAsync()
-            $manager = Wait-UwpAsync -AsyncOp $asyncOp -ResultType ($smtcType)
-            if (-not $manager) { return $null }
-            $sessions = $manager.GetSessions()
-            foreach ($session in $sessions) {
-                $sourceApp = $session.SourceAppUserModelId
-                if (-not $sourceApp) { continue }
-                $cleanName = $sourceApp
-                if ($cleanName -match "([^\\]+)\.exe$") {
-                    $cleanName = $Matches[1]
-                }
-                elseif ($cleanName -match "^([^\!]+)\!") {
-                    $cleanName = $Matches[1]
-                }
-                if ($cleanName -match "^Spotify") { $cleanName = "spotify" }
-                elseif ($cleanName -match "Chrome") { $cleanName = "chrome" }
-                elseif ($cleanName -match "Edge") { $cleanName = "msedge" }
-                elseif ($cleanName -match "Firefox") { $cleanName = "firefox" }
-
-                if ($cleanName.ToLower() -eq $ProcessName.ToLower()) {
-                    return $session
-                }
-            }
-        }
-        catch {}
-        return $null
-    }
-
-    function Get-SmtcPlaybackStatus {
-        param([string]$ProcessName)
-        $session = Get-SmtcSessionForProcess -ProcessName $ProcessName
-        if (-not $session) { return 0 }
-        try {
-            $playbackInfo = $session.GetPlaybackInfo()
-            if ($playbackInfo) {
-                return [int]$playbackInfo.PlaybackStatus
-            }
-        }
-        catch {}
-        return 0
-    }
-
-    function Invoke-SmtcActionForProcess {
-        param(
-            [string]$ProcessName,
-            [string]$Action
-        )
-        $session = Get-SmtcSessionForProcess -ProcessName $ProcessName
-        if (-not $session) { return $false }
-        try {
-            if ($Action -eq "Pause") {
-                $asyncOp = $session.TryPauseAsync()
-                return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
-            }
-            elseif ($Action -eq "Play") {
-                $asyncOp = $session.TryPlayAsync()
-                return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
-            }
-        }
-        catch {}
-        return $false
-    }
 
     function Invoke-MixerStop {
         $stoppedAny = $false
@@ -1254,23 +1120,7 @@ public static class IdleNative {
                 }
 
                 if (-not ("SamishWin32" -as [type])) {
-                    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public class SamishWin32 {
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern IntPtr FindWindow(IntPtr lpClassName, string lpWindowName);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-}
-'@
+                    # Already compiled in NativeMethods.ps1
                 }
 
                 # Direct window check fallback
@@ -1407,19 +1257,9 @@ public class SamishWin32 {
 
     # HOTKEY (Polling-based)
     if ($EnableHotkey) {
-        try {
-            Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class KeyState {
-  [DllImport("user32.dll")]
-  public static extern short GetAsyncKeyState(int vKey);
-}
-"@
-        }
-        catch {
-            Log-Always "ERROR: Failed to compile KeyState helper. Disabling hotkey polling. Details: $($_.Exception.Message)"
-            Write-EventLogEntry -Message "Failed to compile KeyState helper: $($_.Exception.Message)" -EntryType "Error" -EventId 400
+        if (-not ([System.Management.Automation.PSTypeName]'SamishKeyState').Type) {
+            Log-Always "ERROR: SamishKeyState helper not loaded. Disabling hotkey polling."
+            Write-EventLogEntry -Message "SamishKeyState helper not loaded" -EntryType "Error" -EventId 400
             $EnableHotkey = $false
         }
 
@@ -1446,8 +1286,8 @@ public static class KeyState {
 
     # ---------- INITIALIZE POWER STATE INTERCEPTOR ----------
     try {
-        if ($script:PowerTypeSigError) {
-            Log-Always "ERROR: Power State Interceptor compilation failed. OS policies may block runtime C# compilation. Details: $script:PowerTypeSigError"
+        if ($global:PowerTypeSigError) {
+            Log-Always "ERROR: Power State Interceptor compilation failed. OS policies may block runtime C# compilation. Details: $global:PowerTypeSigError"
             Write-EventLogEntry -Message "Power State Interceptor compilation failed: $script:PowerTypeSigError" -EntryType "Error" -EventId 400
         }
         if ($script:IdleNativeError) {
@@ -1507,7 +1347,7 @@ public static class KeyState {
                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
             }
             if ($EnableHotkey) {
-                $isDown = ([KeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
                 if ($isDown -and -not $script:LastKeyDown) {
                     Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
                 }
@@ -1636,7 +1476,7 @@ public static class KeyState {
             }
 
             if ($EnableHotkey) {
-                $isDown = ([KeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
                 if ($isDown -and -not $script:LastKeyDown) {
                     Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
                 }

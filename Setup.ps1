@@ -44,19 +44,13 @@ param(
     [bool]$EnableAutoRecovery = $true
 )
 
-#region Win32 Console Hider
-try {
-    Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Win32 {
-  [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
-}
-catch {
-    Write-SamishSetupTrace -Message "Failed to compile Win32 Console Hider. OS policies may block runtime C# compilation. Details: $($_.Exception.Message)" -Level "WARN"
+#region Native Methods
+$NativeMethodsPath = $PSScriptRoot
+if (-not $NativeMethodsPath -and $PSCommandPath) { $NativeMethodsPath = Split-Path -Parent $PSCommandPath }
+if (-not $NativeMethodsPath) { $NativeMethodsPath = [System.AppDomain]::CurrentDomain.BaseDirectory }
+$NativeMethodsPath = Join-Path $NativeMethodsPath "App\Modules\NativeMethods.ps1"
+if (Test-Path -LiteralPath $NativeMethodsPath) {
+    . $NativeMethodsPath
 }
 #endregion
 
@@ -64,22 +58,12 @@ catch {
 $isCompiled = ($MyInvocation.MyCommand.Name -like "*.exe")
 if (-not $isCompiled) {
     try {
-        # Register explicit AppUserModelID to force Windows taskbar to use our custom form icon rather than powershell.exe icon
-        $AppIDCode = @"
-        using System;
-        using System.Runtime.InteropServices;
-        public class ShellApi {
-            [DllImport("shell32.dll", SetLastError = true)]
-            public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
-        }
-"@
-        Add-Type -TypeDefinition $AppIDCode -ErrorAction Stop
-        if (([System.Management.Automation.PSTypeName]'ShellApi').Type) {
-            [void][ShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
+        if (([System.Management.Automation.PSTypeName]'SamishShellApi').Type) {
+            [void][SamishShellApi]::SetCurrentProcessExplicitAppUserModelID("Thomwithah.SAMISH.Setup.v1")
         }
     }
     catch {
-        Write-SamishSetupTrace -Message "Failed to compile or execute AppUserModelID Registration: $($_.Exception.Message)" -Level "WARN"
+        Write-SamishSetupTrace -Message "Failed to execute AppUserModelID Registration: $($_.Exception.Message)" -Level "WARN"
     }
 }
 
@@ -126,10 +110,11 @@ function Get-LatestControl {
 
 # ----- LOAD ADAPTERS -------------------------------------------------
 # Load all adapter scripts (*.ps1) from the Adapters folder.
-$PackageDir = $PSScriptRoot
-if (-not $PackageDir -and $PSCommandPath) { $PackageDir = Split-Path -Parent $PSCommandPath }
-if (-not $PackageDir) { $PackageDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
-if ($PackageDir -and $PackageDir.EndsWith("\")) { $PackageDir = $PackageDir.TrimEnd("\") }
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir -and $PSCommandPath) { $ScriptDir = Split-Path -Parent $PSCommandPath }
+if (-not $ScriptDir) { $ScriptDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
+if ($ScriptDir -and $ScriptDir.EndsWith("\")) { $ScriptDir = $ScriptDir.TrimEnd("\") }
+$PackageDir = Join-Path $ScriptDir "App"
 $AdaptersPath = Join-Path $PackageDir 'Modules\Adapters'
 if (Test-Path -LiteralPath $AdaptersPath) {
     Get-ChildItem -Path $AdaptersPath -Filter '*.ps1' -File | ForEach-Object {
@@ -336,10 +321,10 @@ function Write-SamishSetupTrace {
 
 if (-not $CliInstall) {
     try {
-        if (([System.Management.Automation.PSTypeName]'Win32').Type) {
-            $console = [Win32]::GetConsoleWindow()
+        if (([System.Management.Automation.PSTypeName]'SamishConsoleHelper').Type) {
+            $console = [SamishConsoleHelper]::GetConsoleWindow()
             if ($console -ne [IntPtr]::Zero) {
-                [void][Win32]::ShowWindow($console, 0)
+                [void][SamishConsoleHelper]::ShowWindow($console, 0)
             }
         }
     }
@@ -375,10 +360,11 @@ $StandardLogFile = Join-Path $env:APPDATA ("SAMISH\samish_{0}.log" -f (Get-Date 
 $StandardLogFileTemplate = Join-Path $env:APPDATA "SAMISH\samish_{DATE}.log"
 
 # ---------- Paths ----------
-$PackageDir = $PSScriptRoot
-if (-not $PackageDir -and $PSCommandPath) { $PackageDir = Split-Path -Parent $PSCommandPath }
-if (-not $PackageDir) { $PackageDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
-if ($PackageDir -and $PackageDir.EndsWith("\")) { $PackageDir = $PackageDir.TrimEnd("\") }
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir -and $PSCommandPath) { $ScriptDir = Split-Path -Parent $PSCommandPath }
+if (-not $ScriptDir) { $ScriptDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
+if ($ScriptDir -and $ScriptDir.EndsWith("\")) { $ScriptDir = $ScriptDir.TrimEnd("\") }
+$PackageDir = Join-Path $ScriptDir "App"
 
 
 # ----- LOAD MODULES -----
@@ -412,6 +398,11 @@ if (Test-Path -LiteralPath $GracefulModulePath) {
 $DiagModulePath = Join-Path $PackageDir "Modules\Diagnostics.Module.ps1"
 if (Test-Path -LiteralPath $DiagModulePath) {
     . $DiagModulePath
+}
+
+$InstallEnginePath = Join-Path $PackageDir "Modules\Install.Engine.ps1"
+if (Test-Path -LiteralPath $InstallEnginePath) {
+    . $InstallEnginePath
 }
 
 # ---------- Log-Always shim (Setup context) ----------
@@ -1459,125 +1450,7 @@ function Format-SecondsToFriendlyCompact {
     return ($parts -join " ")
 }
 
-# ----- CLI helpers -----
-function Write-CliLine {
-    param([string]$Text = "")
-    try { Write-Host $Text } catch {}
-}
 
-function Test-ClassicPowerPlanCompatibility {
-    $scheme = $null
-    try {
-        if (Get-Command Get-ActiveSchemeGuid -ErrorAction SilentlyContinue) {
-            $scheme = Get-ActiveSchemeGuid
-        }
-    }
-    catch {}
-
-    if (-not $scheme) {
-        return @{ Compatible = $true; Details = "Power plan could not be detected (skipping compatibility check)."; SchemeGuid = "" }
-    }
-
-    try {
-        $displayOff = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_VIDEO -SettingGuid $VIDEOIDLE
-        $sleepIdle = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_SLEEP -SettingGuid $STANDBYIDLE
-        $hibIdle = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_SLEEP -SettingGuid $HIBERNATEIDLE
-
-        $gap = 60
-        try { if ($MinGapSeconds) { $gap = [int]$MinGapSeconds } } catch {}
-
-        if (Get-Command Test-PowerPlanCompatibility -ErrorAction SilentlyContinue) {
-            $t = Test-PowerPlanCompatibility -DisplayOffSeconds $displayOff -SleepIdleSeconds $sleepIdle -HibernateIdleSeconds $hibIdle -GapSeconds $gap
-            $d = "Screen Off=$displayOff sec, Sleep=$sleepIdle sec, Hibernate=$hibIdle sec (Gap=$gap sec)."
-            return @{ Compatible = [bool]$t.Compatible; Details = $d; SchemeGuid = $scheme }
-        }
-
-        return @{ Compatible = $true; Details = "Compatibility helper not available (skipping)."; SchemeGuid = $scheme }
-    }
-    catch {
-        return @{ Compatible = $true; Details = "Compatibility check failed (skipping): $($_.Exception.Message)"; SchemeGuid = $scheme }
-    }
-}
-
-function Invoke-CliInstallRoute {
-    Write-CliLine "SAMISH CLI Install"
-    Write-CliLine "InstallMode: $InstallMode"
-    Write-CliLine "OperatingMode: $OperatingMode"
-    Write-CliLine ""
-
-    try {
-        $stoppedCount = Stop-RunningHelperInstances
-        if ($stoppedCount -gt 0) { Write-CliLine "Stopped $stoppedCount running SAMISH instance(s) before install." }
-        else { Write-CliLine "No running SAMISH instances detected." }
-        Write-CliLine ""
-    }
-    catch {
-        Write-CliLine "WARNING: Failed to stop running SAMISH instances: $($_.Exception.Message)"
-        Write-CliLine "Proceeding anyway (tasks will still be updated)."
-        Write-CliLine ""
-    }
-
-    Write-CliLine "Syncing runtime files to %APPDATA%\SAMISH..."
-    Sync-SamishRuntimeFiles
-
-    Write-CliLine "Registering Windows Event Log source..."
-    Register-SamishEventSource
-
-    $vk = 0x91
-    if ($EnableHotkey) {
-        try {
-            if ($HotkeyMode -eq "Custom") { $vk = Parse-CustomHotkeyToVk $CustomHotkey }
-            else { $vk = [int]$VkMap[$HotkeyMode] }
-        }
-        catch {
-            Write-CliLine "WARNING: Hotkey parsing failed ($($_.Exception.Message)). Hotkey will be disabled."
-            $EnableHotkey = $false
-            $vk = 0x91
-        }
-    }
-
-    if ($InstallMode -eq "Hidden") {
-        if ($EnableTrayIcon -or $EnableHotkey) {
-            Write-CliLine "NOTE: Hidden mode selected. Tray icon / hotkey state will be written as-configured."
-        }
-        # Tray icon and hotkey are optional; respect the value from config or CLI flags.
-        # Do NOT force-disable here - the GUI and config are the source of truth.
-    }
-
-    Write-CliLine "Writing config.json (explicit CLI configuration)..."
-    Write-ConfigJson `
-        -EnableLogging:$([bool]$EnableLogging) `
-        -LogEverySeconds:$([int]$LogEverySeconds) `
-        -EnableTrayIcon:$([bool]$EnableTrayIcon) `
-        -EnableHotkey:$([bool]$EnableHotkey) `
-        -HotkeyMode:$HotkeyMode `
-        -CustomHotkeyVirtualKey:$vk `
-        -OperatingMode:$OperatingMode `
-        -SetupPath:$script:SetupExecutablePath `
-        -EnableAutoRecovery:$EnableAutoRecovery
-
-    Write-CliLine "Installing Scheduled Task..."
-    Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
-    Delete-Task -TaskNameWithSlash $TaskInteractive | Out-Null
-
-    $HiddenXmlInstalled = Join-Path $InstallDir "SAMISH-HiddenTask.xml"
-    $InteractiveXmlInstalled = Join-Path $InstallDir "SAMISH-InteractiveTask.xml"
-
-    if ($InstallMode -eq "Hidden") {
-        Install-TaskFromXml -TaskNameNoSlash $TaskHiddenNoSlash -XmlPath $HiddenXmlInstalled | Out-Null
-        Remove-StartupShortcut
-        # Change this block on Page 26:
-    }
-    else {
-        Install-TaskFromXml -TaskNameNoSlash $TaskInteractiveNoSlash -XmlPath $InteractiveXmlInstalled | Out-Null
-        Remove-StartupShortcut 
-    }
-
-
-    Write-CliLine "Install complete."
-    Write-CliLine ""
-    Write-CliLine "Done."
-}
 
 # ---------- Diagnostics Header ----------
 function Get-TaskQueryInfo {
@@ -2021,14 +1894,7 @@ if ($global:ThemeNeonActive) {
 $modernHand = [System.Windows.Forms.Cursors]::Hand
 try {
     if (-not ("SamishCursorHelper" -as [type])) {
-        Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class SamishCursorHelper {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
-}
-"@
+        # Already compiled in NativeMethods.ps1
     }
     $handle = [SamishCursorHelper]::LoadCursor([IntPtr]::Zero, 32649) # IDC_HAND
     if ($handle -ne [IntPtr]::Zero) {

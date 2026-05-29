@@ -2,6 +2,11 @@
 # SAMISH Sleep & Hibernate Diagnostics Module
 # ==========================================
 
+$UwpMediaPath = Join-Path $PSScriptRoot "UwpMedia.Module.ps1"
+if (Test-Path -LiteralPath $UwpMediaPath) {
+    . $UwpMediaPath
+}
+
 function Get-ActiveSleepBlockers {
     param(
         [string[]]$AutomatedAppNames = @()
@@ -125,19 +130,7 @@ function Get-ActiveSleepBlockers {
 
     # Query active WinRT SMTC session sources
     try {
-        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Runtime.WindowsRuntime")
-        $smtcType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType=WindowsRuntime]
-        $asTaskMethods = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" }
-        $asyncOp = $smtcType::RequestAsync()
-        $asTaskMethod = $asTaskMethods | Where-Object {
-            $params = $_.GetParameters()
-            $params.Count -eq 1 -and $params[0].ParameterType.Name -eq 'IAsyncOperation`1'
-        }
-        # Double backtick for PowerShell string escaping of the generic class name in AsTask matching
-        $genericMethod = $asTaskMethod.MakeGenericMethod($smtcType)
-        $task = $genericMethod.Invoke($null, @($asyncOp))
-        $task.Wait()
-        $manager = $task.Result
+        $manager = Get-SmtcSessionManager
         if ($manager) {
             $sessions = $manager.GetSessions()
             foreach ($session in $sessions) {

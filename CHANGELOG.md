@@ -10,9 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Application Auto-Recovery**: Implemented background crash monitoring and automatic recovery for both the main mixer software and targeted automated applications.
 - **Opt-in Recovery Controls**: Added settings to enable recovery globally (General Settings) and per-application (App Override Settings).
+- **Direct Event Log Diagnostics**: Integrated direct querying and XML parsing of Windows System Event Logs. SAMISH now retrieves traditional S3 sleep/wake states (Event IDs 42 and 1) alongside modern S0 standby cycles (Event IDs 506 and 507).
+- **Modern Standby Wake Source Decoding**: Automatically maps Modern Standby exit codes (`ExitReason`) to human-readable text and extracts scheduled wake tasks or owner details for rich sleep/wake telemetry.
+- **Dynamic Context-Aware Tooltips**: Added reactive, context-sensitive tooltips for the telemetry action button. The tooltip text dynamically adjusts based on the selected target (Disable Wake, Toggle Suspend, or Disable Timer) and details the creation of a restorable configuration backup.
 
 ### Changed
 - **UI Button Text Update**: Renamed the "Remove from Automation" button in the Automated Apps panel to "Deactivate Automation" to prevent text clipping.
+- **Background Active Blocker Monitoring**: Increased active blocker background polling frequency from 30 seconds to 10 seconds. Refactored the update cycle to run completely silently and check for list item array differences before updating listboxes, eliminating screen flickering and performance overhead.
 
 ### Fixed
 - **Responsiveness on Tests**: Resolved UI freezes during sleep/wake test actions by adopting non-blocking event loops instead of synchronous sleeps.
@@ -20,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI Drawing & Color Exceptions**: Fixed an unhandled drawing exception where the panel border and combobox dropdowns crashed on startup under specific configuration environments.
 - **UI Formatting Warning**: Removed a minor warning caused by an undefined formatting variable in the GroupBox layout loop.
 - **Stray Startup Index Output**: Fixed a bug where dynamic font and image objects appended to the GDI resource garbage collection list (`ArrayList.Add()`) leaked array index integers to the pipeline. These integers were inadvertently captured by `ps2exe` and displayed as an empty `0` MessageBox before the Setup GUI launched.
+- **Event Log Query Fail-Forward Grace**: Wrapped all WinEvent log queries, list updates, and tooltip UI updates in try/catch blocks. The app handles the errors gracefully to ensure setup loads without interruption.
 
 ## [1.2.4] - 2026-05-27
 

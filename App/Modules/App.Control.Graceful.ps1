@@ -27,37 +27,32 @@ function Invoke-AppStopGraceful {
 
     $procId = $p.Id
 
-    # 2) Ensure SendMessage is available
-    $sig = @"
-using System;
-using System.Runtime.InteropServices;
-public static class SamishWin32 {
-  [DllImport("user32.dll", CharSet = CharSet.Auto)]
-  public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-}
-"@
+    # 2) Ensure SendMessage is available (via NativeMethods.ps1)
+    if (-not ([System.Management.Automation.PSTypeName]'SamishWin32').Type) {
+        # Try to load NativeMethods if not already loaded by caller
+        $NativeMethodsPath = Join-Path $PSScriptRoot "NativeMethods.ps1"
+        if (Test-Path -LiteralPath $NativeMethodsPath) {
+            . $NativeMethodsPath
+        }
+    }
 
     if (-not ([System.Management.Automation.PSTypeName]'SamishWin32').Type) {
-        try {
-            Add-Type -TypeDefinition $sig -Language CSharp -ErrorAction Stop | Out-Null
-        } catch {
-            if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
-                Log-Always "ERROR: Failed to compile SamishWin32 C# signatures for Graceful close. Falling back to Classic mode. Details: $($_.Exception.Message)"
-            }
-            # If type load fails, we cannot do graceful messaging.
-            if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
-                $r = Invoke-AppStop -ProcessName $ProcessName
-                return [AppStopResult]::new(
-                    [bool]$r.Stopped,
-                    $r.Status,
-                    "ClassicFallback",
-                    $false,
-                    $true,
-                    "Failed to load user32 SendMessage. Fell back to Classic."
-                )
-            }
-            return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Failed to load user32 SendMessage and Classic fallback not available.")
+        if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
+            Log-Always "ERROR: SamishWin32 C# signatures for Graceful close are unavailable. Falling back to Classic mode."
         }
+        # If type load fails, we cannot do graceful messaging.
+        if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+            $r = Invoke-AppStop -ProcessName $ProcessName
+            return [AppStopResult]::new(
+                [bool]$r.Stopped,
+                $r.Status,
+                "ClassicFallback",
+                $false,
+                $true,
+                "Failed to load user32 SendMessage. Fell back to Classic."
+            )
+        }
+        return [AppStopResult]::new($false, "Error", "Error", $false, $false, "Failed to load user32 SendMessage and Classic fallback not available.")
     }
 
     # 3) Ensure window handle exists; if tray-only, restore UI
