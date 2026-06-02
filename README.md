@@ -1,5 +1,5 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-Created by thomwithah | Version: 1.2.5
+Created by thomwithah | Version: 1.3.0
 
 **Are you having trouble getting Windows to sleep or turn off your screens while your virtual audio mixer (BEACN, Voicemeeter, GoXLR, or Wave Link) is open?**
 
@@ -9,17 +9,19 @@ SAMISH is a lightweight, open-source utility that solves persistent system sleep
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
-<img width="800" alt="Setup Collapsed" src="App/Assets/screenshots/1.png" />
+<img width="800" alt="Setup Collapsed (Full Mode)" src="App/Assets/screenshots/1.png" />
 
-<img width="800" alt="Diagnostics Collapsed" src="App/Assets/screenshots/2.png" />
+<img width="800" alt="Setup Collapsed (Simple Mode)" src="App/Assets/screenshots/2.png" />
 
-<img width="1180" alt="Setup Expanded Tools" src="App/Assets/screenshots/3.png" />
+<img width="800" alt="Diagnostics Collapsed" src="App/Assets/screenshots/3.png" />
 
-<img width="1180" alt="Setup Expanded Live Log" src="App/Assets/screenshots/4.png" />
+<img width="1180" alt="Setup Expanded Tools" src="App/Assets/screenshots/4.png" />
 
-<img width="1180" alt="Diagnostics System Telemetry" src="App/Assets/screenshots/5.png" />
+<img width="1180" alt="Setup Expanded Live Log" src="App/Assets/screenshots/5.png" />
 
-<img width="1180" alt="Diagnostics Hardware Telemetry" src="App/Assets/screenshots/6.png" />
+<img width="1180" alt="Diagnostics System Telemetry" src="App/Assets/screenshots/6.png" />
+
+<img width="1180" alt="Diagnostics Hardware Telemetry" src="App/Assets/screenshots/7.png" />
 
 ---
 

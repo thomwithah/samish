@@ -143,9 +143,9 @@ function Update-TestGroupState {
                     try { $ctrl.Enabled = $shouldEnable } catch {}
                 }
                 # Apply theme-appropriate active/inactive colors to maintain flat border thickness consistency
-                if ($global:ThemeNeonActive) {
-                    $ctrl.BackColor = if ($shouldEnable) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
-                    $ctrl.ForeColor = if ($shouldEnable) { if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) } } else { [System.Drawing.Color]::Gray }
+                if ($global:ThemeCustomActive) {
+                    $ctrl.BackColor = if ($shouldEnable) { $global:ThemeCustomButton } else { $global:ThemeCustomDisabled }
+                    $ctrl.ForeColor = if ($shouldEnable) { $global:ThemeCustomPrimary } else { $global:ThemeCustomDisabledText }
                 }
                 else {
                     if ($shouldEnable) {
@@ -173,9 +173,9 @@ function Update-TestGroupState {
         }
 
         # Determine colors safely
-        $color1 = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $BrandCyan }
+        $color1 = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { $BrandCyan }
         if ($null -eq $color1) { $color1 = [System.Drawing.Color]::FromArgb(0, 215, 255) }
-        $color2 = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.SystemColors]::ControlText }
+        $color2 = if ($global:ThemeCustomActive) { $global:ThemeCustomAlert } else { [System.Drawing.SystemColors]::ControlText }
         if ($null -eq $color2) { $color2 = [System.Drawing.Color]::Black }
 
         # Triple-flash: Cyan -> final color (6 ticks at 180ms each)
@@ -218,7 +218,7 @@ function Update-TestGroupState {
             try { $script:testGroupFlashTimer.Stop(); $script:testGroupFlashTimer.Dispose() } catch {}
             $script:testGroupFlashTimer = $null
         }
-        $script:testGroup.ForeColor = if ($global:ThemeNeonActive) { if ($global:NeonPink) { $global:NeonPink } else { [System.Drawing.Color]::FromArgb(255, 0, 102) } } else { [System.Drawing.Color]::Gray }
+        $script:testGroup.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomAlert } else { [System.Drawing.Color]::Gray }
     }
 
     # --- Rebuild the target dropdown ---
@@ -545,7 +545,7 @@ $grpAdvancedDiag.Location = New-Object System.Drawing.Point(790, 10)
 $grpAdvancedDiag.Visible = $false
 $grpAdvancedDiag.add_Paint({
         param($sender, $e)
-        $color = if ($global:ThemeNeonActive) { if ($global:NeonBackground) { $global:NeonBackground } else { [System.Drawing.Color]::FromArgb(15, 15, 18) } } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
+        $color = if ($global:ThemeCustomActive) { $global:ThemeCustomBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
         if ($null -eq $color) { $color = [System.Drawing.Color]::FromArgb(240, 240, 240) }
         $brush = New-Object System.Drawing.SolidBrush($color)
         $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)

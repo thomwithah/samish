@@ -7,3 +7,10 @@ Thumbs.db
 Desktop.ini
 scratch/
 SAMISH.7z
+
+# Debug / runtime artifacts - never commit to main folder
+SAMISH_ERROR.txt
+*.json
+!App/**/*.json
+gitdiff.txt
+test_*.ps1

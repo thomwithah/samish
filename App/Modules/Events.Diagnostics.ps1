@@ -157,21 +157,76 @@ function Flash-DiagnosticsStatus {
     $script:lblDiagDetailFlashTimer.Start()
 }
 
+function Sync-TelemetryActionButton {
+    <#
+    .SYNOPSIS
+        Re-evaluates the currently selected telemetry list item and updates
+        the action button text + visual state to match. Called when switching
+        between System Telemetry and Hardware Telemetry sub-tabs.
+    #>
+    if (-not $script:btnTelemetryAction) { return }
+
+    # Check wake timers list (System Telemetry tab)
+    if ($script:listWakeTimers -and $script:listWakeTimers.SelectedIndex -ge 0) {
+        $sel = $script:listWakeTimers.Items[$script:listWakeTimers.SelectedIndex].ToString()
+        if ($sel -ne "No active wake timers.") {
+            if ($sel -match 'NT TASK\\([^\''\"]+)') {
+                $script:btnTelemetryAction.Text = "Disable Timer"
+                Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                return
+            } elseif ($sel -match '^\s*Timer set by \[SERVICE\]') {
+                $script:btnTelemetryAction.Text = "Disable Service"
+                Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                return
+            } elseif ($sel -match '^\s*Timer set by \[PROCESS\]') {
+                $script:btnTelemetryAction.Text = "Stop Process"
+                Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                return
+            }
+        }
+    }
+
+    # Check armed devices list (Hardware Telemetry tab)
+    if ($script:listArmedDevices -and $script:listArmedDevices.SelectedIndex -ge 0) {
+        $sel = $script:listArmedDevices.Items[$script:listArmedDevices.SelectedIndex].ToString()
+        if ($sel -ne "No devices armed to wake the system.") {
+            $script:btnTelemetryAction.Text = "Disable Wake"
+            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+            return
+        }
+    }
+
+    # Check hardware scans list (Hardware Telemetry tab)
+    if ($script:listHardwareScans -and $script:listHardwareScans.SelectedIndex -ge 0) {
+        $sel = $script:listHardwareScans.Items[$script:listHardwareScans.SelectedIndex].ToString()
+        if ($sel -match "^USB:\s*(.+)$") {
+            $script:btnTelemetryAction.Text = "Toggle Suspend"
+            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+            return
+        }
+    }
+
+    # No valid selection in any list
+    $script:btnTelemetryAction.Text = "Select Item..."
+    Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $false
+    Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
+}
+
 function Complete-SleepDiagnosticsListsUpdate {
     param(
         [hashtable]$SyncState,
         [switch]$Silent
     )
 
-    # Disable buttons until selection is made
+    # Disable buttons until selection is made (visual-only, keeps tooltips)
     if ($script:btnDiagAutomate) {
-        $script:btnDiagAutomate.Enabled = $false
+        Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
         $script:btnDiagAutomate.Text = "Add to Automated Apps"
     }
-    if ($script:btnDiagIgnore) { $script:btnDiagIgnore.Enabled = $false }
-    if ($script:btnDiagRestore) { $script:btnDiagRestore.Enabled = $false }
-    if ($script:btnDiagStopAuto) { $script:btnDiagStopAuto.Enabled = $false }
-    if ($script:btnDiagOpenLocation) { $script:btnDiagOpenLocation.Enabled = $false }
+    if ($script:btnDiagIgnore) { Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $false }
+    if ($script:btnDiagRestore) { Set-ButtonVisualState -Button $script:btnDiagRestore -Active $false }
+    if ($script:btnDiagStopAuto) { Set-ButtonVisualState -Button $script:btnDiagStopAuto -Active $false }
+    if ($script:btnDiagOpenLocation) { Set-ButtonVisualState -Button $script:btnDiagOpenLocation -Active $false }
     Set-OperatingModeBoxState -Enabled $false
 
     # ---- Active Blockers ----
@@ -374,7 +429,7 @@ function Update-SleepDiagnosticsListsAsync {
         $script:listAutomated.Items.Add("(Scanning automated apps...)") | Out-Null
 
         $script:lblDiagDetail.Text = "Scanning system blockers in background... Please wait."
-        $script:btnDiagScan.Enabled = $false
+        Set-ButtonVisualState -Button $script:btnDiagScan -Active $false
     }
 
     $script:DiagSyncState = [hashtable]::Synchronized(@{
@@ -437,7 +492,7 @@ function Update-SleepDiagnosticsListsAsync {
                     if (-not $isSilent) {
                         $script:lblDiagDetail.Text = "Last scan completed at $(Get-Date -Format 'HH:mm:ss')."
                         $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
-                        $script:btnDiagScan.Enabled = $true
+                        Set-ButtonVisualState -Button $script:btnDiagScan -Active $true
                     }
                 }
             })
@@ -445,7 +500,7 @@ function Update-SleepDiagnosticsListsAsync {
     }
     catch {
         # Fail forward gracefully: clean up runspaces and restore button state if execution fails
-        if ($script:btnDiagScan) { $script:btnDiagScan.Enabled = $true }
+        if ($script:btnDiagScan) { Set-ButtonVisualState -Button $script:btnDiagScan -Active $true }
         if ($script:lblDiagDetail) { $script:lblDiagDetail.Text = "Failed to launch scanner: $($_.Exception.Message)" }
     }
 }
@@ -504,9 +559,9 @@ function Set-OperatingModeBoxState {
                     -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown state update failed: $($_.Exception.Message)"
                 try { $ctrl.Enabled = $Enabled } catch {}  # last-resort fallback
             }
-            if ($global:ThemeNeonActive) {
-                $ctrl.BackColor = if ($Enabled) { [System.Drawing.Color]::FromArgb(25, 25, 30) } else { [System.Drawing.Color]::FromArgb(45, 45, 50) }
-                $ctrl.ForeColor = if ($Enabled) { $global:NeonCyan } else { [System.Drawing.Color]::Gray }
+            if ($global:ThemeCustomActive) {
+                $ctrl.BackColor = if ($Enabled) { $global:ThemeCustomInput } else { $global:ThemeCustomDisabled }
+                $ctrl.ForeColor = if ($Enabled) { $global:ThemeCustomPrimary } else { $global:ThemeCustomDisabledText }
             }
             else {
                 if ($Enabled) {
@@ -521,21 +576,18 @@ function Set-OperatingModeBoxState {
             }
         }
         elseif ($ctrl -is [System.Windows.Forms.RadioButton] -or $ctrl -is [System.Windows.Forms.Label] -or $ctrl -is [System.Windows.Forms.CheckBox]) {
-            if ($global:ThemeNeonActive) {
+            if ($global:ThemeCustomActive) {
                 $ctrl.Enabled = $true
-                $ctrl.ForeColor = if ($Enabled) { $global:NeonText } else { [System.Drawing.Color]::FromArgb(100, 100, 110) }
+                $ctrl.ForeColor = if ($Enabled) { $global:ThemeCustomText } else { $global:ThemeCustomDisabledText }
                 if ($ctrl -is [System.Windows.Forms.RadioButton]) {
                     $ctrl.AutoCheck = $Enabled
                 }
             }
             else {
                 $ctrl.Enabled = $Enabled
+                $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
                 if ($ctrl -is [System.Windows.Forms.RadioButton]) {
                     $ctrl.AutoCheck = $true
-                    $ctrl.ForeColor = [System.Drawing.SystemColors]::ControlText
-                }
-                elseif ($ctrl -is [System.Windows.Forms.Label]) {
-                    # Leave ForeColor untouched - startup Reset-MainFormChildControls already set it correctly
                 }
             }
         }
@@ -553,10 +605,10 @@ function Set-OperatingModeBoxState {
         }
 
         # Determine colors safely
-        $color1 = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $script:BrandCyan }
+        $color1 = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { $script:BrandCyan }
         if ($null -eq $color1) { $color1 = [System.Drawing.Color]::FromArgb(0, 215, 255) }
-        $color2 = if ($global:ThemeNeonActive) { $global:NeonPink } else { [System.Drawing.SystemColors]::ControlText }
-        if ($null -eq $color2) { $color2 = [System.Drawing.Color]::Black }
+        $color2 = if ($global:ThemeCustomActive) { $global:ThemeCustomAlert } else { $script:BrandPurple }
+        if ($null -eq $color2) { $color2 = [System.Drawing.Color]::FromArgb(255, 60, 160) }
 
         # Triple-flash: Cyan -> ControlText (6 ticks @ 180ms each)
         $script:grpDiagOperatingMode.ForeColor = $color1
@@ -597,7 +649,7 @@ function Set-OperatingModeBoxState {
             $script:diagFlashTimer.Dispose()
             $script:diagFlashTimer = $null
         }
-        $script:grpDiagOperatingMode.ForeColor = if ($global:ThemeNeonActive) { if ($global:NeonPink) { $global:NeonPink } else { [System.Drawing.Color]::FromArgb(255, 0, 102) } } else { [System.Drawing.Color]::Gray }
+        $script:grpDiagOperatingMode.ForeColor = if ($global:ThemeCustomActive) { [System.Drawing.Color]::FromArgb(120, 60, 80) } else { [System.Drawing.Color]::Gray }
     }
 }
 
@@ -773,7 +825,7 @@ function Init-SleepDiagnosticsEventHandlers {
                 $selectedItem = $script:listArmedDevices.Items[$idx].ToString()
                 if ($selectedItem -ne "No devices armed to wake the system.") {
                     $script:btnTelemetryAction.Text = "Disable Wake"
-                    $script:btnTelemetryAction.Enabled = $true
+                    Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
                     $script:lblDiagDetail.Text = "Hardware Device: $selectedItem"
                     $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
                     Update-TelemetryActionTooltip -text "Disables the wake capability for the selected hardware device to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
@@ -782,7 +834,7 @@ function Init-SleepDiagnosticsEventHandlers {
             }
         
             $script:btnTelemetryAction.Text = "Select Item..."
-            $script:btnTelemetryAction.Enabled = $false
+            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $false
             Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
         })
 
@@ -799,7 +851,7 @@ function Init-SleepDiagnosticsEventHandlers {
                     $selectedItem = $script:listHardwareScans.Items[$idx].ToString()
                     if ($selectedItem -match "^USB:\s*(.+)$") {
                         $script:btnTelemetryAction.Text = "Toggle Suspend"
-                        $script:btnTelemetryAction.Enabled = $true
+                        Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
                         $script:lblDiagDetail.Text = "USB Hub: $($Matches[1])"
                         $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
                         Update-TelemetryActionTooltip -text "Toggles USB Selective Suspend for the selected USB Hub to allow Windows to suspend the device when idle, saving power and preventing wake-locks. Creates a backup of the configuration that can be restored later."
@@ -808,7 +860,7 @@ function Init-SleepDiagnosticsEventHandlers {
                 }
 
                 $script:btnTelemetryAction.Text = "Select Item..."
-                $script:btnTelemetryAction.Enabled = $false
+                Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $false
                 Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
             })
     }
@@ -824,18 +876,36 @@ function Init-SleepDiagnosticsEventHandlers {
                 $idx = $script:listWakeTimers.SelectedIndex
                 if ($idx -ge 0 -and $idx -lt $script:listWakeTimers.Items.Count) {
                     $selectedItem = $script:listWakeTimers.Items[$idx].ToString()
-                    if ($selectedItem -ne "No active wake timers." -and $selectedItem -match 'NT TASK\\([^\''"]+)') {
-                        $script:btnTelemetryAction.Text = "Disable Timer"
-                        $script:btnTelemetryAction.Enabled = $true
-                        $script:lblDiagDetail.Text = "Active Wake Timer: $selectedItem"
-                        $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
-                        Update-TelemetryActionTooltip -text "Disables the scheduled task associated with the active wake timer to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
-                        return
+                    if ($selectedItem -ne "No active wake timers.") {
+                        if ($selectedItem -match 'NT TASK\\([^\''"]+)') {
+                            $script:btnTelemetryAction.Text = "Disable Timer"
+                            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                            $script:lblDiagDetail.Text = "Active Wake Timer (Scheduled Task): $selectedItem"
+                            $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                            Update-TelemetryActionTooltip -text "Disables the scheduled task associated with the active wake timer to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
+                            return
+                        }
+                        elseif ($selectedItem -match '^Timer set by \[SERVICE\]') {
+                            $script:btnTelemetryAction.Text = "Disable Service"
+                            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                            $script:lblDiagDetail.Text = "Active Wake Timer (Service): $selectedItem"
+                            $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                            Update-TelemetryActionTooltip -text "Disables and stops the Windows Service associated with the active wake timer to prevent it from waking the PC from sleep. Creates a backup of the configuration that can be restored later."
+                            return
+                        }
+                        elseif ($selectedItem -match '^Timer set by \[PROCESS\]') {
+                            $script:btnTelemetryAction.Text = "Stop Process"
+                            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $true
+                            $script:lblDiagDetail.Text = "Active Wake Timer (Process): $selectedItem"
+                            $script:lblDiagDetail.ForeColor = [System.Drawing.Color]::DimGray
+                            Update-TelemetryActionTooltip -text "Terminates the running process associated with the active wake timer to prevent it from waking the PC from sleep."
+                            return
+                        }
                     }
                 }
 
                 $script:btnTelemetryAction.Text = "Select Item..."
-                $script:btnTelemetryAction.Enabled = $false
+                Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $false
                 Update-TelemetryActionTooltip -text "Select an armed hardware device, USB hub, or active wake timer above to take corrective action."
             })
     }
@@ -934,6 +1004,146 @@ function Init-SleepDiagnosticsEventHandlers {
                         }
                     }
                 }
+                elseif ($script:btnTelemetryAction.Text -eq "Disable Service") {
+                    $idx = $script:listWakeTimers.SelectedIndex
+                    if ($idx -ge 0 -and $idx -lt $script:listWakeTimers.Items.Count) {
+                        $selectedItem = $script:listWakeTimers.Items[$idx].ToString()
+                        if ($selectedItem -eq "No active wake timers.") { return }
+
+                        $path = ""
+                        $serviceHint = ""
+                        if ($selectedItem -match '^Timer set by \[SERVICE\]\s+(.+?)(?:\s+expires at|$)') {
+                            $rawPath = $Matches[1].Trim()
+                            if ($rawPath -match '^(.+?\.exe)\s*\((.+?)\)$') {
+                                $path = $Matches[1].Trim()
+                                $serviceHint = $Matches[2].Trim()
+                            }
+                            else {
+                                $path = $rawPath
+                            }
+                        }
+
+                        if ($path) {
+                            $fileName = [System.IO.Path]::GetFileName($path)
+                            
+                            $svc = $null
+                            if ($serviceHint) {
+                                $svc = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+                                    Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $serviceHint -or $_.DisplayName -eq $serviceHint } | Select-Object -First 1
+                                } else {
+                                    Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $serviceHint -or $_.DisplayName -eq $serviceHint } | Select-Object -First 1
+                                }
+                            }
+                            
+                            if (-not $svc) {
+                                $svc = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+                                    Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$fileName*" } | Select-Object -First 1
+                                } else {
+                                    Get-WmiObject Win32_Service | Where-Object { $_.PathName -like "*$fileName*" } | Select-Object -First 1
+                                }
+                            }
+
+                            if ($svc) {
+                                $confirm = Show-YesNoDialog `
+                                    -Title "Disable Service Confirmation" `
+                                    -Message "Are you sure you want to disable and stop the Windows Service:`r`n`"$($svc.DisplayName) ($($svc.Name))`"?`r`n`r`nThis service currently has an active wake timer set. SAMISH will create a backup of its configuration before disabling it.`r`n`r`nTo restore this backup later, you can use the `"Verify & Restore Settings`" button on Page 1, or you will be prompted to restore it if you choose to uninstall SAMISH." `
+                                    -Icon ([System.Windows.Forms.MessageBoxIcon]::Warning)
+
+                                if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+                                    try {
+                                        Backup-ServiceState -ServiceName $svc.Name -StartupType $svc.StartMode -State $svc.State
+
+                                        Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction Stop
+                                        Stop-Service -Name $svc.Name -Force -ErrorAction Stop
+
+                                        Write-SetupLog "Disabled service '$($svc.Name)' (backup created)."
+                                        $script:lblDiagDetail.Text = "Disabled service $($svc.Name) (Backup created)."
+
+                                        [void][System.Windows.Forms.MessageBox]::Show(
+                                            "Successfully disabled and stopped the service `"$($svc.DisplayName)`".`r`n`r`nA backup has been created in:`r`n`"$script:ServiceWakeBackupPath`"",
+                                            "SAMISH Telemetry Fix",
+                                            [System.Windows.Forms.MessageBoxButtons]::OK,
+                                            [System.Windows.Forms.MessageBoxIcon]::Information
+                                        )
+
+                                        $script:btnTelemetryRefresh.PerformClick()
+                                    }
+                                    catch {
+                                        [void][System.Windows.Forms.MessageBox]::Show(
+                                            "Failed to disable the service `"$($svc.Name)`":`r`n$($_.Exception.Message)",
+                                            "Error",
+                                            [System.Windows.Forms.MessageBoxButtons]::OK,
+                                            [System.Windows.Forms.MessageBoxIcon]::Error
+                                        )
+                                    }
+                                }
+                            }
+                            else {
+                                $displayTarget = if ($serviceHint) { "$fileName ($serviceHint)" } else { $fileName }
+                                [void][System.Windows.Forms.MessageBox]::Show(
+                                    "Could not resolve the Windows Service name automatically for:`r`n`"$displayTarget`"`r`n`r`nPlease manage this service manually via Windows Services (services.msc).",
+                                    "Service Resolution Failed",
+                                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                                )
+                            }
+                        }
+                    }
+                }
+                elseif ($script:btnTelemetryAction.Text -eq "Stop Process") {
+                    $idx = $script:listWakeTimers.SelectedIndex
+                    if ($idx -ge 0 -and $idx -lt $script:listWakeTimers.Items.Count) {
+                        $selectedItem = $script:listWakeTimers.Items[$idx].ToString()
+                        if ($selectedItem -eq "No active wake timers.") { return }
+
+                        $path = ""
+                        if ($selectedItem -match '^Timer set by \[PROCESS\]\s+(.+?)(?:\s+expires at|$)') {
+                            $rawPath = $Matches[1].Trim()
+                            if ($rawPath -match '^(.+?\.exe)\s*\((.+?)\)$') {
+                                $path = $Matches[1].Trim()
+                            }
+                            else {
+                                $path = $rawPath
+                            }
+                        }
+
+                        if ($path) {
+                            $fileName = [System.IO.Path]::GetFileName($path)
+                            $procName = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+
+                            $confirm = Show-YesNoDialog `
+                                -Title "Stop Process Confirmation" `
+                                -Message "Are you sure you want to terminate the running process:`r`n`"$procName`"?`r`n`r`nThis process currently has an active wake timer set." `
+                                -Icon ([System.Windows.Forms.MessageBoxIcon]::Warning)
+
+                            if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+                                try {
+                                    Stop-Process -Name $procName -Force -ErrorAction Stop
+
+                                    Write-SetupLog "Terminated process '$procName'."
+                                    $script:lblDiagDetail.Text = "Terminated process $procName."
+
+                                    [void][System.Windows.Forms.MessageBox]::Show(
+                                        "Successfully terminated process `"$procName`".",
+                                        "SAMISH Telemetry Fix",
+                                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                                        [System.Windows.Forms.MessageBoxIcon]::Information
+                                    )
+
+                                    $script:btnTelemetryRefresh.PerformClick()
+                                }
+                                catch {
+                                    [void][System.Windows.Forms.MessageBox]::Show(
+                                        "Failed to terminate process `"$procName`":`r`n$($_.Exception.Message)",
+                                        "Error",
+                                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                                        [System.Windows.Forms.MessageBoxIcon]::Error
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 elseif ($script:btnTelemetryAction.Text -eq "Toggle Suspend") {
                     $idx = $script:listHardwareScans.SelectedIndex
                     if ($idx -ge 0 -and $idx -lt $script:listHardwareScans.Items.Count) {
@@ -1009,12 +1219,17 @@ function Init-SleepDiagnosticsEventHandlers {
             $script:listOverrides.ClearSelected()
             $script:diagListMutex = $false
 
+            # Other lists were just deselected but their handlers can't fire inside the mutex
+            Set-ButtonVisualState -Button $script:btnDiagStopAuto -Active $false
+            Set-ButtonVisualState -Button $script:btnDiagOpenLocation -Active $false
+            Set-ButtonVisualState -Button $script:btnDiagRestore -Active $false
+
             $idx = $script:listBlockers.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:ActiveBlockersList.Count)
 
-            $script:btnDiagAutomate.Enabled = $false
+            Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
             $script:btnDiagAutomate.Text = "Add to Automated Apps"
-            $script:btnDiagIgnore.Enabled = $false
+            Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $false
 
             if (-not $hasValidItem) {
                 $script:lblDiagDetail.Text = "Select an active blocker to see details."
@@ -1035,7 +1250,7 @@ function Init-SleepDiagnosticsEventHandlers {
 
             # Enable buttons based on type - mutually exclusive
             if ($b.BlockerType -eq 'App') {
-                $script:btnDiagIgnore.Enabled = $false
+                Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $false
 
                 # Check if already automated
                 $alreadyAutomated = $false
@@ -1044,7 +1259,7 @@ function Init-SleepDiagnosticsEventHandlers {
                 }
 
                 if ($alreadyAutomated) {
-                    $script:btnDiagAutomate.Enabled = $false
+                    Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
                     $script:btnDiagAutomate.Text = "Already Automated"
                     # Still enable the Operating Mode box so they can view/edit the config
                     # Find the automated app's config to sync
@@ -1070,7 +1285,7 @@ function Init-SleepDiagnosticsEventHandlers {
                     }
                 }
                 else {
-                    $script:btnDiagAutomate.Enabled = $true
+                    Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $true
                     $script:btnDiagAutomate.Text = "Add to Automated Apps"
                     # Light up the Operating Mode box and reset to safe defaults
                     Set-OperatingModeBoxState -Enabled $true
@@ -1085,9 +1300,9 @@ function Init-SleepDiagnosticsEventHandlers {
                 }
             }
             else {
-                $script:btnDiagAutomate.Enabled = $false
+                Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
                 $script:btnDiagAutomate.Text = "Add to Automated Apps"
-                $script:btnDiagIgnore.Enabled = $true
+                Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $true
                 # Non-app blockers can't be automated; grey the box back out
                 Set-OperatingModeBoxState -Enabled $false
             }
@@ -1101,12 +1316,19 @@ function Init-SleepDiagnosticsEventHandlers {
             $script:listAutomated.ClearSelected()
             $script:diagListMutex = $false
 
+            # Other lists were just deselected but their handlers can't fire inside the mutex
+            Set-ButtonVisualState -Button $script:btnDiagStopAuto -Active $false
+            Set-ButtonVisualState -Button $script:btnDiagOpenLocation -Active $false
+            Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
+            $script:btnDiagAutomate.Text = "Add to Automated Apps"
+            Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $false
+
             # Overridden system blockers cannot be automated; grey out the App Override Settings box
             Set-OperatingModeBoxState -Enabled $false
 
             $idx = $script:listOverrides.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:SystemOverridesList.Count)
-            $script:btnDiagRestore.Enabled = $hasValidItem
+            Set-ButtonVisualState -Button $script:btnDiagRestore -Active $hasValidItem
             if ($hasValidItem) {
                 $ov = $script:SystemOverridesList[$idx]
                 $script:lblDiagDetail.Text = "Ignored: [$($ov.OverrideType)]  $($ov.Name)    Requests overridden: $($ov.Requests)"
@@ -1122,10 +1344,16 @@ function Init-SleepDiagnosticsEventHandlers {
             $script:listOverrides.ClearSelected()
             $script:diagListMutex = $false
 
+            # Other lists were just deselected but their handlers can't fire inside the mutex
+            Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
+            $script:btnDiagAutomate.Text = "Add to Automated Apps"
+            Set-ButtonVisualState -Button $script:btnDiagIgnore -Active $false
+            Set-ButtonVisualState -Button $script:btnDiagRestore -Active $false
+
             $idx = $script:listAutomated.SelectedIndex
             $hasValidItem = ($idx -ge 0 -and $idx -lt $script:MonitoredApps.Count)
-            $script:btnDiagStopAuto.Enabled = $hasValidItem
-            $script:btnDiagOpenLocation.Enabled = $hasValidItem
+            Set-ButtonVisualState -Button $script:btnDiagStopAuto -Active $hasValidItem
+            Set-ButtonVisualState -Button $script:btnDiagOpenLocation -Active $hasValidItem
             if ($hasValidItem) {
                 $app = $script:MonitoredApps[$idx]
                 $mode = if ($app.RecoveryMode) { $app.RecoveryMode } else { $script:OperatingMode }
@@ -1171,6 +1399,34 @@ function Init-SleepDiagnosticsEventHandlers {
                 Set-OperatingModeBoxState -Enabled $false
             }
         })
+
+    # Deselect automated app when clicking empty space in the list
+    $script:listAutomated.add_MouseDown({
+            param($sender, $e)
+            $idx = $sender.IndexFromPoint($e.Location)
+            if ($idx -lt 0) {
+                $sender.ClearSelected()
+            }
+        })
+
+    # Deselect blocker when clicking empty space in the list
+    $script:listBlockers.add_MouseDown({
+            param($sender, $e)
+            $idx = $sender.IndexFromPoint($e.Location)
+            if ($idx -lt 0) {
+                $sender.ClearSelected()
+            }
+        })
+
+    # Deselect override when clicking empty space in the list
+    $script:listOverrides.add_MouseDown({
+            param($sender, $e)
+            $idx = $sender.IndexFromPoint($e.Location)
+            if ($idx -lt 0) {
+                $sender.ClearSelected()
+            }
+        })
+
     # ---------- Automate App ----------
     $script:btnDiagAutomate.add_Click({
             $idx = $script:listBlockers.SelectedIndex
@@ -1197,7 +1453,7 @@ function Init-SleepDiagnosticsEventHandlers {
                 return
             }
 
-            $script:btnDiagAutomate.Enabled = $false
+            Set-ButtonVisualState -Button $script:btnDiagAutomate -Active $false
             $script:lblDiagDetail.Text = "Searching for executable path for $($b.ProcessName) in background... Please wait."
 
             $script:PathSyncState = [hashtable]::Synchronized(@{
@@ -1347,7 +1603,7 @@ function Init-SleepDiagnosticsEventHandlers {
             $callerType = $typeMap[$b.BlockerType]
             if (-not $callerType) { $callerType = 'PROCESS' }
 
-            $msg = "Windows will be told to ignore power requests from:`r`n  $($b.DisplayName) [$($b.BlockerType)]`r`n`r`nThis blocker will no longer prevent sleep or hibernation.`r`n`r`nYou can undo this at any time using 'Restore'.`r`n`r`nContinue?"
+            $msg = "Windows will be told to ignore power requests from:`r`n  $($b.DisplayName) [$($b.BlockerType)]`r`n`r`nThis blocker will no longer prevent sleep or hibernation.`r`n`r`nYou can undo this at any time using the 'Remove System Override' button under the Ignored Blockers list.`r`n`r`nContinue?"
 
             $choice = [System.Windows.Forms.MessageBox]::Show(
                 $msg,

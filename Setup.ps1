@@ -1,7 +1,7 @@
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.2.3
+# Version: 1.3.0
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -162,7 +162,12 @@ function Ensure-AdminAtStartup {
     
     $psi.Verb = "runas"
 
-    try { [System.Diagnostics.Process]::Start($psi) | Out-Null } catch { }
+    try { 
+        $elevatedProc = [System.Diagnostics.Process]::Start($psi)
+        if ($elevatedProc) {
+            $elevatedProc.WaitForExit()
+        }
+    } catch { }
     exit
 }
 Ensure-AdminAtStartup
@@ -235,6 +240,23 @@ function Complete-SamishSetupUi {
             $script:ActiveBlockerTimer.Stop()
             $script:ActiveBlockerTimer.Dispose()
             $script:ActiveBlockerTimer = $null
+        }
+    }
+    catch { }
+
+    try {
+        if ($script:TooltipTrackerTimer) {
+            $script:TooltipTrackerTimer.Stop()
+            $script:TooltipTrackerTimer.Dispose()
+            $script:TooltipTrackerTimer = $null
+        }
+    }
+    catch { }
+
+    try {
+        if ($script:TooltipForm) {
+            $script:TooltipForm.Dispose()
+            $script:TooltipForm = $null
         }
     }
     catch { }
@@ -340,13 +362,15 @@ Add-Type -AssemblyName System.Drawing
 $setupOk = Ensure-SingleInstance
 if (-not $setupOk) { return }
 
+try {
+
 # ----- TOOLTIP OBJECT -----
-$tooltip = New-Object System.Windows.Forms.ToolTip
+$tooltip = New-SamishToolTip
 
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.2.5"
+$ProductVersion = "v1.3.0"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -403,6 +427,11 @@ if (Test-Path -LiteralPath $DiagModulePath) {
 $InstallEnginePath = Join-Path $PackageDir "Modules\Install.Engine.ps1"
 if (Test-Path -LiteralPath $InstallEnginePath) {
     . $InstallEnginePath
+}
+
+$FirstRunWizardPath = Join-Path $PackageDir "Modules\FirstRunWizard.ps1"
+if (Test-Path -LiteralPath $FirstRunWizardPath) {
+    . $FirstRunWizardPath
 }
 
 # ---------- Log-Always shim (Setup context) ----------
@@ -822,17 +851,19 @@ function Write-ConfigJson {
 
     # Preserve MonitoredApps if present in session or on disk
     $monitoredApps = @()
+    $existing = $null
+    if (Test-Path -LiteralPath $ConfigPath) {
+        try {
+            $existing = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
+        }
+        catch {}
+    }
+
     if ($script:MonitoredApps) {
         $monitoredApps = $script:MonitoredApps
     }
-    elseif (Test-Path -LiteralPath $ConfigPath) {
-        try {
-            $existing = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
-            if ($existing.PSObject.Properties.Name -contains "MonitoredApps" -and $existing.MonitoredApps) {
-                $monitoredApps = $existing.MonitoredApps
-            }
-        }
-        catch {}
+    elseif ($existing -and $existing.PSObject.Properties.Name -contains "MonitoredApps" -and $existing.MonitoredApps) {
+        $monitoredApps = $existing.MonitoredApps
     }
 
     # Migrate old config flags in MonitoredApps to OnWakeAction
@@ -859,6 +890,27 @@ function Write-ConfigJson {
         $themeVal = $existing.Theme
     }
 
+    # Preserve feature keys from existing config (or use defaults)
+    $gameModeEnabled = $false
+    $gameModeList = @()
+    $wizardCompleted = $false
+    $uiMode = "Full"
+    $prefPlaybackGuid = ""
+    $prefPlaybackName = ""
+    $prefCommGuid = ""
+    $prefCommName = ""
+
+    if ($existing) {
+        if ($existing.PSObject.Properties.Name -contains "GameModeEnabled") { $gameModeEnabled = [bool]$existing.GameModeEnabled }
+        if ($existing.PSObject.Properties.Name -contains "GameModeList")    { $gameModeList = @($existing.GameModeList) }
+        if ($existing.PSObject.Properties.Name -contains "WizardCompleted") { $wizardCompleted = [bool]$existing.WizardCompleted }
+        if ($existing.PSObject.Properties.Name -contains "UI_Mode")         { $uiMode = [string]$existing.UI_Mode }
+        if ($existing.PSObject.Properties.Name -contains "PreferredPlaybackDeviceGuid") { $prefPlaybackGuid = [string]$existing.PreferredPlaybackDeviceGuid }
+        if ($existing.PSObject.Properties.Name -contains "PreferredPlaybackDeviceName") { $prefPlaybackName = [string]$existing.PreferredPlaybackDeviceName }
+        if ($existing.PSObject.Properties.Name -contains "PreferredCommDeviceGuid")     { $prefCommGuid = [string]$existing.PreferredCommDeviceGuid }
+        if ($existing.PSObject.Properties.Name -contains "PreferredCommDeviceName")     { $prefCommName = [string]$existing.PreferredCommDeviceName }
+    }
+
     $cfg = [ordered]@{
         EnableLogging          = $EnableLogging
         LogEverySeconds        = $LogEverySeconds
@@ -874,6 +926,14 @@ function Write-ConfigJson {
         MonitoredApps          = $monitoredApps
         Theme                  = $themeVal
         EnableAutoRecovery     = $EnableAutoRecovery
+        GameModeEnabled        = $gameModeEnabled
+        GameModeList           = $gameModeList
+        WizardCompleted        = $wizardCompleted
+        UI_Mode                = $uiMode
+        PreferredPlaybackDeviceGuid = $prefPlaybackGuid
+        PreferredPlaybackDeviceName = $prefPlaybackName
+        PreferredCommDeviceGuid     = $prefCommGuid
+        PreferredCommDeviceName     = $prefCommName
     }
 
     $json = $cfg | ConvertTo-Json -Depth 6
@@ -1827,13 +1887,11 @@ if (Test-Path -LiteralPath $UIModulePath) {
     . $UIModulePath
 }
 
-# Resolve any potential array/shadowing issues for UI controls in persistent sessions
-# [Removed Get-LatestControl block]
-
 $EventsModulePath = Join-Path $PackageDir "Modules\Events-handlers.ps1"
 if (Test-Path -LiteralPath $EventsModulePath) {
     . $EventsModulePath
 }
+
 # ---------- Initial state ----------
 $cbTray.Enabled = $false
 $tbLogCustom.Enabled = $false
@@ -1879,14 +1937,17 @@ if ($global:ThemeNeonActive) {
     if ($null -eq $global:NeonText)       { $global:NeonText       = [System.Drawing.Color]::FromArgb(255, 255, 255) }
 
     if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
-        . (Join-Path $PackageDir "Modules\Theme-Extension.ps1")
+        $themeExt = Join-Path $PackageDir "Modules\Theme-Extension.ps1"
+        if (Test-Path -LiteralPath $themeExt) {
+            . $themeExt
+        }
     }
-    try { Set-BrandTheme -Form $form -IsNeon $true } catch {}
+    try { Set-BrandTheme -Form $form -IsCustom $true } catch {}
     # Sync the tab indicator after the theme is applied — Set-BrandTheme calls Update-TabIndicator
     # internally but at that point the form geometry may not be finalised yet; calling it again
     # after ShowDialog's first paint pass ensures the indicator lands on the correct tab.
     if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {
-        try { $form.BeginInvoke([Action]{ Update-TabIndicator }) } catch {}
+        try { [void]$form.BeginInvoke([Action]{ Update-TabIndicator }) } catch {}
     }
 }
 
@@ -1921,7 +1982,24 @@ $form.add_KeyDown({
         $form.Close()
     }
 })
+# ---- First-Run Wizard (before main form opens) ----
+if (-not $CliInstall -and -not $global:SamishScreenshotMode) {
+    if (Get-Command Invoke-FirstRunWizardIfNeeded -ErrorAction SilentlyContinue) {
+        try {
+            $wizardResult = Invoke-FirstRunWizardIfNeeded -ConfigPath $ConfigPath -PackageDir $PackageDir
+            if ($wizardResult) {
+                Write-SamishSetupTrace -Message "First-run wizard completed. UI_Mode=$($wizardResult.UI_Mode)" -Level "INFO"
+            }
+        }
+        catch {
+            Write-SamishSetupTrace -Message "First-run wizard error (non-fatal): $($_.Exception.Message)" -Level "WARN"
+        }
+    }
+}
 
 [void]$form.ShowDialog()
-Complete-SamishSetupUi -Form $form
+}
+finally {
+    Complete-SamishSetupUi -Form $form
+}
 return

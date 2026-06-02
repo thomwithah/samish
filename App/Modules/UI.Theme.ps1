@@ -2,58 +2,6 @@
 # Developer Note: Font objects and Color brushes must be added to the GDI resource 
 # cleanup tracker. Do not invoke GDI resources outside the primary GUI thread. 
 # DPI scaling is calculated once on startup and must complete in under 50 ms.
-# ---------- TOOLTIP WORD-WRAP HELPER ----------
-function Format-WrappedText {
-    param(
-        [string]$Text,
-        [int]$MaxLineLength = 70
-    )
-    if ([string]::IsNullOrWhiteSpace($Text)) { return "" }
-    $paragraphs = $Text -split "`r?`n"
-    $wrappedParagraphs = @()
-    foreach ($para in $paragraphs) {
-        if ([string]::IsNullOrWhiteSpace($para)) {
-            $wrappedParagraphs += ""
-            continue
-        }
-        $words = $para -split "\s+"
-        $currentLine = ""
-        $wrappedLines = @()
-        foreach ($word in $words) {
-            if ([string]::IsNullOrEmpty($currentLine)) {
-                $currentLine = $word
-            }
-            elseif (($currentLine.Length + 1 + $word.Length) -le $MaxLineLength) {
-                $currentLine += " " + $word
-            }
-            else {
-                $wrappedLines += $currentLine
-                $currentLine = $word
-            }
-        }
-        if (-not [string]::IsNullOrEmpty($currentLine)) {
-            $wrappedLines += $currentLine
-        }
-        $wrappedParagraphs += ($wrappedLines -join "`r`n")
-    }
-    return ($wrappedParagraphs -join "`r`n")
-}
-
-# Wrap the global $tooltip object in a PSCustomObject that intercepts SetToolTip calls
-if ($tooltip -and $tooltip -is [System.Windows.Forms.ToolTip]) {
-    $realTooltip = $tooltip
-    $tooltipWrapper = [PSCustomObject]@{
-        RealTooltip = $realTooltip
-    }
-    $tooltipWrapper | Add-Member -MemberType ScriptMethod -Name "SetToolTip" -Value {
-        param($control, $text)
-        $wrapped = Format-WrappedText -Text $text -MaxLineLength 70
-        $this.RealTooltip.SetToolTip($control, $wrapped)
-    }
-    # Update the global and script-level references
-    $tooltip = $tooltipWrapper
-    $script:tooltip = $tooltipWrapper
-}
 
 
 function Get-HighQualityScaledImage {
@@ -91,18 +39,17 @@ $script:BrandPurple = $BrandPurple
 $BrandCyan = [System.Drawing.Color]::FromArgb(0, 215, 255) # #00D7FF
 $script:BrandCyan = $BrandCyan
 
-$font = New-Object System.Drawing.Font("Segoe UI", 10)
+$font = New-Object System.Drawing.Font("Segoe UI", [float](10 * $script:DpiScale))
 [void]$script:MainFormGdiResources.Add($font)
-$boldFont = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$boldFont = New-Object System.Drawing.Font("Segoe UI", [float](10 * $script:DpiScale), [System.Drawing.FontStyle]::Bold)
 [void]$script:MainFormGdiResources.Add($boldFont)
-$titleFont = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold)
+$titleFont = New-Object System.Drawing.Font("Segoe UI", [float](24 * $script:DpiScale), [System.Drawing.FontStyle]::Bold)
 [void]$script:MainFormGdiResources.Add($titleFont)
-$subtitleFont = New-Object System.Drawing.Font("Segoe UI", 10)
+$subtitleFont = New-Object System.Drawing.Font("Segoe UI", [float](10 * $script:DpiScale))
 [void]$script:MainFormGdiResources.Add($subtitleFont)
-$lblDetailsTitleFont = New-Object System.Drawing.Font("Segoe UI", 8.25, [System.Drawing.FontStyle]::Bold)
+$lblDetailsTitleFont = New-Object System.Drawing.Font("Segoe UI", [float](8.25 * $script:DpiScale), [System.Drawing.FontStyle]::Bold)
 [void]$script:MainFormGdiResources.Add($lblDetailsTitleFont)
-$detailsFont = New-Object System.Drawing.Font("Segoe UI", 7.5)
+$detailsFont = New-Object System.Drawing.Font("Segoe UI", [float](7.5 * $script:DpiScale))
 [void]$script:MainFormGdiResources.Add($detailsFont)
-$statusBoxFont = New-Object System.Drawing.Font("Consolas", 9)
+$statusBoxFont = New-Object System.Drawing.Font("Consolas", [float](9 * $script:DpiScale))
 [void]$script:MainFormGdiResources.Add($statusBoxFont)
-

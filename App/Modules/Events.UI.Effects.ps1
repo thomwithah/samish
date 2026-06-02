@@ -2,15 +2,30 @@
 # ---------- UI wiring ----------
 
 # ---------- Custom DrawItem event for ComboBoxes (SAMISH Cyan Highlight) ----------
-$comboDrawItem = {
+$global:comboDrawItem = {
     param($sender, $e)
     if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
 
     $itemText = $sender.Items[$e.Index].ToString()
-    $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+    
+    $isFocused = ($e.State -band [System.Windows.Forms.DrawItemState]::Focus) -eq [System.Windows.Forms.DrawItemState]::Focus
+    $isActive = $false
+    try {
+        $parentForm = $sender.FindForm()
+        if ($parentForm) {
+            $isActive = ($parentForm.ActiveControl -eq $sender)
+        }
+    } catch {}
+    
+    $isEditArea = ($e.State -band [System.Windows.Forms.DrawItemState]::ComboBoxEdit) -eq [System.Windows.Forms.DrawItemState]::ComboBoxEdit
+    if ($isEditArea) {
+        $isHighlighted = (($e.State -band [System.Windows.Forms.DrawItemState]::Focus) -eq [System.Windows.Forms.DrawItemState]::Focus) -or $isActive
+    } else {
+        $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+    }
 
-    $highlightColor = if ($global:ThemeNeonActive) { $global:NeonCyan } else { $script:BrandCyan }
-    if ($null -eq $highlightColor) { $highlightColor = [System.Drawing.Color]::FromArgb(0, 215, 255) }
+    $highlightColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { $script:BrandCyan }
+    if ($null -eq $highlightColor) { $highlightColor = [System.Drawing.Color]::FromArgb(0, 245, 212) }
 
     if ($isHighlighted) {
         $brushBack = New-Object System.Drawing.SolidBrush($highlightColor)
@@ -26,22 +41,8 @@ $comboDrawItem = {
     $foreColor = if ($isHighlighted) {
         [System.Drawing.Color]::Black
     }
-    elseif (-not $sender.Enabled) {
-        if ($global:ThemeNeonActive) {
-            if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
-        }
-        else {
-            [System.Drawing.Color]::Gray
-        }
-    }
-    else {
-        if ($global:ThemeNeonActive) {
-            if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
-        }
-        else {
-            $sender.ForeColor
-        }
-    }
+    elseif (-not $sender.Enabled) { [System.Drawing.Color]::Gray }
+    else { $sender.ForeColor }
     if ($null -eq $foreColor) { $foreColor = [System.Drawing.Color]::Black }
     $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
     
@@ -57,16 +58,18 @@ $comboDrawItem = {
 }
 
 $logCtrl = if ($script:ddLogInterval) { $script:ddLogInterval } else { $ddLogInterval }
-if ($logCtrl) { $logCtrl.add_DrawItem($comboDrawItem) }
+if ($logCtrl) { $logCtrl.add_DrawItem($global:comboDrawItem) }
 
 $hkCtrl = if ($script:ddHotkey) { $script:ddHotkey } else { $ddHotkey }
-if ($hkCtrl) { $hkCtrl.add_DrawItem($comboDrawItem) }
+if ($hkCtrl) { $hkCtrl.add_DrawItem($global:comboDrawItem) }
 
 $wakeCtrl = if ($script:ddDiagOnWakeAction) { $script:ddDiagOnWakeAction } else { $ddOnWakeAction }
-if ($wakeCtrl) { $wakeCtrl.add_DrawItem($comboDrawItem) }
+if ($wakeCtrl) { $wakeCtrl.add_DrawItem($global:comboDrawItem) }
 
 $testCtrl = if ($script:ddTestTarget) { $script:ddTestTarget } else { $ddTestTarget }
-if ($testCtrl) { $testCtrl.add_DrawItem($comboDrawItem) }
+if ($testCtrl) { $testCtrl.add_DrawItem($global:comboDrawItem) }
+
+
 
 # ---------- Custom Focus Borders for TextBoxes ----------
 $tbLogSingle = $null
@@ -121,9 +124,9 @@ if ($cfgGroup) {
 
 function Update-TabIndicator {
     if (-not $script:tabIndicatorLine) { return }
-    $isExpanded = ($form.ClientSize.Width -gt 800)
+    $isExpanded = $script:IsWindowExpanded
     
-    if ($global:ThemeNeonActive) {
+    if ($global:ThemeCustomActive) {
         $btnTabSetup.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 40)
         $btnTabDiag.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 40)
     }
@@ -133,8 +136,8 @@ function Update-TabIndicator {
     }
 
     if ($tabControl.SelectedIndex -eq 0) {
-        if ($global:ThemeNeonActive) {
-            $btnTabSetup.ForeColor = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+        if ($global:ThemeCustomActive) {
+            $btnTabSetup.ForeColor = if ($global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
             $btnTabDiag.ForeColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0
         }
         else {
@@ -144,17 +147,17 @@ function Update-TabIndicator {
 
         # Setup tab is active
         if ($isExpanded) {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 81)
-            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(190, 2)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](81 * $script:DpiScale))
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](2 * $script:DpiScale))
         }
         else {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(330, 81)
-            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(145, 2)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](81 * $script:DpiScale))
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size([int](145 * $script:DpiScale), [int](2 * $script:DpiScale))
         }
     }
     else {
-        if ($global:ThemeNeonActive) {
-            $btnTabDiag.ForeColor = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+        if ($global:ThemeCustomActive) {
+            $btnTabDiag.ForeColor = if ($global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
             $btnTabSetup.ForeColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0
         }
         else {
@@ -164,21 +167,21 @@ function Update-TabIndicator {
 
         # Diagnostics tab is active
         if ($isExpanded) {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(530, 81)
-            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(260, 2)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](81 * $script:DpiScale))
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](2 * $script:DpiScale))
         }
         else {
-            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point(485, 81)
-            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size(180, 2)
+            $script:tabIndicatorLine.Location = New-Object System.Drawing.Point([int](485 * $script:DpiScale), [int](81 * $script:DpiScale))
+            $script:tabIndicatorLine.Size = New-Object System.Drawing.Size([int](180 * $script:DpiScale), [int](2 * $script:DpiScale))
         }
     }
     Update-SecondaryTabStyles
 }
 
 function global:Update-SecondaryTabStyles {
-    if ($global:ThemeNeonActive) {
+    if ($global:ThemeCustomActive) {
         $secTabBg = [System.Drawing.Color]::FromArgb(35, 35, 40)
-        $activeColor = if ($global:NeonCyan) { $global:NeonCyan } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+        $activeColor = if ($global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
         $inactiveColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0 — inactive tab text
     }
     else {
@@ -230,15 +233,23 @@ function global:Update-SecondaryTabStyles {
 function Hide-All-Drawers {
     if ($script:grpAdvancedTools) { $script:grpAdvancedTools.Visible = $false }
     if ($script:grpAdvancedDiag) { $script:grpAdvancedDiag.Visible = $false }
+    $script:IsResizingProgrammatically = $true
     $form.ClientSize = New-Object System.Drawing.Size([int](800 * $script:DpiScale), [int](640 * $script:DpiScale))
+    $script:IsResizingProgrammatically = $false
     if ($script:pnlTabWrapper) {
         $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](780 * $script:DpiScale), [int](490 * $script:DpiScale))
     }
     $tabControl.Size = New-Object System.Drawing.Size([int](788 * $script:DpiScale), [int](498 * $script:DpiScale))
 
     # Reset drawer button labels so they never show stale "Close X" state
-    if ($btnToolsAdvanced) { $btnToolsAdvanced.Text = "Advanced Tools >>" }
-    if ($btnDiagAdvanced) { $btnDiagAdvanced.Text = "Diagnostics >>" }
+    if ($btnToolsAdvanced) {
+        $btnToolsAdvanced.Text = "Advanced Tools >>"
+        $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+    }
+    if ($btnDiagAdvanced) {
+        $btnDiagAdvanced.Text = "Diagnostics >>"
+        $btnDiagAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+    }
 
     if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $false }
     if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $false }
@@ -254,6 +265,17 @@ function Hide-All-Drawers {
         $script:TelemetryTimer.Stop()
         $script:TelemetryTimer.Dispose()
         $script:TelemetryTimer = $null
+    }
+
+    # Reset telemetry list selections and action button when drawer closes
+    if ($script:listArmedDevices) { $script:listArmedDevices.ClearSelected() }
+    if ($script:listHardwareScans) { $script:listHardwareScans.ClearSelected() }
+    if ($script:listWakeTimers) { $script:listWakeTimers.ClearSelected() }
+    if ($script:btnTelemetryAction) {
+        $script:btnTelemetryAction.Text = "Select Item..."
+        if (Get-Command Set-ButtonVisualState -ErrorAction SilentlyContinue) {
+            Set-ButtonVisualState -Button $script:btnTelemetryAction -Active $false
+        }
     }
 
     if ($script:mainSep) { $script:mainSep.Width = [int](764 * $script:DpiScale) }
@@ -293,6 +315,9 @@ function Hide-All-Drawers {
 }
 
 $btnTabSetup.add_Click({
+        $WM_SETREDRAW = [uint32]0x000B
+        try { [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]::Zero, [IntPtr]::Zero) } catch {}
+
         $tabControl.SelectedIndex = 0
         $btnTabSetup.Font = $boldFont
         $btnTabDiag.Font = $font
@@ -301,9 +326,17 @@ $btnTabSetup.add_Click({
         # If the window was expanded on the other tab, keep it expanded by opening this tab's drawer
         if ($wasExpanded -and $btnToolsAdvanced) { $btnToolsAdvanced.PerformClick() }
         Update-TabIndicator
+
+        try {
+            [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]1, [IntPtr]::Zero)
+            $form.Refresh()
+        } catch {}
     })
 
 $btnTabDiag.add_Click({
+        $WM_SETREDRAW = [uint32]0x000B
+        try { [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]::Zero, [IntPtr]::Zero) } catch {}
+
         $tabControl.SelectedIndex = 1
         $btnTabDiag.Font = $boldFont
         $btnTabSetup.Font = $font
@@ -317,105 +350,154 @@ $btnTabDiag.add_Click({
         # If the window was expanded on the other tab, keep it expanded by opening this tab's drawer
         if ($wasExpanded -and $btnDiagAdvanced) { $btnDiagAdvanced.PerformClick() }
         Update-TabIndicator
+
+        try {
+            [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]1, [IntPtr]::Zero)
+            $form.Refresh()
+        } catch {}
     })
 
 $btnToolsAdvanced.add_Click({
-        if (-not $script:IsWindowExpanded) {
-            # Expand - slide logo to far right of new header space
-            if ($script:pnlTabWrapper) {
-                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
-            }
-            $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
-            $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
-            [System.Windows.Forms.Application]::DoEvents()
-            if ($script:grpAdvancedTools) {
-                $script:grpAdvancedTools.Visible = $true
-                $script:grpAdvancedTools.Invalidate()
-            }
-            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
-            $btnToolsAdvanced.Text = "<< Close Tools"
-            if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
-            if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
-            if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
-                $script:bottomMetadata.BringToFront()
-            }
+        $WM_SETREDRAW = [uint32]0x000B
+        try { [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]::Zero, [IntPtr]::Zero) } catch {}
 
-            # Expand tab buttons to long names/sizes (Setup anchored at X=330)
-            if ($btnTabSetup) {
-                $btnTabSetup.Text = "1. Setup && Installation"
-                $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
-                $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
+        try {
+            # In Simple mode, this button is repurposed as "Restore Original Settings"
+            if ($btnToolsAdvanced.Tag -eq "SimpleRestoreDisabled") {
+                # Visually dimmed, no backup exists -- do nothing
+                return
             }
-            if ($btnTabDiag) {
-                $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
-                $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
-                $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
+            if ($btnToolsAdvanced.Tag -eq "SimpleRestore") {
+                # Delegate to the same restore logic used by Verify & Restore Settings
+                if ($btnPowerPlan) {
+                    $btnPowerPlan.PerformClick()
+                }
+                return
             }
+            if (-not $script:IsWindowExpanded) {
+                # Expand - slide logo to far right of new header space
+                if ($script:pnlTabWrapper) {
+                    $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
+                }
+                $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
+                $script:IsResizingProgrammatically = $true
+                $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
+                $script:IsResizingProgrammatically = $false
+                if ($script:grpAdvancedTools) {
+                    $script:grpAdvancedTools.Visible = $true
+                    $script:grpAdvancedTools.Invalidate()
+                }
+                if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
+                $btnToolsAdvanced.Text = "<< Close Tools"
+                $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
+                if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
+                if ($script:bottomMetadata) {
+                    $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
+                    $script:bottomMetadata.BringToFront()
+                }
 
-            # Show sub-tabs
-            if ($btnSubTabTools) { $btnSubTabTools.Visible = $true }
-            if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
-            if ($script:advancedTabIndicator) {
-                if ($script:IsLiveLogMode) {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](270 * $script:DpiScale), [int](38 * $script:DpiScale))
+                # Expand tab buttons to long names/sizes (Setup anchored at X=330)
+                if ($btnTabSetup) {
+                    $btnTabSetup.Text = "1. Setup && Installation"
+                    $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
+                    $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
                 }
-                else {
-                    $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](190 * $script:DpiScale), [int](38 * $script:DpiScale))
+                if ($btnTabDiag) {
+                    $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
+                    $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
+                    $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
                 }
-                $script:advancedTabIndicator.Visible = $true
+
+                # Show sub-tabs
+                if ($btnSubTabTools) { $btnSubTabTools.Visible = $true }
+                if ($btnSubTabLive) { $btnSubTabLive.Visible = $true }
+                if ($script:advancedTabIndicator) {
+                    if ($script:IsLiveLogMode) {
+                        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](270 * $script:DpiScale), [int](38 * $script:DpiScale))
+                    }
+                    else {
+                        $script:advancedTabIndicator.Location = New-Object System.Drawing.Point([int](190 * $script:DpiScale), [int](38 * $script:DpiScale))
+                    }
+                    $script:advancedTabIndicator.Visible = $true
+                }
+                $script:IsWindowExpanded = $true
+                Update-TabIndicator
             }
-            $script:IsWindowExpanded = $true
-            Update-TabIndicator
+            else {
+                # Collapse (Hide-All-Drawers resets text and logo)
+                Hide-All-Drawers
+            }
         }
-        else {
-            # Collapse (Hide-All-Drawers resets text and logo)
-            Hide-All-Drawers
+        finally {
+            try {
+                [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]1, [IntPtr]::Zero)
+                $form.Refresh()
+            } catch {}
         }
     })
 
 $btnDiagAdvanced.add_Click({
-        if (-not $script:IsWindowExpanded) {
-            # Expand - slide logo to far right of new header space
-            if ($script:pnlTabWrapper) {
-                $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
-            }
-            $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
-            $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
-            [System.Windows.Forms.Application]::DoEvents()
-            if ($script:grpAdvancedDiag) {
-                $script:grpAdvancedDiag.Visible = $true
-                $script:grpAdvancedDiag.Invalidate()
-            }
-            if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
-            $btnDiagAdvanced.Text = "<< Close Diagnostics"
-            if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
-            if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
-            if ($script:bottomMetadata) {
-                $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
-                $script:bottomMetadata.BringToFront()
-            }
+        $WM_SETREDRAW = [uint32]0x000B
+        try { [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]::Zero, [IntPtr]::Zero) } catch {}
 
-            # Expand tab buttons to long names/sizes (Setup anchored at X=330)
-            if ($btnTabSetup) {
-                $btnTabSetup.Text = "1. Setup && Installation"
-                $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
-                $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
-            }
-            if ($btnTabDiag) {
-                $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
-                $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
-                $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
-            }
+        $triggerRefresh = $false
+        try {
+            if (-not $script:IsWindowExpanded) {
+                # Expand - slide logo to far right of new header space
+                if ($script:pnlTabWrapper) {
+                    $script:pnlTabWrapper.Size = New-Object System.Drawing.Size([int](1160 * $script:DpiScale), [int](490 * $script:DpiScale))
+                }
+                $tabControl.Size = New-Object System.Drawing.Size([int](1168 * $script:DpiScale), [int](498 * $script:DpiScale))
+                $script:IsResizingProgrammatically = $true
+                $form.ClientSize = New-Object System.Drawing.Size([int](1180 * $script:DpiScale), [int](640 * $script:DpiScale))
+                $script:IsResizingProgrammatically = $false
+                if ($script:grpAdvancedDiag) {
+                    $script:grpAdvancedDiag.Visible = $true
+                    $script:grpAdvancedDiag.Invalidate()
+                }
+                if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
+                $btnDiagAdvanced.Text = "<< Close Diagnostics"
+                $btnDiagAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
+                if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
+                if ($script:bottomMetadata) {
+                    $script:bottomMetadata.Location = New-Object System.Drawing.Point([int](860 * $script:DpiScale), [int](606 * $script:DpiScale))
+                    $script:bottomMetadata.BringToFront()
+                }
 
-            # Trigger telemetry refresh
-            if ($script:btnTelemetryRefresh) { $script:btnTelemetryRefresh.PerformClick() }
-            $script:IsWindowExpanded = $true
-            Update-TabIndicator
+                # Expand tab buttons to long names/sizes (Setup anchored at X=330)
+                if ($btnTabSetup) {
+                    $btnTabSetup.Text = "1. Setup && Installation"
+                    $btnTabSetup.Location = New-Object System.Drawing.Point([int](330 * $script:DpiScale), [int](48 * $script:DpiScale))
+                    $btnTabSetup.Size = New-Object System.Drawing.Size([int](190 * $script:DpiScale), [int](30 * $script:DpiScale))
+                }
+                if ($btnTabDiag) {
+                    $btnTabDiag.Text = "2. Sleep Automation && Diagnostics"
+                    $btnTabDiag.Location = New-Object System.Drawing.Point([int](530 * $script:DpiScale), [int](48 * $script:DpiScale))
+                    $btnTabDiag.Size = New-Object System.Drawing.Size([int](260 * $script:DpiScale), [int](30 * $script:DpiScale))
+                }
+
+                # Set flag to trigger telemetry refresh after redraw is enabled
+                $triggerRefresh = $true
+                $script:IsWindowExpanded = $true
+                Update-TabIndicator
+            }
+            else {
+                # Collapse (Hide-All-Drawers resets text and logo)
+                Hide-All-Drawers
+            }
         }
-        else {
-            # Collapse (Hide-All-Drawers resets text and logo)
-            Hide-All-Drawers
+        finally {
+            try {
+                [void][SamishWin32]::SendMessage($form.Handle, $WM_SETREDRAW, [IntPtr]1, [IntPtr]::Zero)
+                $form.Refresh()
+            } catch {}
+        }
+
+        # Trigger telemetry refresh only after the window has been repainted
+        if ($triggerRefresh -and $script:btnTelemetryRefresh) {
+            $script:btnTelemetryRefresh.PerformClick()
         }
     })
 
@@ -450,6 +532,8 @@ function Show-SubTabTools {
     if ($btnCleanReset) { $btnCleanReset.Visible = $true }
     if ($btnReadSetup) { $btnReadSetup.Visible = $true }
     if ($btnOpenLog) { $btnOpenLog.Visible = $true }
+    if ($btnPreferredAudio) { $btnPreferredAudio.Visible = $true }
+    if ($btnGameMode) { $btnGameMode.Visible = $true }
 
     if ($script:advancedTabIndicator) {
         $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
@@ -484,6 +568,10 @@ function Show-SubTabLive {
     if ($btnCleanReset) { $btnCleanReset.Visible = $false }
     if ($btnReadSetup) { $btnReadSetup.Visible = $false }
     if ($btnOpenLog) { $btnOpenLog.Visible = $false }
+    if ($btnPreferredAudio) { $btnPreferredAudio.Visible = $false }
+    if ($btnGameMode) { $btnGameMode.Visible = $false }
+
+
 
     # Show live log controls
     if ($txtLiveLog) { $txtLiveLog.Visible = $true }
@@ -575,7 +663,7 @@ if ($btnLiveCopy) {
 # Wire double-click on version label/metadata to open changelog
 if ($bottomMetadata) {
     $bottomMetadata.add_DoubleClick({
-            $changelogPath = Join-Path $PackageDir "CHANGELOG.md"
+            $changelogPath = Join-Path (Split-Path -Parent $global:PackageDir) "CHANGELOG.md"
             if (Test-Path -LiteralPath $changelogPath) {
                 Write-SetupLog "Changelog found at '$changelogPath'. Attempting to open."
                 try {
@@ -601,6 +689,27 @@ if ($logo) {
             . (Join-Path $global:PackageDir "Modules\Theme-Extension.ps1")
             Invoke-BrandSequence -Form $form
         })
+}
+
+# ---------- Resolution Auto-Layout ----------
+# Automatically collapse drawers when resolution falls below 1080p width
+if ($form) {
+    $script:IsResizingProgrammatically = $false
+    
+    $script:ResolutionCheckHandler = {
+        if ($script:IsWindowExpanded -and -not $script:IsResizingProgrammatically) {
+            try {
+                $screen = [System.Windows.Forms.Screen]::FromControl($form)
+                if ($screen -and $screen.Bounds.Width -lt 1920) {
+                    Write-SetupLog "Auto-collapsing drawers: screen width ($($screen.Bounds.Width)) is below 1920 (1080p)."
+                    Hide-All-Drawers
+                }
+            } catch {}
+        }
+    }
+
+    $form.add_LocationChanged($script:ResolutionCheckHandler)
+    $form.add_Resize($script:ResolutionCheckHandler)
 }
 
 

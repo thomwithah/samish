@@ -1,0 +1,25 @@
+{
+    "Description": "SAMISH Custom Theme Template. Copy this file to custom_theme.json to apply. You can use RGB (e.g. '255, 0, 102') or Hex (e.g. '#FF0066') values.",
+    
+    "BaseColors": {
+        "Background": "15, 15, 18",
+        "Panel": "20, 20, 25",
+        "Input": "25, 25, 30",
+        "Button": "35, 35, 40",
+        "ButtonHover": "50, 50, 60",
+        "Disabled": "45, 45, 50",
+        "DisabledText": "115, 135, 145",
+        "BorderDim": "75, 25, 125",
+        "Text": "255, 255, 255",
+        "CheckboxBg": "25, 25, 30",
+        "CheckboxBorder": "153, 51, 255",
+        "CheckboxCheck": "0, 245, 212"
+    },
+
+    "VibrantAccents": {
+        "Primary": "0, 245, 212",
+        "Secondary": "153, 51, 255",
+        "Alert": "255, 0, 102",
+        "Highlight": "179, 255, 0"
+    }
+}

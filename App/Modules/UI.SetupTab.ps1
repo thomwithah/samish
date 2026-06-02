@@ -528,7 +528,7 @@ function Apply-UIFromConfigIfPresent {
 
         $cfg = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
 
-        # Load MonitoredApps from config
+        # oredApps from config
         if ($null -ne $cfg -and $null -ne $cfg.MonitoredApps) {
             $script:MonitoredApps = @(foreach ($app in $cfg.MonitoredApps) {
                     if ($null -eq $app.PSObject.Properties['OnWakeAction']) {
@@ -710,10 +710,10 @@ function Apply-UIFromConfigIfPresent {
         # --- Theme ---
         if ($null -ne $cfg -and $null -ne $cfg.Theme) {
             $isNeon = ($cfg.Theme -eq "Neon")
-            if ($global:ThemeNeonActive -ne $isNeon -or $null -eq $global:NeonCyan) {
-                $global:ThemeNeonActive = $isNeon
+            if ($global:ThemeCustomActive -ne $isNeon -or $null -eq $global:ThemeCustomPrimary) {
+                $global:ThemeCustomActive = $isNeon
                 if (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue) {
-                    try { Set-BrandTheme -Form $form -IsNeon $isNeon } catch {}
+                    try { Set-BrandTheme -Form $form -IsCustom $isNeon } catch {}
                 }
             }
         }
@@ -1236,6 +1236,40 @@ $grpAdvancedTools.Controls.Add($btnOpenLog)
 $script:btnOpenLog = $btnOpenLog
 $tooltip.SetToolTip($btnOpenLog, "Open the main SAMISH text log in your default editor.")
 
+$btnPreferredAudio = New-Object System.Windows.Forms.Button
+$btnPreferredAudio.Name = "btnPreferredAudio"
+$btnPreferredAudio.Text = "Set Preferred Audio Device"
+$btnPreferredAudio.Font = $font
+$btnPreferredAudio.Size = New-Object System.Drawing.Size(350, 32)
+$btnPreferredAudio.Location = New-Object System.Drawing.Point(10, 285)
+$btnPreferredAudio.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnPreferredAudio.FlatAppearance.BorderSize = 1
+$btnPreferredAudio.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnPreferredAudio.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnPreferredAudio.BackColor = [System.Drawing.Color]::Transparent
+$btnPreferredAudio.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnPreferredAudio)
+$script:btnPreferredAudio = $btnPreferredAudio
+$tooltip.SetToolTip($btnPreferredAudio, "Configure preferred audio playback and communications devices. At wake or resume, Windows frequently defaults to the wrong device. While mixer applications like BEACN or Voicemeeter may also attempt to restore defaults, SAMISH runs post-wake checks to guarantee the correct Windows default endpoints are active even if the mixer software fails to reset them.")
+
+$btnGameMode = New-Object System.Windows.Forms.Button
+$btnGameMode.Name = "btnGameMode"
+$btnGameMode.Text = "Game Mode Settings"
+$btnGameMode.Font = $font
+$btnGameMode.Size = New-Object System.Drawing.Size(350, 32)
+$btnGameMode.Location = New-Object System.Drawing.Point(10, 330)
+$btnGameMode.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnGameMode.FlatAppearance.BorderSize = 1
+$btnGameMode.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnGameMode.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnGameMode.BackColor = [System.Drawing.Color]::Transparent
+$btnGameMode.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnGameMode)
+$script:btnGameMode = $btnGameMode
+$tooltip.SetToolTip($btnGameMode, "Configure Game-Mode Guard to monitor specific games OR applications. When running, non-essential sleep diagnostics are paused to prevent conflicts.")
+
+
+
 # Create the dedicated Live Log console textbox inside the Page 1 Drawer (hidden initially)
 $txtLiveLog = New-Object System.Windows.Forms.TextBox
 $txtLiveLog.Name = "txtLiveLog"
@@ -1257,6 +1291,56 @@ $liveLogSep.Location = New-Object System.Drawing.Point(10, 334)
 $liveLogSep.BackColor = $BrandPurple
 $liveLogSep.Visible = $false
 $grpAdvancedTools.Controls.Add($liveLogSep)
+$script:liveLogSep = $liveLogSep
+
+# Create the live log control buttons inside the Page 1 Drawer (hidden initially)
+$btnLivePause = New-Object System.Windows.Forms.Button
+$btnLivePause.Text = "Pause"
+$btnLivePause.Size = New-Object System.Drawing.Size(100, 28)
+$btnLivePause.Location = New-Object System.Drawing.Point(10, 344)
+$btnLivePause.Visible = $false
+$btnLivePause.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLivePause.FlatAppearance.BorderSize = 1
+$btnLivePause.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLivePause.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLivePause.BackColor = [System.Drawing.Color]::Transparent
+$btnLivePause.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnLivePause)
+$script:btnLivePause = $btnLivePause
+$tooltip.SetToolTip($btnLivePause, "Pause or resume the live log stream")
+
+$btnLiveCopy = New-Object System.Windows.Forms.Button
+$btnLiveCopy.Text = "Copy"
+$btnLiveCopy.Size = New-Object System.Drawing.Size(100, 28)
+$btnLiveCopy.Location = New-Object System.Drawing.Point(135, 344)
+$btnLiveCopy.Visible = $false
+$btnLiveCopy.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLiveCopy.FlatAppearance.BorderSize = 1
+$btnLiveCopy.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLiveCopy.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLiveCopy.BackColor = [System.Drawing.Color]::Transparent
+$btnLiveCopy.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnLiveCopy)
+$script:btnLiveCopy = $btnLiveCopy
+$tooltip.SetToolTip($btnLiveCopy, "Copy all visible log text to the clipboard")
+
+$btnLiveClear = New-Object System.Windows.Forms.Button
+$btnLiveClear.Text = "Clear"
+$btnLiveClear.Size = New-Object System.Drawing.Size(100, 28)
+$btnLiveClear.Location = New-Object System.Drawing.Point(260, 344)
+$btnLiveClear.Visible = $false
+$btnLiveClear.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnLiveClear.FlatAppearance.BorderSize = 1
+$btnLiveClear.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnLiveClear.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnLiveClear.BackColor = [System.Drawing.Color]::Transparent
+$btnLiveClear.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnLiveClear)
+$script:btnLiveClear = $btnLiveClear
+$tooltip.SetToolTip($btnLiveClear, "Clear the log display (does not delete the log file)")
+
+
+
 $script:liveLogSep = $liveLogSep
 
 # Create the live log control buttons inside the Page 1 Drawer (hidden initially)

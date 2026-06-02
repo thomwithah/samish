@@ -31,7 +31,7 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.2.5"
+$ScriptVersion = "v1.3.0"
 $ReleaseDate   = "2026-05-27"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
@@ -125,6 +125,15 @@ $GracefulShutdownWaitMs = 800           # Wait for graceful exit before fallback
 $MonitoredApps = @()
 $script:PlayingAppsBeforeSleep = @()
 
+$GameModeEnabled = $false
+$GameModeList = @()
+$script:GameModeActive = $false
+
+$PreferredPlaybackDeviceGuid = ""
+$PreferredPlaybackDeviceName = ""
+$PreferredCommDeviceGuid = ""
+$PreferredCommDeviceName = ""
+
 $RefreshPowerPlanEverySeconds = 59
 $DefaultPostDisplayDelaySeconds = 8
 $ToleranceSeconds = 3
@@ -173,6 +182,24 @@ if (Test-Path -LiteralPath $ClassicModulePath) {
 $GracefulModulePath = Join-Path $PackageDir "Modules\App.Control.Graceful.ps1"
 if (Test-Path -LiteralPath $GracefulModulePath) {
     . $GracefulModulePath
+}
+
+$GameModeGuardPsm1 = Join-Path $PackageDir "Modules\GameModeGuard.psm1"
+$GameModeGuardPs1  = Join-Path $PackageDir "Modules\GameModeGuard.ps1"
+if (Test-Path -LiteralPath $GameModeGuardPsm1) {
+    Import-Module $GameModeGuardPsm1 -Force -ErrorAction SilentlyContinue
+}
+elseif (Test-Path -LiteralPath $GameModeGuardPs1) {
+    . $GameModeGuardPs1
+}
+
+$AudioEndpointPsm1 = Join-Path $PackageDir "Modules\AudioEndpoint.psm1"
+$AudioEndpointPs1  = Join-Path $PackageDir "Modules\AudioEndpoint.ps1"
+if (Test-Path -LiteralPath $AudioEndpointPsm1) {
+    Import-Module $AudioEndpointPsm1 -Force -ErrorAction SilentlyContinue
+}
+elseif (Test-Path -LiteralPath $AudioEndpointPs1) {
+    . $AudioEndpointPs1
 }
 
 # ---------- LOGGING ----------
@@ -1074,7 +1101,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.2.5"
+        $script:icon.Text = "SAMISH v1.3.0"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1322,6 +1349,18 @@ try {
                 
                 if (Invoke-MixerStart) {
                     $script:mixerStopped = $false
+
+                    # Restore preferred audio endpoints after mixer restart
+                    if (Get-Command Set-DefaultAudioDevice -ErrorAction SilentlyContinue) {
+                        if ($PreferredPlaybackDeviceGuid -or $PreferredCommDeviceGuid) {
+                            try {
+                                Set-DefaultAudioDevice -PlaybackDeviceId $PreferredPlaybackDeviceGuid -CommDeviceId $PreferredCommDeviceGuid
+                            }
+                            catch {
+                                Log-Always "AudioEndpoint: Post-wake restore failed: $_"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1330,7 +1369,7 @@ try {
         Log-Always "WARN: Failed to initialize Power State Interceptor: $_"
     }
 
-    $StartupMessage = "SAMISH engine starting.`nVersion: $ScriptVersion`nOperating Mode: $OperatingMode`nActive Profile: $script:ActiveProfileId`nHotkey Enabled: $EnableHotkey`nTray Enabled: $EnableTrayIcon"
+    $StartupMessage = "SAMISH engine starting.`nVersion: $ScriptVersion`nOperating Mode: $OperatingMode`nActive Profile: $script:ActiveProfileId`nHotkey Enabled: $EnableHotkey`nTray Enabled: $EnableTrayIcon`nGame Mode: $(if ($GameModeEnabled) { 'Enabled (' + ($GameModeList -join ', ') + ')' } else { 'Disabled' })"
     Write-EventLogEntry -Message $StartupMessage -EntryType "Information" -EventId 100
 
     # MAIN LOOP
@@ -1397,8 +1436,11 @@ try {
             $lastRefresh = Get-Date
         }
 
+        # Game-Mode Guard: update state at heartbeat frequency
+        $script:GameModeActive = Invoke-GameModeCheck -Enabled $script:GameModeEnabled -GameList $script:GameModeList
+
         $idle = Get-IdleSeconds
-        Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds"
+        Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds gameMode=$($script:GameModeActive)"
 
         if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
 
@@ -1409,26 +1451,38 @@ try {
 
         $blockerActive = $false
         if (-not $script:stopLatchedThisIdleStretch -and $idle -ge ($killThresholdSeconds - $ToleranceSeconds)) {
-            $blockers = Test-ActiveSleepBlockerExists
-            if ($blockers) {
+            # Game-Mode Guard: skip idle-based mixer shutdown while a listed game is running.
+            # WM_POWERBROADCAST suspend/resume events still fire normally (real sleep, not idle).
+            if ($script:GameModeActive) {
                 $blockerActive = $true
                 $now = Get-Date
                 if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
-                    $blockerDesc = @()
-                    foreach ($b in $blockers) {
-                        $blockerDesc += "$($b.Category) request by $($b.Type) $($b.Name)"
-                    }
-                    $blockerListString = $blockerDesc -join ", "
-                    Log-Always "Active sleep blocker detected: $blockerListString. Deferring mixer shutdown."
+                    Log-Always "Game mode active - deferring idle mixer shutdown."
                     $script:LastBlockerLogTime = $now
                 }
-            } else {
-                if (Invoke-MixerStop) {
-                    $script:mixerStopped = $true
-                    $script:mixerStoppedAt = Get-Date
-                    Write-EventLogEntry -Message "Mixer applications stopped successfully due to system idle." -EntryType "Information" -EventId 200
+            }
+            else {
+                $blockers = Test-ActiveSleepBlockerExists
+                if ($blockers) {
+                    $blockerActive = $true
+                    $now = Get-Date
+                    if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
+                        $blockerDesc = @()
+                        foreach ($b in $blockers) {
+                            $blockerDesc += "$($b.Category) request by $($b.Type) $($b.Name)"
+                        }
+                        $blockerListString = $blockerDesc -join ", "
+                        Log-Always "Active sleep blocker detected: $blockerListString. Deferring mixer shutdown."
+                        $script:LastBlockerLogTime = $now
+                    }
+                } else {
+                    if (Invoke-MixerStop) {
+                        $script:mixerStopped = $true
+                        $script:mixerStoppedAt = Get-Date
+                        Write-EventLogEntry -Message "Mixer applications stopped successfully due to system idle." -EntryType "Information" -EventId 200
+                    }
+                    $script:stopLatchedThisIdleStretch = $true
                 }
-                $script:stopLatchedThisIdleStretch = $true
             }
         }
 
@@ -1438,6 +1492,18 @@ try {
                 if (Invoke-MixerStart) {
                     $script:mixerStopped = $false
                     Write-EventLogEntry -Message "Mixer applications started successfully on system wake." -EntryType "Information" -EventId 201
+
+                    # Restore preferred audio endpoints after mixer restart
+                    if (Get-Command Set-DefaultAudioDevice -ErrorAction SilentlyContinue) {
+                        if ($PreferredPlaybackDeviceGuid -or $PreferredCommDeviceGuid) {
+                            try {
+                                Set-DefaultAudioDevice -PlaybackDeviceId $PreferredPlaybackDeviceGuid -CommDeviceId $PreferredCommDeviceGuid
+                            }
+                            catch {
+                                Log-Always "AudioEndpoint: Post-restart restore failed: $_"
+                            }
+                        }
+                    }
                 }
             }
         }

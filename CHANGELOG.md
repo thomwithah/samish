@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-01
+
+### Added
+- **Game Mode Guard**: New module (`GameModeGuard.ps1`) detects when a user is running a full-screen game or any process in a configurable `GameModeList`. When active, the SAMISH engine skips non-essential diagnostics and sleep interventions to avoid performance impact during gameplay. Controlled by `GameModeEnabled` (bool) and `GameModeList` (array) config keys.
+- **First-Run Wizard**: New guided first-launch wizard (`FirstRunWizard.ps1`) walks new users through 3 setup questions: detect and manage running mixer software, detect common browsers for media pause, and UI mode selection (Simple vs Full). Includes a "Skip Wizard" option that closes and opens in Full mode. Persists answers to `config.json` and sets `WizardCompleted = true`.
+- **Audio Endpoint Management**: New module (`AudioEndpoint.ps1`) gets and sets the default Windows audio playback and communications devices using the MMDevice COM API (PolicyConfigClient). Enables the engine to restore preferred audio endpoints after a sleep/wake cycle. Config keys: `PreferredPlaybackDeviceGuid`, `PreferredPlaybackDeviceName`, `PreferredCommDeviceGuid`, `PreferredCommDeviceName`.
+- **Audio Endpoint GUI**: Added a "Set Preferred Audio Device" button to the Advanced Tools slide-out panel (Full mode only) that opens a modal dialog. The dialog allows users to view current settings, capture active Windows default playback and communications devices with a single click, select endpoints from COM-enumerated dropdown lists, or clear configured preferred devices with confirmation. Fully supports custom high-contrast dark theme styling and DPI scaling.
+- **Game Mode GUI**: Added a "Game Mode Settings" button to the Advanced Tools slide-out panel (Full mode only) that opens a modal dialog. The dialog allows users to toggle Game-Mode Guard, view the monitored process list, add processes (with automatic `.exe` extension stripping), remove processes, and automatically detect running games from a curated list of popular launchers and games. Fully styled with theme support and high-DPI scaling.
+- **Configuration Documentation**: New `README_Config.md` documenting all config.json keys, their types, valid values, and defaults.
+- **JSON Schema Validation**: Added `Test-ConfigSchema` function (215 lines) to `ConfigBackup.Module.ps1` covering 22 config keys with type, range, and enum validation. Includes `-AutoFix` switch for silent repair, loose type coercion (`0`/`1` to bool, `"true"`/`"false"` to bool), unknown key detection, and legacy `UI_Mode` migration (`Basic` to `Simple`, `Normal`/`Advanced` to `Full`). Wired into boot path: validate, auto-fix, merge defaults, persist if changed.
+- **PowerShell Module Conversion**: Converted `GameModeGuard.ps1` and `AudioEndpoint.ps1` to proper `.psm1` modules with `Export-ModuleMember` for clean function boundaries. Engine updated to `Import-Module .psm1` with `.ps1` fallback for compatibility.
+- **Engine Integration**: Wired Game Mode Guard check into the main SAMISH engine loop with explicit parameter passing. Audio endpoint restore integrated into the wake recovery sequence.
+- **Simple / Full UI Mode Switcher**: Added a dropdown in the footer area to toggle between a streamlined single-column "Simple" mode (install-only controls) and the full two-column layout. Simple mode hides diagnostics, advanced tools, and secondary settings to reduce visual complexity for basic setup tasks.
+- **Telemetry Tab Selection Persistence**: Switching between the System Telemetry and Hardware Telemetry sub-tabs now preserves the previously selected list item. The action button dynamically re-evaluates and reflects the correct action text for any persisted selection (e.g., "Disable Wake", "Toggle Suspend", "Disable Timer") instead of resetting.
+- **Empty-Space Deselection**: Clicking empty space (below list items) in the SAMISH Automated Apps listbox now clears the selection, properly disabling the "Deactivate Automation" and "Open Installation Folder" buttons.
+- **Custom Theme Configuration**: Added a dedicated `Configure-ColorTheme.ps1` utility script and `Launch-ColorThemeConfigurator.bat` shortcut to allow users to easily customize the UI color palette, reset to original defaults, or restore a previously saved custom theme from backup.
+
+### Changed
+- **Workspace Cleanup**: Moved internal development scripts and tools into `build-tools\agent-scripts\` to keep the root directory clean for end users.
+- **Documentation Images**: Updated README screenshots to prominently feature the new Simple Mode layout alongside the Full Mode interface.
+- **Footer Layout**: Moved the "View:" label before the Simple/Full dropdown (previously appeared after). The dropdown and label now maintain the same position in both Simple and Full modes. In Simple mode, the version number and creator credit are stacked on two lines (right-aligned) instead of a single line.
+- **App Override Settings Disabled Title**: The "App Override Settings" GroupBox title now uses a visually distinct dimmed color when disabled, instead of the same bright color used when enabled.
+- **Config Defaults**: Updated `UI_Mode` default from `"Normal"` to `"Full"` and `Merge-ConfigDefaults` to match the 2-mode system.
+
 ## [1.2.5] - 2026-05-29
 
 ### Added
