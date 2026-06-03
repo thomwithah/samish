@@ -1,4 +1,4 @@
-﻿# Suggested filename: SAMISH.ps1
+# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -203,87 +203,17 @@ elseif (Test-Path -LiteralPath $AudioEndpointPs1) {
 }
 
 # ---------- LOGGING ----------
+$LoggerModulePath = Join-Path $PackageDir "Modules\Logger.psm1"
+if (Test-Path -LiteralPath $LoggerModulePath) {
+    Import-Module $LoggerModulePath -Force -DisableNameChecking
+}
+
 $script:LastHeartbeat = Get-Date "2000-01-01"
 
-function Write-EventLogEntry {
-    param(
-        [string]$Message,
-        [System.Diagnostics.EventLogEntryType]$EntryType = "Information",
-        [int]$EventId = 100
-    )
+# Write-EventLogEntry, Resolve-SamishLogPath, and Rotate-LogFileIfNeeded
+# are now imported from Logger.psm1.
 
-    try {
-        if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\SAMISH") {
-            [System.Diagnostics.EventLog]::WriteEntry("SAMISH", $Message, $EntryType, $EventId)
-        }
-    }
-    catch {
-        # Fail-safe silently to standard file logs
-    }
-}
 
-function Resolve-SamishLogPath {
-    param([string]$TemplatePath)
-
-    if ([string]::IsNullOrWhiteSpace($TemplatePath)) { return $null }
-
-    $today = (Get-Date -Format "yyyyMMdd")
-    $resolved = $TemplatePath.Replace("{DATE}", $today)
-
-    # Ensure directory exists
-    try {
-        $dir = Split-Path -Parent $resolved
-        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
-            New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        }
-    } catch {}
-
-    return $resolved
-}
-
-function Rotate-LogFileIfNeeded {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    try {
-        if (-not (Test-Path -LiteralPath $Path)) { return }
-
-        $fileItem = Get-Item -LiteralPath $Path
-        # 5MB = 5 * 1024 * 1024 = 5242880 bytes
-        if ($fileItem.Length -le 5242880) { return }
-
-        $dir = Split-Path -Parent $Path
-        $name = Split-Path -Leaf $Path
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($name)
-        $ext = [System.IO.Path]::GetExtension($name)
-
-        $rotatedPath = $null
-        for ($i = 1; $i -le 100; $i++) {
-            $testName = "$baseName.$i$ext"
-            $testPath = Join-Path $dir $testName
-            if (-not (Test-Path -LiteralPath $testPath)) {
-                $rotatedPath = $testPath
-                break
-            }
-        }
-
-        if (-not $rotatedPath) {
-            $rotatedPath = Join-Path $dir "$baseName.100$ext"
-            if (Test-Path -LiteralPath $rotatedPath) {
-                Remove-Item -LiteralPath $rotatedPath -Force -ErrorAction SilentlyContinue
-            }
-        }
-
-        if ($rotatedPath) {
-            [System.IO.File]::Move($Path, $rotatedPath)
-        }
-    }
-    catch {
-        # Fail silently
-    }
-}
 
 function Log-Always([string]$msg) {
     if (-not $EnableLogging) { return }

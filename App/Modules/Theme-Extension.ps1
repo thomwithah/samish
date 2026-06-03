@@ -1027,3 +1027,17 @@ function global:Save-ThemePreference {
     }
     catch {}
 }
+
+# Convenience wrapper for modal dialogs and dynamically spawned forms.
+# Automatically applies the currently active theme (Normal or Neon)
+# to any Form passed in.
+function global:Apply-SamishTheme {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.Form]$Form
+    )
+
+    if ($global:ThemeCustomActive) {
+        Set-BrandTheme -Form $Form -IsCustom $true
+    }
+}

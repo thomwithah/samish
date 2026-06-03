@@ -64,6 +64,45 @@ if (Test-Path -LiteralPath $NativeMethodsPath) {
 }
 #endregion
 
+# ---------- Early Boot Trace Logger ----------
+# Must be defined before any code that calls it (e.g., AppUserModelID registration).
+function Write-SamishSetupTrace {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG")]
+        [string]$Level = "INFO"
+    )
+
+    # Determine if truly in a console-hosted CLI run.
+    #  If running under powershell.exe/pwsh.exe with -CliInstall, it's safe to write to console.
+    #  If running as compiled EXE, avoid *all* output streams (PS2EXE can turn them into MessageBoxes).
+    $isCliConsole = $false
+    try {
+        $procName = (Get-Process -Id $PID -ErrorAction SilentlyContinue).Name
+        if ($CliInstall -and ($procName -in @("powershell", "pwsh"))) {
+            $isCliConsole = $true
+        }
+    }
+    catch { }
+
+    $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
+
+    if ($isCliConsole) {
+        # Console path (safe)
+        try { Write-Host $line } catch { }
+        return
+    }
+
+    # Compiled EXE (or any non-console host) path: write to %TEMP%
+    try {
+        $path = Join-Path $env:TEMP "SAMISH_Setup_trace.log"
+        Add-Content -LiteralPath $path -Value $line
+    }
+    catch { }
+}
+
 # ---------- Strategy A: Custom Taskbar Icon AppUserModelID Registration ----------
 $isCompiled = ($MyInvocation.MyCommand.Name -like "*.exe")
 if (-not $isCompiled) {
@@ -312,42 +351,7 @@ function Complete-SamishSetupUi {
     }
 }
 
-function Write-SamishSetupTrace {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-
-        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG")]
-        [string]$Level = "INFO"
-    )
-
-    # Determine if truly in a console-hosted CLI run.
-    #  If running under powershell.exe/pwsh.exe with -CliInstall, it's safe to write to console.
-    #  If running as compiled EXE, avoid *all* output streams (PS2EXE can turn them into MessageBoxes).
-    $isCliConsole = $false
-    try {
-        $procName = (Get-Process -Id $PID -ErrorAction SilentlyContinue).Name
-        if ($CliInstall -and ($procName -in @("powershell", "pwsh"))) {
-            $isCliConsole = $true
-        }
-    }
-    catch { }
-
-    $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
-
-    if ($isCliConsole) {
-        # Console path (safe)
-        try { Write-Host $line } catch { }
-        return
-    }
-
-    # Compiled EXE (or any non-console host) path: write to %TEMP%
-    try {
-        $path = Join-Path $env:TEMP "SAMISH_Setup_trace.log"
-        Add-Content -LiteralPath $path -Value $line
-    }
-    catch { }
-}
+# (Write-SamishSetupTrace is defined near the top of the file, before first use.)
 
 # Safe deferred logging of any boot-time execution policy bypass errors
 if ($script:ExecutionPolicyBypassError) {
@@ -405,6 +409,11 @@ try {
 
 
     # ----- LOAD MODULES -----
+    $LoggerModulePath = Join-Path $PackageDir "Modules\Logger.psm1"
+    if (Test-Path -LiteralPath $LoggerModulePath) {
+        Import-Module $LoggerModulePath -Force -DisableNameChecking
+    }
+
     $PowerPlanCommonPath = Join-Path $PackageDir "Modules\PowerPlan.Read.Common.ps1"
     if (Test-Path -LiteralPath $PowerPlanCommonPath) {
         . $PowerPlanCommonPath
@@ -514,50 +523,7 @@ try {
         }
     }
 
-    # Logging helpers
-    function Rotate-LogFileIfNeeded {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Path
-        )
-
-        try {
-            if (-not (Test-Path -LiteralPath $Path)) { return }
-
-            $fileItem = Get-Item -LiteralPath $Path
-            # 5MB = 5 * 1024 * 1024 = 5242880 bytes
-            if ($fileItem.Length -le 5242880) { return }
-
-            $dir = Split-Path -Parent $Path
-            $name = Split-Path -Leaf $Path
-            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($name)
-            $ext = [System.IO.Path]::GetExtension($name)
-
-            $rotatedPath = $null
-            for ($i = 1; $i -le 100; $i++) {
-                $testName = "$baseName.$i$ext"
-                $testPath = Join-Path $dir $testName
-                if (-not (Test-Path -LiteralPath $testPath)) {
-                    $rotatedPath = $testPath
-                    break
-                }
-            }
-
-            if (-not $rotatedPath) {
-                $rotatedPath = Join-Path $dir "$baseName.100$ext"
-                if (Test-Path -LiteralPath $rotatedPath) {
-                    Remove-Item -LiteralPath $rotatedPath -Force -ErrorAction SilentlyContinue
-                }
-            }
-
-            if ($rotatedPath) {
-                [System.IO.File]::Move($Path, $rotatedPath)
-            }
-        }
-        catch {
-            # Fail silently
-        }
-    }
+    # Logging helpers (Rotate-LogFileIfNeeded imported from Logger.psm1)
 
     function Write-SetupLog {
         param([string]$text)
@@ -1048,9 +1014,14 @@ A backup will be created before any changes are applied.
         $script:SavedStatusFore = $statusBox.ForeColor
         $script:SavedStatusFont = $statusBox.Font
 
-        # Dark Ã¢â‚¬Å“liveÃ¢â‚¬Â theme
-        $statusBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
-        $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
+        # Live-log theme (uses Neon palette when active, dark console look otherwise)
+        if ($global:ThemeCustomActive) {
+            $statusBox.BackColor = if ($global:ThemeCustomPanel) { $global:ThemeCustomPanel } else { [System.Drawing.Color]::FromArgb(18, 18, 22) }
+            $statusBox.ForeColor = if ($global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
+        } else {
+            $statusBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
+            $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
+        }
         if (-not $script:LiveLogFont) {
             $script:LiveLogFont = New-Object System.Drawing.Font("Consolas", 9)
             if ($script:MainFormGdiResources) {
@@ -1669,7 +1640,7 @@ A backup will be created before any changes are applied.
             $lines += "Tray Icon: " + ($(if ([bool]$cfg.EnableTrayIcon) { "Enabled" } else { "Disabled" }))
         }
 
-        # Ã¢Å“â€¦ Startup shortcut (Scheduled-task-only for Interactive)
+        # Startup shortcut (Scheduled-task-only for Interactive)
         if (-not $installed) {
             $lines += "Startup shortcut: Not Installed"
         }
@@ -1694,7 +1665,7 @@ A backup will be created before any changes are applied.
         }
 
 
-        # Ã¢Å“â€¦ Tasks Ã¢â‚¬â€ NO "Missing"
+        # Tasks -- NO "Missing"
         if (-not $installed) {
             $lines += "Task (Hidden): Not Installed"
             $lines += "Task (Interactive): Not Installed"
@@ -1959,7 +1930,7 @@ A backup will be created before any changes are applied.
             }
         }
         try { Set-BrandTheme -Form $form -IsCustom $true } catch {}
-        # Sync the tab indicator after the theme is applied — Set-BrandTheme calls Update-TabIndicator
+        # Sync the tab indicator after the theme is applied -- Set-BrandTheme calls Update-TabIndicator
         # internally but at that point the form geometry may not be finalised yet; calling it again
         # after ShowDialog's first paint pass ensures the indicator lands on the correct tab.
         if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {

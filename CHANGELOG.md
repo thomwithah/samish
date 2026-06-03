@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- **Logger Module**: Unified logging operations (`Rotate-LogFileIfNeeded`, `Resolve-SamishLogPath`, `Write-EventLogEntry`) into a shared `Logger.psm1` module, eliminating duplicate implementations across the Setup UI and background engine.
+- **Theme-Aware Live Log Console**: The live log view now respects the active UI theme, using the correct palette colors instead of a fixed dark background regardless of theme state.
+- **`Apply-SamishTheme` API**: New convenience function for applying the active theme to dynamically spawned modal dialogs (Audio Device picker, Game Mode settings) with a single call.
+- **Pester Test Coverage Expansion**: Added `Logger.Tests.ps1` (7 tests) covering log path resolution, file rotation, and event log resilience. Total test suite now at 40 tests, all passing.
+
+### Changed
+- **Boot Trace Logger Reorder**: Moved the `Write-SamishSetupTrace` function definition to execute before its first call site, ensuring early boot errors (such as AppUserModelID registration failures) are properly logged instead of silently discarded.
+
 ## [1.3.1] - 2026-06-03
 
 ### Added

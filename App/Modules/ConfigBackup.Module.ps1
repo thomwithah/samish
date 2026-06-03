@@ -35,34 +35,34 @@ function Merge-ConfigDefaults {
     # Each entry: @( KeyName, DefaultValue, Comment )
     $defaults = @(
         # ---- Core engine ----
-        @("EnableLogging",          $false,      "Master logging switch")
-        @("LogEverySeconds",        30,          "Heartbeat log interval in seconds")
-        @("EnableTrayIcon",         $true,       "Show system tray icon")
-        @("EnableHotkey",           $true,       "Enable keyboard toggle hotkey")
-        @("HotkeyMode",            "Custom",    "Hotkey binding: ScrollLock | PauseBreak | F12 | Custom")
-        @("CustomHotkeyVirtualKey", 0x76,        "Virtual key code for Custom hotkey (default: F7 = 0x76)")
-        @("OperatingMode",         "Graceful",  "Engine mode: Graceful | Classic")
-        @("EnableAutoRecovery",    $true,        "Auto-restart mixer if it crashes")
-        @("ActiveProfileId",       "BEACN",     "Currently active device profile")
-        @("ProfilesEnabled",       @("BEACN"),  "Array of enabled profile IDs")
-        @("MonitoredApps",         @(),          "Array of monitored app objects")
-        @("Theme",                 "Normal",    "UI theme: Normal | Neon")
+        ,@("EnableLogging",          $false,      "Master logging switch")
+        ,@("LogEverySeconds",        30,          "Heartbeat log interval in seconds")
+        ,@("EnableTrayIcon",         $true,       "Show system tray icon")
+        ,@("EnableHotkey",           $true,       "Enable keyboard toggle hotkey")
+        ,@("HotkeyMode",            "Custom",    "Hotkey binding: ScrollLock | PauseBreak | F12 | Custom")
+        ,@("CustomHotkeyVirtualKey", 0x76,        "Virtual key code for Custom hotkey (default: F7 = 0x76)")
+        ,@("OperatingMode",         "Graceful",  "Engine mode: Graceful | Classic")
+        ,@("EnableAutoRecovery",    $true,        "Auto-restart mixer if it crashes")
+        ,@("ActiveProfileId",       "BEACN",     "Currently active device profile")
+        ,@("ProfilesEnabled",       @("BEACN"),  "Array of enabled profile IDs")
+        ,@("MonitoredApps",         @(),          "Array of monitored app objects")
+        ,@("Theme",                 "Normal",    "UI theme: Normal | Neon")
 
         # ---- Game Mode ----
-        @("GameModeEnabled",       $false,      "Suppress idle shutdown while a listed game is running")
-        @("GameModeList",          @(),          "Array of process names (without .exe) to watch")
+        ,@("GameModeEnabled",       $false,      "Suppress idle shutdown while a listed game is running")
+        ,@("GameModeList",          @(),          "Array of process names (without .exe) to watch")
 
         # ---- First-Run Wizard ----
-        @("WizardCompleted",       $false,      "Set to true after the first-run wizard finishes")
+        ,@("WizardCompleted",       $false,      "Set to true after the first-run wizard finishes")
 
         # ---- UI Mode ----
-        @("UI_Mode",               "Full",      "Panel visibility: Simple | Full")
+        ,@("UI_Mode",               "Full",      "Panel visibility: Simple | Full")
 
         # ---- Audio Endpoint ----
-        @("PreferredPlaybackDeviceGuid", "",     "GUID of preferred default playback device")
-        @("PreferredPlaybackDeviceName", "",     "Display name of preferred default playback device")
-        @("PreferredCommDeviceGuid",     "",     "GUID of preferred default communications device")
-        @("PreferredCommDeviceName",     "",     "Display name of preferred default communications device")
+        ,@("PreferredPlaybackDeviceGuid", "",     "GUID of preferred default playback device")
+        ,@("PreferredPlaybackDeviceName", "",     "Display name of preferred default playback device")
+        ,@("PreferredCommDeviceGuid",     "",     "GUID of preferred default communications device")
+        ,@("PreferredCommDeviceName",     "",     "Display name of preferred default communications device")
     )
 
     $changed = $false
@@ -72,7 +72,7 @@ function Merge-ConfigDefaults {
 
         if (-not ($Config.PSObject.Properties.Name -contains $key)) {
             try {
-                $Config | Add-Member -MemberType NoteProperty -Name $key -Value $val -Force
+                Add-Member -InputObject $Config -MemberType NoteProperty -Name $key -Value $val -Force
                 $changed = $true
             }
             catch {

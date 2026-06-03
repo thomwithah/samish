@@ -888,8 +888,8 @@ function Show-PreferredAudioDialog {
         $dialog.Close()
     })
 
-    if (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue) {
-        Set-BrandTheme -Form $dialog -IsCustom $global:ThemeCustomActive
+    if (Get-Command Apply-SamishTheme -ErrorAction SilentlyContinue) {
+        Apply-SamishTheme -Form $dialog
     }
 
     $dialog.ShowDialog() | Out-Null
@@ -1273,8 +1273,8 @@ function Show-GameModeDialog {
         $dialog.Close()
     })
 
-    if (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue) {
-        Set-BrandTheme -Form $dialog -IsCustom $global:ThemeCustomActive
+    if (Get-Command Apply-SamishTheme -ErrorAction SilentlyContinue) {
+        Apply-SamishTheme -Form $dialog
     }
 
     $dialog.ShowDialog() | Out-Null
