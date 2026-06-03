@@ -1,7 +1,7 @@
-# ==========================================
+﻿# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.3.0
+# Version: 1.3.1
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -370,7 +370,7 @@ $tooltip = New-SamishToolTip
 # ---------- Constants ----------
 $ProductName = "SAMISH"
 $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-$ProductVersion = "v1.3.0"
+$ProductVersion = "v1.3.1"
 $AuthorLine = "Created by thomwithah"
 
 $TaskHiddenNoSlash = "SAMISH (Hidden)"
