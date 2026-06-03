@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
 # Version: 1.3.1
@@ -44,6 +44,9 @@ param(
     [bool]$EnableAutoRecovery = $true
 )
 
+# Temporarily bypass execution policy for the current process to ensure dot-sourced modules can load (crucial for PS2EXE compiled EXEs)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
+
 #region Native Methods
 $NativeMethodsPath = $PSScriptRoot
 if (-not $NativeMethodsPath -and $PSCommandPath) { $NativeMethodsPath = Split-Path -Parent $PSCommandPath }
@@ -67,8 +70,6 @@ if (-not $isCompiled) {
     }
 }
 
-# Temporarily bypass execution policy for the current process to ensure dot-sourced modules can load (crucial for PS2EXE compiled EXEs)
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
 
 # ---------- Find current PS execution mode ----------
 function Get-CurrentExecutionMode {
