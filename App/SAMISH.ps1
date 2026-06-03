@@ -54,7 +54,7 @@ function Apply-ConfigFromFile {
             }
         }
 
-        # âœ… Map OperatingMode -> OperatingMode (so engine behavior actually changes)
+        # Map OperatingMode -> OperatingMode (so engine behavior actually changes)
         if ($cfg.PSObject.Properties.Name -contains "OperatingMode") {
             if (Get-Variable -Name "OperatingMode" -Scope Script -ErrorAction SilentlyContinue) {
                 $script:OperatingMode = [string]$cfg.OperatingMode

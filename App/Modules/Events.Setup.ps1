@@ -1,4 +1,12 @@
-# ---------- Events.Setup.ps1 ----------
+#requires -Version 5.1
+# ==============================================================================
+# Module: Events.Setup.ps1
+# Purpose: Wire UI events, handles diagnostics compilation, power plan verification,
+#          and configuration management.
+# Inputs: Form controls and global script scope variables.
+# Outputs: None (modifies form state and updates configuration).
+# Error Handling: Wraps all I/O and process execution in try/catch blocks.
+# ==============================================================================
 # --- Mode toggles ---
 $rbHidden.add_CheckedChanged({
         if ($script:IsApplyingConfig) { return }
@@ -302,146 +310,55 @@ $btnCleanReset.add_Click({
 $btnInstall.add_Click({
         try {
             Set-StatusText("Preparing runtime files...")
-            Sync-SamishRuntimeFiles
 
             $mode = if ($rbHidden.Checked) { "Hidden" } else { "Interactive" }
 
             $sel = $ddLogInterval.SelectedItem.ToString()
             $logEvery = 30
 
-            if ($sel -eq "Verbose (every loop)") {
-                $logEvery = 0
+            try {
+                $logEvery = Get-LogIntervalFromUI -DropdownText $sel -CustomText $tbLogCustom.Text
             }
-            elseif ($sel -eq "Every 30 seconds") {
-                $logEvery = 30
-            }
-            elseif ($sel -eq "Every 60 seconds") {
-                $logEvery = 60
-            }
-            else {
-                try {
-                    $logEvery = Parse-LogEverySecondsOrThrow -RawText $tbLogCustom.Text -ContextLabel "Log interval"
-                }
-                catch {
-                    Show-WarningDialog `
-                        -Title "Invalid Log Interval" `
-                        -Message $_.Exception.Message
-                    return
-                }
+            catch {
+                Show-WarningDialog `
+                    -Title "Invalid Log Interval" `
+                    -Message $_.Exception.Message
+                return
             }
 
             $hkMode = $ddHotkey.SelectedItem.ToString()
             $vk = 0x91
-            if ($hkMode -eq "Custom") { $vk = Parse-CustomHotkeyToVk $tbCustomKey.Text }
-            else { $vk = [int]$VkMap[$hkMode] }
+            try {
+                $vk = Get-HotkeyVkFromUI -HotkeyMode $hkMode -CustomKeyText $tbCustomKey.Text
+            }
+            catch {
+                Show-WarningDialog `
+                    -Title "Invalid Hotkey" `
+                    -Message $_.Exception.Message
+                return
+            }
 
             $enableTray = $cbTray.Checked
             if ($mode -eq "Hidden") { $enableTray = $false }
 
             $operatingMode = if ($rbOpClassic.Checked) { "Classic" } else { "Graceful" }
 
-            Write-ConfigJson `
-                -EnableLogging:$($cbLogging.Checked) `
-                -LogEverySeconds:$logEvery `
-                -EnableTrayIcon:$enableTray `
-                -EnableHotkey:$($cbHotkey.Checked) `
-                -HotkeyMode:$hkMode `
-                -CustomHotkeyVirtualKey:$vk `
-                -OperatingMode:$operatingMode `
-                -SetupPath:$script:SetupExecutablePath `
+            Set-StatusText("Installing...")
+
+            $installResult = Invoke-SamishInstall `
+                -Mode $mode `
+                -OperatingMode $operatingMode `
+                -EnableLogging $cbLogging.Checked `
+                -LogEverySeconds $logEvery `
+                -EnableTray $enableTray `
+                -EnableHotkey $cbHotkey.Checked `
+                -HotkeyMode $hkMode `
+                -CustomHotkeyVk $vk `
                 -ActiveProfileId $script:ActiveProfileId `
                 -ProfilesEnabled $script:ProfilesEnabled `
-                -EnableAutoRecovery:$($cbAutoRecovery.Checked)
+                -EnableAutoRecovery $cbAutoRecovery.Checked
 
-            Set-StatusText("Installing...")
-            Register-SamishEventSource
-
-            Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
-            Delete-Task -TaskNameWithSlash $TaskInteractive | Out-Null
-
-            $HiddenXmlInstalled = Join-Path $InstallDir "SAMISH-HiddenTask.xml"
-            $InteractiveXmlInstalled = Join-Path $InstallDir "SAMISH-InteractiveTask.xml"
-
-            if ($mode -eq "Hidden") {
-                Install-TaskFromXml -TaskNameNoSlash $TaskHiddenNoSlash -XmlPath $HiddenXmlInstalled | Out-Null
-                Remove-StartupShortcut
-            }
-            else {
-                Install-TaskFromXml -TaskNameNoSlash $TaskInteractiveNoSlash -XmlPath $InteractiveXmlInstalled | Out-Null
-
-                # Interactive mode should be Task Scheduler-only (prevents double-start + duplicate tray icons)
-                Remove-StartupShortcut
-
-                # Start immediately after install in a consistent way:
-                # - stop any existing instances
-                # - start via the scheduled task (same path used at logon)
-                Stop-RunningHelperInstances | Out-Null
-                Start-Sleep -Milliseconds 300
-
-                # Prefer your helper which runs the installed task when present
-                $null = Start-SamishInMode -Mode "Interactive"
-            }
-
-            $result = $null
-
-            if ($operatingMode -eq "Classic") {
-
-                $result = Apply-PowerPlanFixWithBackup -PromptUser:$true -AutoMode:$true
-                $result = Handle-PowerPlanPromptIfNeeded -result $result -AutoMode:$true
-
-            }
-            else {
-
-                try {
-                    $scheme = Get-ActiveSchemeGuid
-                    if ($scheme) {
-
-                        $displayOff = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_VIDEO -SettingGuid $VIDEOIDLE
-                        $sleepIdle = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_SLEEP -SettingGuid $STANDBYIDLE
-                        $hibIdle = Get-PowerSettingSecondsAC -SchemeGuid $scheme -SubGuid $SUB_SLEEP -SettingGuid $HIBERNATEIDLE
-
-                        $t = Test-PowerPlanCompatibility `
-                            -DisplayOffSeconds $displayOff `
-                            -SleepIdleSeconds $sleepIdle `
-                            -HibernateIdleSeconds $hibIdle `
-                            -GapSeconds $MinGapSeconds
-
-                        if ($t -and (-not $t.Compatible)) {
-
-                            if (Ask-PowerPlanClassicCompatOptIn) {
-                                $result = Apply-PowerPlanFixWithBackup -PromptUser:$true -AutoMode:$true
-                                $result = Handle-PowerPlanPromptIfNeeded -result $result -AutoMode:$true
-                            }
-                            else {
-                                $result = Get-NoPowerPlanChangesStatus
-                            }
-                        }
-                    }
-                }
-                catch {
-                    # Best effort only
-                }
-            }
-
-            $msg = "Install complete.`r`nScheduled task created successfully."
-            if ($result -and $result.StatusMessage) { $msg += "`r`n`r`n" + $result.StatusMessage }
-
-            if ($operatingMode -eq "Graceful" -and $result -and $result.StatusMessage) {
-                $generic = [string]$result.StatusMessage
-                if ($generic -match '(?i)may prevent SAMISH' -or $generic -match '(?i)functioning as intended') {
-
-                    $gracefulNote =
-                    "Your current power plan is not compatible with SAMISH Classic.
-
-This does not affect Graceful mode.
-
-If you switch to Classic mode, run ""Power Plan: Check / Restore"" to ensure proper behavior."
-
-                    $msg = $msg -replace [Regex]::Escape($generic), $gracefulNote
-                }
-            }
-
-            Set-StatusText($msg)
+            Set-StatusText($installResult.StatusMessage)
 
             Show-DiagnosticsHeader `
                 -Context "After Install / Update" `
@@ -473,7 +390,7 @@ $btnUninstall.add_Click({
             $interactiveExists = Task-Exists -TaskNameWithSlash $TaskInteractive
             $shortcutExists = Test-Path -LiteralPath (Get-StartupShortcutPath)
 
-            # NEW: treat a running engine as something to uninstall/stop even if tasks are gone
+            # Treat a running engine as something to uninstall/stop even if tasks are gone
             $proc = Get-SamishProcessInfo
             $runningExists = $proc -and $proc.Running
 
@@ -547,37 +464,9 @@ $btnUninstall.add_Click({
                 }
             }
 
-            # Stop running task instances first (best effort)
-            try {
-                if ($interactiveExists) { Stop-SamishTaskIfRunning -Mode "Interactive" }
-                if ($hiddenExists) { Stop-SamishTaskIfRunning -Mode "Hidden" }
-            }
-            catch {}
-
-            # Stop any running engine processes (tray instance lives here)
-            $stoppedCount = Stop-RunningHelperInstances
-            Start-Sleep -Milliseconds 250
-
-            # Remove tasks (if present)
-            Delete-Task -TaskNameWithSlash $TaskHidden | Out-Null
-            Delete-Task -TaskNameWithSlash $TaskInteractive | Out-Null
-
-            # Remove any legacy Startup shortcut
-            Remove-StartupShortcut
-
-            # Remove Event Log Source
-            try {
-                if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\SAMISH") {
-                    [System.Diagnostics.EventLog]::DeleteEventSource("SAMISH")
-                    Write-SetupLog "Unregistered SAMISH Windows Event Log source."
-                }
-            }
-            catch {
-                Write-SetupLog "WARNING: Failed to unregister SAMISH Event Log source: $($_.Exception.Message)"
-            }
-
-            Set-StatusText("Uninstall complete.`r`nStopped $stoppedCount running instance(s).")
-            Write-SetupLog "Uninstall complete."
+            # Delegate core teardown to Logic.ps1
+            $uninstallResult = Invoke-SamishUninstall
+            Set-StatusText($uninstallResult.StatusMessage)
 
             if ($script:btnCleanReset) {
                 $script:btnCleanReset.Enabled = $false
@@ -1395,6 +1284,55 @@ function Show-GameModeDialog {
 if ($script:btnGameMode) {
     $script:btnGameMode.add_Click({
         Show-GameModeDialog
+    })
+}
+
+if ($script:btnSubmitReport) {
+    $script:btnSubmitReport.add_Click({
+        try {
+            $confirm = Show-YesNoDialog `
+                -Title "Generate Diagnostic Report" `
+                -Message "SAMISH will compile a diagnostic report containing configuration files, active power plan settings, system logs, and system power states.`r`n`r`nAll reports will be sanitized to remove sensitive personal data (such as username, computer name, and IP addresses) and saved as a ZIP file on your Desktop.`r`n`r`nWould you like to compile this report now?" `
+                -Icon ([System.Windows.Forms.MessageBoxIcon]::Question)
+            
+            if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+            Set-StatusText("Compiling diagnostic files...")
+
+            # Delegate compilation to Logic.ps1
+            $diagResult = Invoke-DiagnosticReportCompilation
+
+            if ($diagResult.Success) {
+                Set-StatusText("Diagnostic report successfully saved to Desktop.")
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Diagnostic report successfully compiled and saved to your Desktop:`r`n`r`n$($diagResult.ZipPath)`r`n`r`nPlease upload this ZIP file when submitting your issue on GitHub.",
+                    "Diagnostic Report Created",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
+                
+                try {
+                    $issueUrl = "https://github.com/thomwithah/samish/issues/new?template=diagnostic_report.yml"
+                    Start-Process $issueUrl -ErrorAction SilentlyContinue
+                }
+                catch {
+                    Write-SetupLog "Diagnostics Report error: Failed to launch browser. Error: $_"
+                }
+            }
+            else {
+                Set-StatusText("Failed to compile diagnostic report.")
+                [System.Windows.Forms.MessageBox]::Show(
+                    "$($diagResult.ErrorMessage)`r`n`r`nPlease check the setup log for details.",
+                    "Compilation Error",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                ) | Out-Null
+            }
+        }
+        catch {
+            Set-StatusText("Error generating diagnostic report.")
+            Write-SetupLog "Diagnostics Report error: Click handler failed: $_"
+        }
     })
 }
 

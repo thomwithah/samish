@@ -215,7 +215,7 @@ function Test-ConfigSchema {
                 }
                 "string" {
                     if ($null -eq $value) {
-                        # Null → empty string (acceptable)
+                        # Null + empty string (acceptable)
                         $value = ""
                         $Config.$key = $value
                     }

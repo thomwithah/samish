@@ -425,7 +425,7 @@ function global:Run-TakeoverAnimation {
                         $state.StrobeIndex++
                         $state.Form.BackColor = $strobeColor
                         $state.FlashColor = $strobeColor
-                        # One Invalidate() → one Paint pass → background + logo drawn together atomically.
+                        # One Invalidate() -> one Paint pass -> background + logo drawn together atomically.
                         $state.FadeForm.Invalidate()
                         return
                     }

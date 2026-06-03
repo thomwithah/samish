@@ -7,7 +7,7 @@ function Invoke-AppStop {
         [string]$ProcessName = "BEACN"
     )
 
-    # ✅ Flexible match instead of exact match
+    # Flexible match instead of exact match
     $p = Get-Process -ErrorAction SilentlyContinue | Where-Object {
         $_.ProcessName -like "*$ProcessName*"
     }

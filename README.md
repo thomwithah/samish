@@ -9,6 +9,11 @@ SAMISH is a lightweight, open-source utility that solves persistent system sleep
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
+### Common Symptoms SAMISH Fixes:
+- **PC won't sleep automatically**: Your computer stays awake forever because the audio software is acting as an active sleep blocker.
+- **Monitor won't turn off**: Your displays remain on despite your Windows power plan settings.
+- **Computer wakes up instantly**: The system goes to sleep but immediately wakes back up (often showing audio or USB devices in `powercfg` reports).
+- **Audio routing breaks after waking up**: Your streaming audio mixer fails to recover or loses its endpoints after a sleep cycle.
 <img width="800" alt="Setup Collapsed (Full Mode)" src="App/Assets/screenshots/1.png" />
 
 <img width="800" alt="Setup Collapsed (Simple Mode)" src="App/Assets/screenshots/2.png" />

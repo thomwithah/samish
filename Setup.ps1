@@ -1033,7 +1033,7 @@ function Enter-LiveLogMode {
     $script:SavedStatusFore = $statusBox.ForeColor
     $script:SavedStatusFont = $statusBox.Font
 
-    # Dark Ã¢â‚¬Å“liveÃ¢â‚¬Â theme
+    # Dark "live" theme
     $statusBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 35)
     $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
     if (-not $script:LiveLogFont) {
@@ -1654,7 +1654,7 @@ function Build-DiagnosticsHeader {
         $lines += "Tray Icon: " + ($(if ([bool]$cfg.EnableTrayIcon) { "Enabled" } else { "Disabled" }))
     }
 
-    # Ã¢Å“â€¦ Startup shortcut (Scheduled-task-only for Interactive)
+    # Startup shortcut (Scheduled-task-only for Interactive)
     if (-not $installed) {
         $lines += "Startup shortcut: Not Installed"
     }
@@ -1679,7 +1679,7 @@ function Build-DiagnosticsHeader {
     }
 
 
-    # Ã¢Å“â€¦ Tasks Ã¢â‚¬â€ NO "Missing"
+    # Tasks -- NO "Missing"
     if (-not $installed) {
         $lines += "Task (Hidden): Not Installed"
         $lines += "Task (Interactive): Not Installed"
@@ -1943,7 +1943,7 @@ if ($global:ThemeNeonActive) {
         }
     }
     try { Set-BrandTheme -Form $form -IsCustom $true } catch {}
-    # Sync the tab indicator after the theme is applied — Set-BrandTheme calls Update-TabIndicator
+    # Sync the tab indicator after the theme is applied -- Set-BrandTheme calls Update-TabIndicator
     # internally but at that point the form geometry may not be finalised yet; calling it again
     # after ShowDialog's first paint pass ensures the indicator lands on the correct tab.
     if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {

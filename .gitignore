@@ -14,3 +14,4 @@ SAMISH_ERROR.txt
 !App/**/*.json
 gitdiff.txt
 test_*.ps1
+docs/Community_Response_Template.md

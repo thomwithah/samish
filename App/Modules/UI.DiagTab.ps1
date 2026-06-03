@@ -495,7 +495,7 @@ try {
                 $errPath = if ($global:PackageDir) { "$global:PackageDir\SAMISH_ERROR.txt" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" }
                 Out-File -FilePath $errPath -Append `
                     -InputObject "[$(Get-Date -Format 'HH:mm:ss')] WakeDropdown revert error: $($_.Exception.Message)"
-                # Fail forward: selection stays changed but is harmless â€” next app-selection event resets it
+                # Fail forward: selection stays changed but is harmless -- next app-selection event resets it
             }
         })
 }

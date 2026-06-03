@@ -1,4 +1,12 @@
-# ---------- UI.SetupTab.ps1 ----------
+#requires -Version 5.1
+# ==============================================================================
+# Module: UI.SetupTab.ps1
+# Purpose: Initialize and lay out the Setup page GUI controls, including settings,
+#          buttons, input fields, advanced tools drawer, and live console textbox.
+# Inputs: Global/script UI parameters, brands, fonts, and colors.
+# Outputs: None (defines form controls added to the main Setup form).
+# Error Handling: Standard control initialization, handles DPI scaling.
+# ==============================================================================
 # ---------- Install Mode + Operating Mode -----------
 $topY = 95
 $leftX = 18
@@ -360,7 +368,7 @@ function Build-ProfilesUI {
                     ) | Out-Null
                 })
 
-            # Active radio (single-target today) â€” all radios share same parent ($profilesPanel)
+            # Active radio (single-target today) -- all radios share same parent ($profilesPanel)
             $rb = New-Object System.Windows.Forms.RadioButton
             $rb.Text = $p.DisplayName
             $rb.AutoSize = $true
@@ -961,7 +969,7 @@ function Handle-PowerPlanPromptIfNeeded {
                 return Restore-PowerPlanFromBackup
             }
             else {
-                # âœ… Continue path (no dead-end)
+                # Continue path (no dead-end)
                 return Apply-PowerPlanFixWithBackup -PromptUser:$true -AutoMode:$AutoMode
             }
         }
@@ -1164,7 +1172,7 @@ $btnPowerPlan.Text = "Verify & Restore Settings"
 $btnPowerPlan.UseMnemonic = $false
 $btnPowerPlan.Font = $font
 $btnPowerPlan.Size = New-Object System.Drawing.Size(350, 32)
-$btnPowerPlan.Location = New-Object System.Drawing.Point(10, 60)
+$btnPowerPlan.Location = New-Object System.Drawing.Point(10, 52)
 $btnPowerPlan.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnPowerPlan.FlatAppearance.BorderSize = 1
 $btnPowerPlan.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1179,7 +1187,7 @@ $btnOpenTS = New-Object System.Windows.Forms.Button
 $btnOpenTS.Text = "Open Windows Task Scheduler"
 $btnOpenTS.Font = $font
 $btnOpenTS.Size = New-Object System.Drawing.Size(350, 32)
-$btnOpenTS.Location = New-Object System.Drawing.Point(10, 105)
+$btnOpenTS.Location = New-Object System.Drawing.Point(10, 93)
 $btnOpenTS.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnOpenTS.FlatAppearance.BorderSize = 1
 $btnOpenTS.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1194,7 +1202,7 @@ $btnCleanReset = New-Object System.Windows.Forms.Button
 $btnCleanReset.Text = "Restart SAMISH Service"
 $btnCleanReset.Font = $font
 $btnCleanReset.Size = New-Object System.Drawing.Size(350, 32)
-$btnCleanReset.Location = New-Object System.Drawing.Point(10, 150)
+$btnCleanReset.Location = New-Object System.Drawing.Point(10, 134)
 $btnCleanReset.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnCleanReset.FlatAppearance.BorderSize = 1
 $btnCleanReset.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1210,7 +1218,7 @@ $btnReadSetup.Text = "Read Setup & Status"
 $btnReadSetup.UseMnemonic = $false
 $btnReadSetup.Font = $font
 $btnReadSetup.Size = New-Object System.Drawing.Size(350, 32)
-$btnReadSetup.Location = New-Object System.Drawing.Point(10, 195)
+$btnReadSetup.Location = New-Object System.Drawing.Point(10, 175)
 $btnReadSetup.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnReadSetup.FlatAppearance.BorderSize = 1
 $btnReadSetup.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1225,7 +1233,7 @@ $btnOpenLog = New-Object System.Windows.Forms.Button
 $btnOpenLog.Text = "Open Setup Log"
 $btnOpenLog.Font = $font
 $btnOpenLog.Size = New-Object System.Drawing.Size(350, 32)
-$btnOpenLog.Location = New-Object System.Drawing.Point(10, 240)
+$btnOpenLog.Location = New-Object System.Drawing.Point(10, 216)
 $btnOpenLog.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnOpenLog.FlatAppearance.BorderSize = 1
 $btnOpenLog.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1236,12 +1244,28 @@ $grpAdvancedTools.Controls.Add($btnOpenLog)
 $script:btnOpenLog = $btnOpenLog
 $tooltip.SetToolTip($btnOpenLog, "Open the main SAMISH text log in your default editor.")
 
+$btnSubmitReport = New-Object System.Windows.Forms.Button
+$btnSubmitReport.Name = "btnSubmitReport"
+$btnSubmitReport.Text = "Submit Diagnostic Report"
+$btnSubmitReport.Font = $font
+$btnSubmitReport.Size = New-Object System.Drawing.Size(350, 32)
+$btnSubmitReport.Location = New-Object System.Drawing.Point(10, 257)
+$btnSubmitReport.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnSubmitReport.FlatAppearance.BorderSize = 1
+$btnSubmitReport.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
+$btnSubmitReport.ForeColor = [System.Drawing.SystemColors]::ControlText
+$btnSubmitReport.BackColor = [System.Drawing.Color]::Transparent
+$btnSubmitReport.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+$grpAdvancedTools.Controls.Add($btnSubmitReport)
+$script:btnSubmitReport = $btnSubmitReport
+$tooltip.SetToolTip($btnSubmitReport, "Compile and package active configurations, telemetry backups, and loop logs alongside Windows powercfg state reports. To protect your privacy, all files are automatically sanitized of sensitive information (such as your local Windows username, computer name, and IP address) before being compressed into a ZIP archive on your Desktop. Once compiled, the GitHub issue page is automatically opened so you can easily upload the report.")
+
 $btnPreferredAudio = New-Object System.Windows.Forms.Button
 $btnPreferredAudio.Name = "btnPreferredAudio"
 $btnPreferredAudio.Text = "Set Preferred Audio Device"
 $btnPreferredAudio.Font = $font
 $btnPreferredAudio.Size = New-Object System.Drawing.Size(350, 32)
-$btnPreferredAudio.Location = New-Object System.Drawing.Point(10, 285)
+$btnPreferredAudio.Location = New-Object System.Drawing.Point(10, 298)
 $btnPreferredAudio.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnPreferredAudio.FlatAppearance.BorderSize = 1
 $btnPreferredAudio.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
@@ -1257,7 +1281,7 @@ $btnGameMode.Name = "btnGameMode"
 $btnGameMode.Text = "Game Mode Settings"
 $btnGameMode.Font = $font
 $btnGameMode.Size = New-Object System.Drawing.Size(350, 32)
-$btnGameMode.Location = New-Object System.Drawing.Point(10, 330)
+$btnGameMode.Location = New-Object System.Drawing.Point(10, 339)
 $btnGameMode.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnGameMode.FlatAppearance.BorderSize = 1
 $btnGameMode.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray

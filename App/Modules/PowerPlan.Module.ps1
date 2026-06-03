@@ -203,7 +203,7 @@ function PowerPlan_ApplyTemporaryBaselineIfNoSleep {
     # Only apply when BOTH sleep and hibernate are disabled
     if (-not (($SleepIdleSeconds -eq 0) -and ($HibernateIdleSeconds -eq 0))) { return $null }
 
-    # ✅ Use unified backup detection
+    # Use unified backup detection
     $b = Get-PowerPlanBackupInfo
 
     if ($b.Exists -and $b.IsValid) {
@@ -231,10 +231,10 @@ function PowerPlan_ApplyTemporaryBaselineIfNoSleep {
             }
         }
 
-        # ✅ If YES, fall through and apply baseline below
+        # If YES, fall through and apply baseline below
     }
 
-    # ✅ Standard baseline prompt (no backup or invalid backup)
+    # Standard baseline prompt (no backup or invalid backup)
     $prompt =
         "Sleep and hibernate are currently disabled.`r`n`r`n" +
         "SAMISH works best when at least one sleep state is enabled.`r`n`r`n" +
@@ -265,7 +265,7 @@ function PowerPlan_ApplyTemporaryBaselineIfNoSleep {
         }
     }
 
-    # ✅ Apply baseline
+    # Apply baseline
     Backup-PowerPlanValues -SchemeGuid $SchemeGuid -DisplayOff $DisplayOffSeconds -SleepIdle $SleepIdleSeconds -HibernateIdle $HibernateIdleSeconds
 
     Set-PowerSettingSecondsAC -SchemeGuid $SchemeGuid -SubGuid $SUB_VIDEO -SettingGuid $VIDEOIDLE -Seconds $TempBaseline_ScreenOffSeconds

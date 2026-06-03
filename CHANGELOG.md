@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - 2026-06-01
+## [1.3.1] - 2026-06-02
+
+### Added
+- **Diagnostic Report Zipper**: Added a "Submit Diagnostic Report" button in the Advanced Tools slide-out drawer (Full mode only) that compiles a troubleshooting package including settings (`config.json`), backup configuration (`powerplan_backup.json`), active log files (`samish_*.log`), and system power states (`powercfg` reports). The collected files are sanitized of sensitive personal information (such as local username, computer name, and IP addresses) and saved as a ZIP archive on the Desktop, while opening the default web browser to the GitHub issue page.
+- **GitHub Diagnostic Issue Template**: Created a standard diagnostic report issue template (`.github/ISSUE_TEMPLATE/diagnostic_report.md`) to guide users submitting sleep/wake issues on GitHub.
+
+## [1.3.0] - 2026-06-02
 
 ### Added
 - **Game Mode Guard**: New module (`GameModeGuard.ps1`) detects when a user is running a full-screen game or any process in a configurable `GameModeList`. When active, the SAMISH engine skips non-essential diagnostics and sleep interventions to avoid performance impact during gameplay. Controlled by `GameModeEnabled` (bool) and `GameModeList` (array) config keys.

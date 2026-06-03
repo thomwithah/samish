@@ -1,4 +1,12 @@
-# ---------- Events.UI.Effects.ps1 ----------
+#requires -Version 5.1
+# ==============================================================================
+# Module: Events.UI.Effects.ps1
+# Purpose: Wire visual effects, hover animations, custom drawing, drawer transitions,
+#          and visibility syncing for setup sub-tabs.
+# Inputs: Form controls and global theme variables.
+# Outputs: None (applies custom UI drawing and changes control styles).
+# Error Handling: Handles drawing and transition errors gracefully.
+# ==============================================================================
 # ---------- UI wiring ----------
 
 # ---------- Custom DrawItem event for ComboBoxes (SAMISH Cyan Highlight) ----------
@@ -182,7 +190,7 @@ function global:Update-SecondaryTabStyles {
     if ($global:ThemeCustomActive) {
         $secTabBg = [System.Drawing.Color]::FromArgb(35, 35, 40)
         $activeColor = if ($global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.Color]::FromArgb(0, 245, 212) }
-        $inactiveColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0 — inactive tab text
+        $inactiveColor = [System.Drawing.Color]::FromArgb(130, 155, 160) # Option A #829BA0 -- inactive tab text
     }
     else {
         $secTabBg = [System.Drawing.SystemColors]::Control
@@ -534,6 +542,7 @@ function Show-SubTabTools {
     if ($btnOpenLog) { $btnOpenLog.Visible = $true }
     if ($btnPreferredAudio) { $btnPreferredAudio.Visible = $true }
     if ($btnGameMode) { $btnGameMode.Visible = $true }
+    if ($btnSubmitReport) { $btnSubmitReport.Visible = $true }
 
     if ($script:advancedTabIndicator) {
         $script:advancedTabIndicator.Location = New-Object System.Drawing.Point(190, 38)
@@ -570,6 +579,7 @@ function Show-SubTabLive {
     if ($btnOpenLog) { $btnOpenLog.Visible = $false }
     if ($btnPreferredAudio) { $btnPreferredAudio.Visible = $false }
     if ($btnGameMode) { $btnGameMode.Visible = $false }
+    if ($btnSubmitReport) { $btnSubmitReport.Visible = $false }
 
 
 
