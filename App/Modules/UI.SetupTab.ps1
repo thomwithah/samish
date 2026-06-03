@@ -536,6 +536,22 @@ function Apply-UIFromConfigIfPresent {
 
         $cfg = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
 
+        # --- Profile Selection ---
+        Load-ProfileSelectionFromConfigIntoSetup
+        if ($profilesPanel) {
+            foreach ($ctrl in $profilesPanel.Controls) {
+                if ($ctrl -is [System.Windows.Forms.RadioButton]) {
+                    $ctrl.Checked = ($script:ActiveProfileId -eq $ctrl.Tag)
+                }
+                elseif ($ctrl -is [System.Windows.Forms.CheckBox]) {
+                    $ctrl.Checked = ($script:ActiveProfileId -eq $ctrl.Tag)
+                }
+            }
+        }
+        if ($script:ProfileMetaById -and $script:ProfileMetaById.ContainsKey($script:ActiveProfileId)) {
+            Set-ProfileDetails $script:ProfileMetaById[$script:ActiveProfileId]
+        }
+
         # oredApps from config
         if ($null -ne $cfg -and $null -ne $cfg.MonitoredApps) {
             $script:MonitoredApps = @(foreach ($app in $cfg.MonitoredApps) {
@@ -562,10 +578,10 @@ function Apply-UIFromConfigIfPresent {
         try { $hiddenTaskExists = Task-Exists -TaskNameWithSlash $TaskHidden } catch {}
         try { $interactiveTaskExists = Task-Exists -TaskNameWithSlash $TaskInteractive } catch {}
 
-        if ($interactiveTaskExists) {
+        if (-not $script:IsWizardJustCompleted -and $interactiveTaskExists) {
             $rbInteractive.Checked = $true
         }
-        elseif ($hiddenTaskExists) {
+        elseif (-not $script:IsWizardJustCompleted -and $hiddenTaskExists) {
             $rbHidden.Checked = $true
         }
         else {
