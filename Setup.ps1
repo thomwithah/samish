@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
 # Version: 1.3.2
@@ -1977,6 +1977,15 @@ A backup will be created before any changes are applied.
                 $wizardResult = Invoke-FirstRunWizardIfNeeded -ConfigPath $ConfigPath -PackageDir $PackageDir
                 if ($wizardResult) {
                     Write-SamishSetupTrace -Message "First-run wizard completed. UI_Mode=$($wizardResult.UI_Mode)" -Level "INFO"
+                    if ($wizardResult.UI_Mode -and (Get-Command Set-UiModeVisibility -ErrorAction SilentlyContinue)) {
+                        try {
+                            $script:chkUiMode.Checked = ($wizardResult.UI_Mode -eq "Full")
+                            Set-UiModeVisibility -Mode $wizardResult.UI_Mode
+                        }
+                        catch {
+                            Write-SamishSetupTrace -Message "Failed to apply UI mode visually: $($_.Exception.Message)" -Level "WARN"
+                        }
+                    }
                 }
             }
             catch {

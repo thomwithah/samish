@@ -2,7 +2,7 @@
 # =============================================================================
 # SAMISH First-Run Wizard
 # =============================================================================
-# Purpose:  Walks a new user through 3 setup questions on first launch.
+# Purpose:  Walks a new user through 4 setup questions on first launch.
 #           Persists answers to config.json and sets WizardCompleted = $true.
 #
 # Inputs:   $ConfigPath   (string) - path to config.json (caller's scope)
@@ -24,8 +24,9 @@ function Show-FirstRunWizard {
           1. Detect running mixer - ask to manage during sleep
           2. Detect common browsers - ask to pause media
           3. UI mode selection (Simple / Full)
+          4. Installation & Recovery settings (Hidden / Interactive)
 
-        Includes a "Skip Wizard" checkbox that closes and opens in Full mode.
+        Includes a "Skip Wizard" button that closes and opens in Simple mode.
 
     .PARAMETER ConfigPath
         Full path to config.json.
@@ -152,6 +153,12 @@ function Show-FirstRunWizard {
     $panelStep3.Visible = $false
     $wizForm.Controls.Add($panelStep3)
 
+    $panelStep4 = New-Object System.Windows.Forms.Panel
+    $panelStep4.Location = New-Object System.Drawing.Point(20, 80)
+    $panelStep4.Size = New-Object System.Drawing.Size(480, 230)
+    $panelStep4.Visible = $false
+    $wizForm.Controls.Add($panelStep4)
+
     # ---- Step 1: Mixer detection ----
     $lbl1 = New-Object System.Windows.Forms.Label
     $lbl1.Font = $fontBold
@@ -229,16 +236,17 @@ function Show-FirstRunWizard {
 
     $rbSimple = New-Object System.Windows.Forms.RadioButton
     $rbSimple.Font = $fontNormal
-    $rbSimple.Text = "Simple - Minimal dashboard (just tell me it's working)"
+    $rbSimple.Text = "Simple - Streamlined interface showing only essential configuration settings"
     $rbSimple.AutoSize = $true
+    $rbSimple.Checked = $true
     $rbSimple.Location = New-Object System.Drawing.Point(10, 50)
     $panelStep3.Controls.Add($rbSimple)
 
     $rbFull = New-Object System.Windows.Forms.RadioButton
     $rbFull.Font = $fontNormal
-    $rbFull.Text = "Full - All controls, diagnostics, and advanced tools (recommended)"
+    $rbFull.Text = "Full - All controls, diagnostics, and advanced tools"
     $rbFull.AutoSize = $true
-    $rbFull.Checked = $true
+    $rbFull.Checked = $false
     $rbFull.Location = New-Object System.Drawing.Point(10, 90)
     $panelStep3.Controls.Add($rbFull)
 
@@ -249,6 +257,48 @@ function Show-FirstRunWizard {
     $lbl3Tip.AutoSize = $true
     $lbl3Tip.Location = New-Object System.Drawing.Point(10, 140)
     $panelStep3.Controls.Add($lbl3Tip)
+
+    # ---- Step 4: Install & Recovery ----
+    $lbl4 = New-Object System.Windows.Forms.Label
+    $lbl4.Font = $fontBold
+    $lbl4.Text = "Install & Recovery Settings"
+    $lbl4.AutoSize = $true
+    $lbl4.Location = New-Object System.Drawing.Point(0, 10)
+    $panelStep4.Controls.Add($lbl4)
+
+    $rbWizHidden = New-Object System.Windows.Forms.RadioButton
+    $rbWizHidden.Font = $fontNormal
+    $rbWizHidden.Text = "Hidden (recommended) - runs silently in the background"
+    $rbWizHidden.AutoSize = $true
+    $rbWizHidden.Checked = $true
+    $rbWizHidden.Location = New-Object System.Drawing.Point(10, 45)
+    $panelStep4.Controls.Add($rbWizHidden)
+
+    $rbWizInteractive = New-Object System.Windows.Forms.RadioButton
+    $rbWizInteractive.Font = $fontNormal
+    $rbWizInteractive.Text = "Interactive - needed for system tray icon"
+    $rbWizInteractive.AutoSize = $true
+    $rbWizInteractive.Checked = $false
+    $rbWizInteractive.Location = New-Object System.Drawing.Point(10, 75)
+    $panelStep4.Controls.Add($rbWizInteractive)
+
+    $lblWizRecoveryDesc = New-Object System.Windows.Forms.Label
+    $lblWizRecoveryDesc.Font = $fontNormal
+    $lblWizRecoveryDesc.ForeColor = [System.Drawing.Color]::Gray
+    $lblWizRecoveryDesc.Text = "Auto-Recovery runs in the background to automatically restart your main audio mixer software if it crashes or fails to recover on system wake. (Detailed browser and application recovery settings are available in Full mode)."
+    $lblWizRecoveryDesc.AutoSize = $false
+    $lblWizRecoveryDesc.Size = New-Object System.Drawing.Size(460, 55)
+    $lblWizRecoveryDesc.Location = New-Object System.Drawing.Point(10, 110)
+    $panelStep4.Controls.Add($lblWizRecoveryDesc)
+
+    $lblWizInstallPrompt = New-Object System.Windows.Forms.Label
+    $lblWizInstallPrompt.Font = $fontBold
+    $lblWizInstallPrompt.ForeColor = $brandPurple
+    $lblWizInstallPrompt.Text = "Setup Complete! Next, click the 'Install / Update' button on the dashboard to register SAMISH as a background task."
+    $lblWizInstallPrompt.AutoSize = $false
+    $lblWizInstallPrompt.Size = New-Object System.Drawing.Size(460, 45)
+    $lblWizInstallPrompt.Location = New-Object System.Drawing.Point(10, 175)
+    $panelStep4.Controls.Add($lblWizInstallPrompt)
 
     # ---- Navigation buttons ----
     $btnBack = New-Object System.Windows.Forms.Button
@@ -283,8 +333,8 @@ function Show-FirstRunWizard {
 
     # ---- State machine ----
     $wizState = @{ Step = 1; Result = $null }
-    $panels = @($panelStep1, $panelStep2, $panelStep3)
-    $stepLabels = @("Step 1 of 3 - Audio Mixer", "Step 2 of 3 - Browser Media", "Step 3 of 3 - Experience Level")
+    $panels = @($panelStep1, $panelStep2, $panelStep3, $panelStep4)
+    $stepLabels = @("Step 1 of 4 - Audio Mixer", "Step 2 of 4 - Browser Media", "Step 3 of 4 - Experience Level", "Step 4 of 4 - Install & Recovery")
 
     $updateStepUI = {
         $s = $wizState.Step
@@ -295,7 +345,7 @@ function Show-FirstRunWizard {
         }
 
         $btnBack.Enabled = ($s -gt 1)
-        $btnNext.Text = if ($s -eq 3) { "Finish" } else { "Next >" }
+        $btnNext.Text = if ($s -eq 4) { "Finish" } else { "Next >" }
     }
 
     & $updateStepUI
@@ -308,7 +358,7 @@ function Show-FirstRunWizard {
     })
 
     $btnNext.add_Click({
-        if ($wizState.Step -lt 3) {
+        if ($wizState.Step -lt 4) {
             $wizState.Step++
             & $updateStepUI
         }
@@ -317,12 +367,17 @@ function Show-FirstRunWizard {
             $uiMode = "Full"
             if ($rbSimple.Checked) { $uiMode = "Simple" }
 
+            $installMode = "Hidden"
+            if ($rbWizInteractive.Checked) { $installMode = "Interactive" }
+
             $wizState.Result = @{
                 MixerDetected    = ($detectedMixers.Count -gt 0)
+                DetectedMixers   = $detectedMixers
                 ManageMixer      = $cbManageMixer.Checked
                 BrowsersDetected = @($detectedBrowsers | ForEach-Object { $_ })
                 PauseBrowsers    = $cbPauseBrowsers.Checked
                 UI_Mode          = $uiMode
+                InstallMode      = $installMode
                 WizardCompleted  = $true
             }
 
@@ -335,10 +390,12 @@ function Show-FirstRunWizard {
         # Skip sets WizardCompleted so it doesn't show again, but uses defaults
         $wizState.Result = @{
             MixerDetected    = ($detectedMixers.Count -gt 0)
+            DetectedMixers   = $detectedMixers
             ManageMixer      = $false
             BrowsersDetected = @()
             PauseBrowsers    = $false
-            UI_Mode          = "Full"
+            UI_Mode          = "Simple"
+            InstallMode      = "Hidden"
             WizardCompleted  = $true
         }
 
@@ -430,10 +487,35 @@ function Invoke-FirstRunWizardIfNeeded {
             $cfg = [PSCustomObject]@{}
         }
 
+        # Map ActiveProfileId and ProfilesEnabled
+        $activeProfile = "BEACN"
+        if ($answers.ManageMixer) {
+            if ($answers.MixerDetected -and $answers.DetectedMixers -and $answers.DetectedMixers.Count -gt 0) {
+                $firstMixer = $answers.DetectedMixers[0]
+                if ($firstMixer -eq "Wave Link") {
+                    $activeProfile = "WaveLink"
+                } else {
+                    $activeProfile = $firstMixer
+                }
+            }
+        } else {
+            $activeProfile = "Demo-Only"
+        }
+
         # Set wizard answers
         $propsToSet = @{
             WizardCompleted = $true
             UI_Mode         = $answers.UI_Mode
+            ActiveProfileId = $activeProfile
+            ProfilesEnabled = @($activeProfile)
+        }
+
+        if ($answers.InstallMode -eq "Hidden") {
+            $propsToSet["EnableTrayIcon"] = $false
+            $propsToSet["EnableHotkey"] = $false
+        } else {
+            $propsToSet["EnableTrayIcon"] = $true
+            $propsToSet["EnableHotkey"] = $true
         }
 
         # Build MonitoredApps from browser detections if user opted in
