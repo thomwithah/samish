@@ -18,6 +18,19 @@ BeforeAll {
 
     # Load the module under test
     . (Join-Path $ModulesDir "Logic.ps1")
+
+    # Define stub functions for commands that exist in Setup.ps1 or other UI files
+    # so that Pester v5's Mock can successfully find and override them.
+    function Parse-LogEverySecondsOrThrow { param($RawText, $ContextLabel) }
+    function Parse-CustomHotkeyToVk { param($Text) }
+    function Task-Exists { param($TaskNameWithSlash) }
+    function Get-StartupShortcutPath {}
+    function Get-SamishProcessInfo {}
+    function Write-SetupLog { param($Message) }
+    function Stop-SamishTaskIfRunning { param($Mode) }
+    function Stop-RunningHelperInstances {}
+    function Delete-Task { param($TaskNameWithSlash) }
+    function Remove-StartupShortcut {}
 }
 
 Describe "Get-LogIntervalFromUI" {
