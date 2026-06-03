@@ -1,5 +1,5 @@
 ﻿# SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-Created by thomwithah | Version: 1.3.1
+Created by thomwithah | Version: 1.3.2
 
 **Are you having trouble getting Windows to sleep or turn off your screens while your virtual audio mixer (BEACN, Voicemeeter, GoXLR, or Wave Link) is open?**
 

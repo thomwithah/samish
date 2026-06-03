@@ -1,9 +1,14 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.3.2] - 2026-06-03
 
@@ -16,7 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Boot Trace Logger Reorder**: Moved the `Write-SamishSetupTrace` function definition to execute before its first call site, ensuring early boot errors (such as AppUserModelID registration failures) are properly logged instead of silently discarded.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.3.1] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
+## [1.3.2] - 2026-06-03
 
 ### Added
 - Release build compiled and packaged.
@@ -26,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Diagnostic Report Zipper**: Added a "Submit Diagnostic Report" button in the Advanced Tools slide-out drawer (Full mode only) that compiles a troubleshooting package including settings (`config.json`), backup configuration (`powerplan_backup.json`), active log files (`samish_*.log`), and system power states (`powercfg` reports). The collected files are sanitized of sensitive personal information (such as local username, computer name, and IP addresses) and saved as a ZIP archive on the Desktop, while opening the default web browser to the GitHub issue page.
 - **GitHub Diagnostic Issue Template**: Created a standard diagnostic report issue template (`.github/ISSUE_TEMPLATE/diagnostic_report.md`) to guide users submitting sleep/wake issues on GitHub.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.3.0] - 2026-06-02
 
@@ -51,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **App Override Settings Disabled Title**: The "App Override Settings" GroupBox title now uses a visually distinct dimmed color when disabled, instead of the same bright color used when enabled.
 - **Config Defaults**: Updated `UI_Mode` default from `"Normal"` to `"Full"` and `Merge-ConfigDefaults` to match the 2-mode system.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.2.5] - 2026-05-29
 
 ### Added
@@ -72,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stray Startup Index Output**: Fixed a bug where dynamic font and image objects appended to the GDI resource garbage collection list (`ArrayList.Add()`) leaked array index integers to the pipeline. These integers were inadvertently captured by `ps2exe` and displayed as an empty `0` MessageBox before the Setup GUI launched.
 - **Event Log Query Fail-Forward Grace**: Wrapped all WinEvent log queries, list updates, and tooltip UI updates in try/catch blocks. The app handles the errors gracefully to ensure setup loads without interruption.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.2.4] - 2026-05-27
 
 ### Added
@@ -84,6 +114,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI Configuration Sync and State Lock**: Fixed a bug where checking/unchecking the "Enable Logging" or "Enable Hotkey Toggle" checkboxes did not dynamically enable/disable their respective configuration dropdowns and textboxes. Added event listeners and startup synchronization so that the active state of logging and hotkey parameters always accurately reflects the saved `config.json` values and interactive toggles.
 - **Stray Startup Output '0' Box**: Cast `SetCurrentProcessExplicitAppUserModelID` API call to `[void]` in `Setup.ps1` to prevent outputting `0` to the stdout pipeline, resolving the empty message box shown by `ps2exe` on startup.
 - **SFX Configuration Corruption**: Relocated `rcedit` branding operations in `build.ps1` to run on a temporary copy of the SFX stub prior to file concatenation. This preserves the 7-Zip configuration and archive overlay payload at the end of the executable, resolving the `Could not read SFX configuration` crash.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.2.3] - 2026-05-26
 
@@ -99,6 +134,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Themed Test Box Title Color**: Fixed the "Operating Mode Tests" GroupBox title color resetting to system default dark text (ControlText) after finishing its flash sequence or when disabled. It now resolves correctly to the themed color.
 - **High-DPI Profile Details Coordinate Lock**: Wrapped the dynamic positioning of the profile details labels in a startup-only check (`$script:ProfileDetailsInitialized`). This preserves the perfectly scaled layout coordinates at startup, resolving overlapping text and clipping on selecting a profile.
 - **Device Settings Checkbox Clipping**: Widened `$profilesPanel` to height `79` to prevent the third bubble checkbox (`Demo Device`) from being clipped, and moved `$detailsPanel` to `Y=96` with height `86` to maintain clean, proportional layout bounds.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.2.2] - 2026-05-24
 
@@ -134,6 +174,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System Overrides Parsing Bug**: Fixed a parsing bug where power request overrides containing spaces (e.g., `"BECAN Mic"`, `"Legacy Kernel Caller"`, `"USB Audio 2.0"`) had their names truncated to the first word and requests corrupted. Refactored the parser to use a right-to-left scanning strategy, ensuring name tokens and request keywords are correctly separated.
 - **Active Blockers Filtering**: Filtered out already-automated idle apps from the discovered Active Blockers list to prevent visual clutter and redundant UI prompts.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.2.1] - 2026-05-23
 
 ### Added
@@ -156,6 +201,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PS2EXE Compatibility Path Resolution**: Fixed a path resolution bug in `Setup.ps1` where `$MyInvocation.MyCommand.Definition` was used to resolve the script root directory. This property returns the raw script body when running inside a PS2EXE wrapper, throwing a fatal path exception and causing compiled EXEs to hang or fail on start. Replaced it with robust fallbacks (`$PSScriptRoot`, `$PSCommandPath`, and AppDomain base directory).
 - **Cleaned Misplaced Tray Logic in Setup UI**: Removed an incorrectly merged tray icon setup block and premature `$btnCleanReset.Enabled` assignments from the body of the `Get-HighQualityScaledImage` helper function in [Modules/UI.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/Modules/UI.ps1). The premature assignment threw a property-on-null exception on startup (since the button was not yet defined), which aborted UI initialization and caused compiled EXEs to hang without showing their window. The clean reset button initialization has been relocated to execute safely at the end of the file.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.1.0] - 2026-05-23
 
 ### Added
@@ -165,6 +215,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Advanced System Sleep Telemetry**: Gathers and displays system-wide sleep configurations, parsed last wake source (`powercfg /lastwake`), active wake timers (`powercfg /waketimers`), and armed devices (`powercfg /devicequery wake_armed`) asynchronously.
 - **Unified Terminology & User-Friendly Button Labels**: Renamed legacy buttons to clearer actions (e.g. "Restart SAMISH Service", "Verify Power Plan", "Test Sleep/Hibernate", "Remove System Override").
 - **Resource Management Improvements**: Automatically closes active timers and background runspaces on tab switches, drawer collapse, or app exit.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.0.10] - 2026-05-23
 
@@ -177,11 +232,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Renamed Media Mode Display Label**: Replaced `"Pause Media"` or `"PauseMedia"` display strings with `"Keep App Open"` inside the automated apps list box and diagnostics detail label to match the text on the corresponding radio buttons.
 - **Immediate Test Target Resolution**: Updated the test target resolution routine to query the active UI operating mode selection directly, ensuring "Stop Test" and "Start Test" run behavior matches the current on-screen radio states immediately without needing to save to disk or reinstall first.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.0.9] - 2026-05-23
 
 ### Added
 - **Hotkey & Tray Action Debouncing**: Added a 1-second rate-limiting (debounce) check inside the helper toggle logic to prevent background thread hangs and tray icon freezes caused by rapid, repeated hotkey presses or menu clicks flooding the Windows Explorer and Event Log IPC channels.
 - **Tray Menu Hotkey Display**: Added the active hotkey label (e.g., `ScrollLock` or custom key name like `F8`) next to the "Enable/Disable helper" option in the system tray context menu for better user visibility.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.0.8] - 2026-05-23
 
@@ -189,12 +254,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tray Settings Foreground Focus**: Added an "Open Settings" option to the system tray context menu. Implemented robust window handle retrieval and focus logic using Win32 API calls (`FindWindow`, `ShowWindow`, and a `SetWindowPos` topmost bypass) to automatically restore and bring the existing Setup window to the foreground, preventing multiple overlapping instances.
 - **Uninstall Tooltip Clarity**: Updated the Uninstall button tooltip in the Setup UI to clearly communicate that user profiles and configuration settings can be preserved and automatically reapplied upon reinstalling.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.0.7] - 2026-05-22
 
 ### Added
 - **Active Sleep Blocker Verification**: Implemented active power request parsing (`powercfg /requests` and `powercfg /requestsoverride`) in the background engine to prevent mixer shutdown during web meetings (e.g. Google Meet, Zoom, Teams) when the system is kept awake by active display or system requests.
 - **Reliable Media Playback Restoration**: Added a robust 15-second polling and confirmation loop (retrying every 250ms) to ensure media resumes successfully after wake, with early exit checks on process termination/crashes.
 - **Smart Restore Diagnostics Info**: Added context-aware messages and double-line status spacing to warn users about the ad-hoc pre-sleep playback state assumption when running tests in the UI.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.0.6] - 2026-05-22
 
@@ -210,16 +285,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dynamic UWP Path Resolution**: Implemented dynamic path lookup via local UWP execution aliases (`%LOCALAPPDATA%\Microsoft\WindowsApps`) to prevent startup failures when Windows Store updates change versioned app folders.
 - **Type-Safe Result Schemas**: Standardised internal APIs with strict PowerShell classes (`AppStartResult`, `AppStopResult`, `AppExecutablePathResult`) to eliminate runtime parsing errors.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.0.5] - 2026-05-22
 
 ### Added
 - **Operating Mode Tests**: Added an "Operating Mode Tests" group box to the Setup UI, placed directly below the Install Mode and Operating Mode configuration boxes. Users can now manually trigger a Graceful stop, Classic stop, or Start against their selected device software or any app configured in Sleep and Hibernate Diagnostics, without waiting for sleep to trigger automatically. The box is greyed out (with tooltip visible) until SAMISH is installed, the device software is running, or automated apps are configured. Results are reported to the Status box with full detail.
 - **Robust App Startup and Tracing**: Redesigned the application startup mechanism (`Invoke-AppStart`) to support a multi-stage launch fallback chain. It now aligns the working directory, executes local UWP aliases, uses shell execution, and falls back to protocol handlers. Added active process verification (polling the process list for up to 3 seconds) and detailed diagnostic trace reporting in the Status Box on success and failure.
 
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
+
 ## [1.0.4] - 2026-05-22
 
 ### Added
 - **Per-App Wake Control**: Added a "Do not restart this app on wake" checkbox in the Sleep Diagnostics Operating Mode settings. This allows users to configure specific automated apps (like a web browser streaming media) to close before sleep but remain closed upon waking, without affecting critical mixer software.
+
+## [1.3.2] - 2026-06-03
+
+### Added
+- Release build compiled and packaged.
 
 ## [1.0.3] - 2026-05-03
 
