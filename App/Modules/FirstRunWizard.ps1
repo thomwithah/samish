@@ -499,7 +499,7 @@ function Invoke-FirstRunWizardIfNeeded {
                 }
             }
         } else {
-            $activeProfile = "Demo-Only"
+            $activeProfile = "DEMO"
         }
 
         # Set wizard answers

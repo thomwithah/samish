@@ -1977,7 +1977,7 @@ A backup will be created before any changes are applied.
                 $wizardResult = Invoke-FirstRunWizardIfNeeded -ConfigPath $ConfigPath -PackageDir $PackageDir
                 if ($wizardResult) {
                     Write-SamishSetupTrace -Message "First-run wizard completed. UI_Mode=$($wizardResult.UI_Mode)" -Level "INFO"
-                    $script:IsWizardJustCompleted = $true
+                    $global:IsWizardJustCompleted = $true
                     if ($wizardResult.UI_Mode -and (Get-Command Set-UiModeVisibility -ErrorAction SilentlyContinue)) {
                         try {
                             $script:chkUiMode.Checked = ($wizardResult.UI_Mode -eq "Full")
@@ -1995,7 +1995,9 @@ A backup will be created before any changes are applied.
         }
     }
 
-    [void]$form.ShowDialog()
+    if (-not $global:SamishSkipShowDialog) {
+        [void]$form.ShowDialog()
+    }
 }
 finally {
     Complete-SamishSetupUi -Form $form

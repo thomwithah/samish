@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 # ==============================================================================
 # Module: Events.DiagnosticsTests.ps1
 # Purpose: Operating Mode test functions and event handlers for the
@@ -299,10 +299,10 @@ function Update-TestButtonsTooltips {
     }
 
     # Set tooltips dynamically
-    if ($script:btnTestStop) { $script:tooltip.SetToolTip($script:btnTestStop, $tipSleep) }
-    if ($script:btnTestStart) { $script:tooltip.SetToolTip($script:btnTestStart, $tipWake) }
-    if ($script:btnTestGraceful) { $script:tooltip.SetToolTip($script:btnTestGraceful, $tipGraceful) }
-    if ($script:btnTestClassic) { $script:tooltip.SetToolTip($script:btnTestClassic, $tipForce) }
+    if ($script:btnTestStop) { $script:diagTip.SetToolTip($script:btnTestStop, $tipSleep) }
+    if ($script:btnTestStart) { $script:diagTip.SetToolTip($script:btnTestStart, $tipWake) }
+    if ($script:btnTestGraceful) { $script:diagTip.SetToolTip($script:btnTestGraceful, $tipGraceful) }
+    if ($script:btnTestClassic) { $script:diagTip.SetToolTip($script:btnTestClassic, $tipForce) }
 }
 
 # ---- Test Graceful Stop -------------------------------------

@@ -578,11 +578,13 @@ function Apply-UIFromConfigIfPresent {
         try { $hiddenTaskExists = Task-Exists -TaskNameWithSlash $TaskHidden } catch {}
         try { $interactiveTaskExists = Task-Exists -TaskNameWithSlash $TaskInteractive } catch {}
 
-        if (-not $script:IsWizardJustCompleted -and $interactiveTaskExists) {
+        if (-not $global:IsWizardJustCompleted -and $interactiveTaskExists) {
             $rbInteractive.Checked = $true
+            $rbHidden.Checked = $false
         }
-        elseif (-not $script:IsWizardJustCompleted -and $hiddenTaskExists) {
+        elseif (-not $global:IsWizardJustCompleted -and $hiddenTaskExists) {
             $rbHidden.Checked = $true
+            $rbInteractive.Checked = $false
         }
         else {
             if ($null -ne $cfg -and (
@@ -590,9 +592,11 @@ function Apply-UIFromConfigIfPresent {
                     ($null -ne $cfg.EnableHotkey -and $cfg.EnableHotkey)
                 )) {
                 $rbInteractive.Checked = $true
+                $rbHidden.Checked = $false
             }
             else {
                 $rbHidden.Checked = $true
+                $rbInteractive.Checked = $false
             }
         }
 
