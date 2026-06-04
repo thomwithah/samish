@@ -5,7 +5,7 @@ Created by thomwithah | Version: 1.3.2
 
 SAMISH is a lightweight, open-source utility that solves persistent system sleep issues caused by hardware audio routers.
 
-> SAMISH helps your PC, well, act the "same(-ish)" by coaxing your mixer hardwareÃ¢â‚¬â„¢s software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
+> SAMISH helps your PC, well, act the "same(-ish)" by coaxing your mixer hardware's software to get out of the way of Windows' natural ~~sleep cycle~~ settings. If needed, though, SAMISH is happy to apply a little "force" (via Classic termination mode) to make sure stubborn apps actually go to sleep.
 
 By monitoring system idle states, it automatically closes your audio software when you walk away, and restarts it the second you wake up your PC.
 
@@ -53,9 +53,9 @@ Most users never need to open it again after setup.
 
 ## Why SAMISH exists
 
-I ran into issues where BEACN was preventing my PC from sleeping properly and sometimes didnÃ¢â‚¬â„¢t behave correctly after sleep.
+I ran into issues where BEACN was preventing my PC from sleeping properly and sometimes didn't behave correctly after sleep.
 
-I also saw other users reporting similar problems, especially cases where BEACN didnÃ¢â‚¬â„¢t recover cleanly after sleep or hibernation.
+I also saw other users reporting similar problems, especially cases where BEACN didn't recover cleanly after sleep or hibernation.
 
 I built this, a small tool called SAMISH, to stabilize how Windows handles sleep around audio devices.
 
@@ -65,11 +65,11 @@ If you just want the simple fix:
 - Click Install / Update
 - Accept the power plan fix if prompted
 
-ThatÃ¢â‚¬â„¢s it.
+That's it.
 
 It runs silently in the background and keeps things working.
 
-It doesnÃ¢â‚¬â„¢t modify BEACN directly, but it removes the conditions that typically cause these problems and helps prevent the Ã¢â‚¬Å“doesnÃ¢â‚¬â„¢t come back after sleepÃ¢â‚¬Â issue.
+It doesn't modify BEACN directly, but it removes the conditions that typically cause these problems and helps prevent the "doesn't come back after sleep" issue.
 
 ---
 
@@ -239,20 +239,20 @@ SAMISH includes out-of-the-box support for the most popular streaming and audio 
 
 ## Sleep & Hibernate Diagnostics Tool
 
-**What it does** Ã¢â‚¬â€œ Scans running processes, services, and drivers to pinpoint the exact application or component that blocks Windows from entering sleep or hibernate. It reports the offending process name, PID, and the powerÃ¢â‚¬â€˜request type (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
+**What it does** -- Scans running processes, services, and drivers to pinpoint the exact application or component that blocks Windows from entering sleep or hibernate. It reports the offending process name, PID, and the power-request type (e.g., `SYSTEM`, `AWAYMODE`, `DISPLAY`).
 
-**Why it matters** Ã¢â‚¬â€œ StreamingÃ¢â‚¬â€˜audio tools such as **WaveÃ¢â‚¬Â¯Control**, **ElgatoÃ¢â‚¬Â¯WaveÃ¢â‚¬Â¯Link**, **GoXLR**, **Voicemeeter**, and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** can hold a wakeÃ¢â‚¬â€˜lock, keeping the PC awake even after the app is closed. This tool helps you identify those culprits so you can close, reÃ¢â‚¬â€˜configure, or let SAMISHÃ¢â‚¬â„¢s adapter automatically clear the lock.
+**Why it matters** -- Streaming-audio tools such as **Wave Control**, **Elgato Wave Link**, **GoXLR**, **Voicemeeter**, and media players like **Spotify**, **iTunes**, **Foobar2000**, **VLC** can hold a wake-lock, keeping the PC awake even after the app is closed. This tool helps you identify those culprits so you can close, re-configure, or let SAMISH's adapter automatically clear the lock.
 
-**Limitations** Ã¢â‚¬â€œ Relies on Windows powerÃ¢â‚¬â€˜reporting APIs; lowÃ¢â‚¬â€˜level driver bugs that do not expose a wake source may be missed.
+**Limitations** -- Relies on Windows power-reporting APIs; low-level driver bugs that do not expose a wake source may be missed.
 
 ---
 
 ## Roadmap
 
-SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **DemoÃ¢â‚¬â€˜Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.
+SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **Demo-Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.
 
 ---
-Ã¢Å¡Â Ã¯Â¸Â Note on Installation & Windows SmartScreen
+⚠️ Note on Installation & Windows SmartScreen
 Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the installer (SAMISH_Setup_v1.2.4.exe) does not currently have an expensive digital signature. As a result, Windows and your web browser will likely flag it as an "unrecognized app" until it builds up a download reputation.
 
 When downloading and installing, you can expect the following:
