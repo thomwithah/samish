@@ -116,8 +116,8 @@ Describe "First-Run Wizard Answer Persistence" {
 Describe "GUI State Synchronization after Wizard" {
 
     BeforeAll {
-        $script:OriginalConfigPath = "C:\Users\thomw\AppData\Roaming\SAMISH\config.json"
-        $script:ConfigDir = "C:\Users\thomw\AppData\Roaming\SAMISH"
+        $script:ConfigDir = Join-Path $env:APPDATA "SAMISH"
+        $script:OriginalConfigPath = Join-Path $script:ConfigDir "config.json"
         # Ensure the APPDATA folder exists
         if (-not (Test-Path -LiteralPath $script:ConfigDir)) {
             New-Item -ItemType Directory -Path $script:ConfigDir -Force | Out-Null
