@@ -38,22 +38,25 @@ You can toggle between layouts at any time using the **Full View Checkbox** in t
 #### Slide-out Advanced Panels
 * **Advanced Tools Drawer (Page 1):** Expand this by clicking **Advanced Tools >>** to access a sliding utility panel containing two tabs:
   * **Tools Tab:** Access 8 system and service management options:
-    - **Verify & Restore Settings:** Scans your active power plans, USB selective suspend states, disabled wake devices, and active wake timers, automatically repairing or optimizing them.
+    - **Verify & Restore Settings:** Checks active system telemetry and offers to restore previously modified configurations (like wake devices, task wake-timers, background services, or USB selective suspend settings) back to their original defaults from SAMISH backups, followed by verifying your current Windows power plan compatibility.
     - **Open Windows Task Scheduler:** Instantly launches the Windows Task Scheduler to inspect or manage the background service tasks.
     - **Restart SAMISH Service:** Safely restarts the background helper loop while preserving your custom configurations.
-    - **Read Setup & Status:** Queries and displays current installation status, configuration details, and active status.
+    - **Read Setup & Status:** Queries and displays current installation status, configuration details, and active diagnostics status directly in the **Status / Activity** text box.
     - **Open Setup Log:** Opens the main setup text log in your default text editor.
     - **Submit Diagnostic Report:** Compiles, sanitizes, and packages configurations, logs, and powercfg reports into a ZIP archive on your Desktop, opening the GitHub issue page to submit it.
     - **Set Preferred Audio Device:** Capture and persist your default playback and communication endpoints so SAMISH can restore them after wake cycles.
     - **Game Mode Settings:** Configure automated exclusions so SAMISH skips telemetry scans while full-screen games or specific applications are running.
   * **Live Log Tab:** Stream real-time logs directly from the background engine (`samish.log`) to inspect sleep triggers.
-* **Diagnostics Drawer (Page 2):** Expand this by clicking **Diagnostics >>** to inspect active wake timers, USB controllers, and Modern Standby exit telemetry directly from your Windows Kernel.
+* **Diagnostics Drawer (Page 2):** Expand this by clicking **Diagnostics >>** to access real-time system/hardware telemetry and dry-run tests:
+  - **Operating Mode Tests:** Dry-run simulate sleep, wake, graceful close, and force close routines. This allows developers and users to verify that audio mixer software and other target applications close and relaunch correctly without needing to put the entire PC to sleep.
+  - **System Telemetry Tab:** View your sleep/wake history (last 5 standby cycles) and inspect active wake timers to trace exactly what scheduled tasks or apps are waking or keeping the system awake.
+  - **Hardware Telemetry Tab:** Review Windows Kernel data on armed wake-capable devices (like network adapters or input devices) and scan active USB & PCIe power management configurations to diagnose accidental hardware-triggered wake-ups.
 
 #### Color Theme Configurator
 SAMISH includes a standalone color theme utility. You can customize the dashboard palette to match your streaming setup:
 1. Run `Launch-ColorThemeConfigurator.bat` from the root directory.
 2. Select standard themes (Dark Slate, Deep Purple, Amber Neon) or create your own custom theme by typing in hexadecimal colors.
-3. Save changes; the main GUI and modal dialogs will dynamically update to reflect your custom colors. Custom configurations are applied immediately as your default theme.
+3. Save changes; the main GUI and modal dialogs will dynamically update to reflect your custom colors. *(Note: Active theme default persistence behavior is subject to modification pending discussion of theme management implementation plans).*
 
 ---
 
