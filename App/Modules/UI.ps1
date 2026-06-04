@@ -291,7 +291,7 @@ $bottomMetadata.Location = New-Object System.Drawing.Point(480, 606)
 $form.Controls.Add($bottomMetadata)
 $script:bottomMetadata = $bottomMetadata
 $bottomMetadata.BringToFront()
-$tooltip.SetToolTip($bottomMetadata, "Double-click to open CHANGELOG.md (if present in the application folder).")
+$tooltip.SetToolTip($bottomMetadata, "Double-click to view the Changelog or support the creator on Ko-fi.")
 
 # Styling resets
 # NOTE: controls named statusBox / txtLiveLog / lblDiagDetail are excluded from

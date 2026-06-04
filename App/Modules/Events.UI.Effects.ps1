@@ -670,21 +670,40 @@ if ($btnLiveCopy) {
         })
 }
 
-# Wire double-click on version label/metadata to open changelog
+# Wire double-click on version label/metadata to open dialog for changelog or support
 if ($bottomMetadata) {
     $bottomMetadata.add_DoubleClick({
-            $changelogPath = Join-Path (Split-Path -Parent $global:PackageDir) "CHANGELOG.md"
-            if (Test-Path -LiteralPath $changelogPath) {
-                Write-SetupLog "Changelog found at '$changelogPath'. Attempting to open."
+            $title = "SAMISH - Support & Information"
+            $msg = "Would you like to support the creator on Ko-fi?`r`n`r`n" +
+                   "- Click 'Yes' to visit the Ko-fi support page (https://ko-fi.com/thomwithah).`r`n" +
+                   "- Click 'No' to open the CHANGELOG.md file.`r`n" +
+                   "- Click 'Cancel' to close this window."
+            $buttons = [System.Windows.Forms.MessageBoxButtons]::YesNoCancel
+            $icon = [System.Windows.Forms.MessageBoxIcon]::Question
+            
+            $dialogResult = [System.Windows.Forms.MessageBox]::Show($msg, $title, $buttons, $icon)
+            
+            if ($dialogResult -eq [System.Windows.Forms.DialogResult]::Yes) {
                 try {
-                    Start-Process $changelogPath | Out-Null
-                }
-                catch {
-                    Write-SetupLog "Error opening changelog: $($_.Exception.Message)"
+                    Start-Process "https://ko-fi.com/thomwithah" | Out-Null
+                } catch {
+                    Write-SetupLog "Error opening Ko-fi support URL: $($_.Exception.Message)"
                 }
             }
-            else {
-                Write-SetupLog "Changelog not found at expected path: '$changelogPath'"
+            elseif ($dialogResult -eq [System.Windows.Forms.DialogResult]::No) {
+                $changelogPath = Join-Path (Split-Path -Parent $global:PackageDir) "CHANGELOG.md"
+                if (Test-Path -LiteralPath $changelogPath) {
+                    Write-SetupLog "Changelog found at '$changelogPath'. Attempting to open."
+                    try {
+                        Start-Process $changelogPath | Out-Null
+                    }
+                    catch {
+                        Write-SetupLog "Error opening changelog: $($_.Exception.Message)"
+                    }
+                }
+                else {
+                    Write-SetupLog "Changelog not found at expected path: '$changelogPath'"
+                }
             }
         })
 }
