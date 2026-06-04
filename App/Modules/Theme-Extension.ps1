@@ -25,36 +25,21 @@ $global:ImgColorPath = Join-Path $global:PackageDir "Assets\SAMISH-SQUARE-STYLIZ
 $global:ImgGrayPath = Join-Path $global:PackageDir "Assets\SAMISH-SQUARE-GREYSCALE-STYLIZED3.png"
 
 # Neon Palette - MUST BE GLOBAL to survive dot-sourcing inside a scriptblock
-# Fallback Neon Theme Set (hardcoded Easter egg values)
-$global:ThemeNeonBackground = [System.Drawing.Color]::FromArgb(15, 15, 18)       # #0F0F12
-$global:ThemeNeonSecondary = [System.Drawing.Color]::FromArgb(153, 51, 255)      # From stylized logo
-$global:ThemeNeonAlert = [System.Drawing.Color]::FromArgb(255, 0, 102)           # #FF0066
-$global:ThemeNeonHighlight = [System.Drawing.Color]::FromArgb(179, 255, 0)       # #b3ff00
-$global:ThemeNeonPrimary = [System.Drawing.Color]::FromArgb(0, 245, 212)         # #00f5d4
-$global:ThemeNeonText = [System.Drawing.Color]::FromArgb(255, 255, 255)          # #FFFFFF
-$global:ThemeNeonButton = [System.Drawing.Color]::FromArgb(35, 35, 40)           # #232328
-$global:ThemeNeonButtonHover = [System.Drawing.Color]::FromArgb(50, 50, 60)      # #32323C
-$global:ThemeNeonInput = [System.Drawing.Color]::FromArgb(25, 25, 30)            # #19191E
-$global:ThemeNeonPanel = [System.Drawing.Color]::FromArgb(18, 18, 22)            # #121216
-$global:ThemeNeonDisabled = [System.Drawing.Color]::FromArgb(10, 10, 12)         # #0A0A0C
-$global:ThemeNeonDisabledText = [System.Drawing.Color]::FromArgb(115, 135, 145)  # #738791
-
-# Active custom variables that paint elements in the UI (initialized with Neon values by default)
-$global:ThemeCustomBackground = $global:ThemeNeonBackground
-$global:ThemeCustomSecondary = $global:ThemeNeonSecondary
-$global:ThemeCustomAlert = $global:ThemeNeonAlert
-$global:ThemeCustomHighlight = $global:ThemeNeonHighlight
-$global:ThemeCustomPrimary = $global:ThemeNeonPrimary
-$global:ThemeCustomText = $global:ThemeNeonText
-$global:ThemeCustomButton = $global:ThemeNeonButton
-$global:ThemeCustomButtonHover = $global:ThemeNeonButtonHover
-$global:ThemeCustomInput = $global:ThemeNeonInput
-$global:ThemeCustomPanel = $global:ThemeNeonPanel
-$global:ThemeCustomDisabled = $global:ThemeNeonDisabled
-$global:ThemeCustomDisabledText = $global:ThemeNeonDisabledText
-$global:ThemeCustomCheckboxBg = $global:ThemeCustomInput
-$global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary
-$global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary
+$global:ThemeCustomBackground = [SystColor]::FromArgb(15, 15, 18)       # #0F0F12
+$global:ThemeCustomSecondary = [System.Drawing.Color]::FromArgb(153, 51, 255)      # From stylized logo
+$global:ThemeCustomAlert = [System.Drawing.Color]::FromArgb(255, 0, 102)           # #FF0066
+$global:ThemeCustomHighlight = [System.Drawing.Color]::FromArgb(179, 255, 0)       # #b3ff00
+$global:ThemeCustomPrimary = [System.Drawing.Color]::FromArgb(0, 245, 212)         # #00f5d4
+$global:ThemeCustomText = [System.Drawing.Color]::FromArgb(255, 255, 255)          # #FFFFFF
+$global:ThemeCustomButton = [System.Drawing.Color]::FromArgb(35, 35, 40)           # #232328
+$global:ThemeCustomButtonHover = [System.Drawing.Color]::FromArgb(50, 50, 60)      # #32323C
+$global:ThemeCustomInput = [System.Drawing.Color]::FromArgb(25, 25, 30)            # #19191E
+$global:ThemeCustomPanel = [System.Drawing.Color]::FromArgb(18, 18, 22)            # #121216
+$global:ThemeCustomDisabled = [System.Drawing.Color]::FromArgb(10, 10, 12)         # #0A0A0C
+$global:ThemeCustomDisabledText = [System.Drawing.Color]::FromArgb(115, 135, 145)  # #738791
+$global:ThemeCustomCheckboxBg = $global:ThemeCustomInput                           # Background color for CheckBox boxes
+$global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary                   # Border color for CheckBoxes
+$global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary                      # Checkmark/Dot color for CheckBoxes (SAMISH Blue)
 
 # Helper to convert various string formats (Hex, RGB, Name) into Color objects
 function global:Get-ColorFromString {
@@ -134,45 +119,8 @@ function global:Load-CustomThemeColors {
     catch {}
 }
 
-function global:Load-NeonThemeColors {
-    $global:ThemeCustomBackground = $global:ThemeNeonBackground
-    $global:ThemeCustomSecondary = $global:ThemeNeonSecondary
-    $global:ThemeCustomAlert = $global:ThemeNeonAlert
-    $global:ThemeCustomHighlight = $global:ThemeNeonHighlight
-    $global:ThemeCustomPrimary = $global:ThemeNeonPrimary
-    $global:ThemeCustomText = $global:ThemeNeonText
-    $global:ThemeCustomButton = $global:ThemeNeonButton
-    $global:ThemeCustomButtonHover = $global:ThemeNeonButtonHover
-    $global:ThemeCustomInput = $global:ThemeNeonInput
-    $global:ThemeCustomPanel = $global:ThemeNeonPanel
-    $global:ThemeCustomDisabled = $global:ThemeNeonDisabled
-    $global:ThemeCustomDisabledText = $global:ThemeNeonDisabledText
-    $global:ThemeCustomCheckboxBg = $global:ThemeCustomInput
-    $global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary
-    $global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary
-}
-
-function global:Initialize-ActiveThemeColors {
-    $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
-    $theme = "Normal"
-    if (Test-Path -LiteralPath $cfgPath) {
-        try {
-            $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json
-            if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
-                $theme = $cfg.Theme
-            }
-        } catch {}
-    }
-    
-    if ($theme -eq "Custom") {
-        Load-CustomThemeColors
-    } else {
-        Load-NeonThemeColors
-    }
-}
-
 # Run color loading immediately to initialize custom theme colors
-Initialize-ActiveThemeColors
+Load-CustomThemeColors
 
 function global:Register-HoverFadeAnimation {
     param(
@@ -192,48 +140,48 @@ function global:Register-HoverFadeAnimation {
         $c.HoverAnimTimer = $timer
 
         $timer.add_Tick({
-            if (-not $global:ThemeCustomActive) {
-                $c.HoverAnimTimer.Stop()
-                return
-            }
+                if (-not $global:ThemeCustomActive) {
+                    $c.HoverAnimTimer.Stop()
+                    return
+                }
 
-            $c.HoverAnimStep += $c.HoverAnimDirection
-            if ($c.HoverAnimStep -ge 6) {
-                $c.HoverAnimStep = 6
-                $c.BackColor = $HoverColor
-                $c.FlatAppearance.MouseOverBackColor = $HoverColor
-                $c.HoverAnimTimer.Stop()
-            }
-            elseif ($c.HoverAnimStep -le 0) {
-                $c.HoverAnimStep = 0
-                $c.BackColor = $NormalColor
-                $c.FlatAppearance.MouseOverBackColor = $NormalColor
-                $c.HoverAnimTimer.Stop()
-            }
-            else {
-                $pct = $c.HoverAnimStep / 6.0
-                $r = [int]($NormalColor.R + ($HoverColor.R - $NormalColor.R) * $pct)
-                $g = [int]($NormalColor.G + ($HoverColor.G - $NormalColor.G) * $pct)
-                $b = [int]($NormalColor.B + ($HoverColor.B - $NormalColor.B) * $pct)
-                $col = [System.Drawing.Color]::FromArgb($r, $g, $b)
-                $c.BackColor = $col
-                $c.FlatAppearance.MouseOverBackColor = $col
-            }
-        })
+                $c.HoverAnimStep += $c.HoverAnimDirection
+                if ($c.HoverAnimStep -ge 6) {
+                    $c.HoverAnimStep = 6
+                    $c.BackColor = $HoverColor
+                    $c.FlatAppearance.MouseOverBackColor = $HoverColor
+                    $c.HoverAnimTimer.Stop()
+                }
+                elseif ($c.HoverAnimStep -le 0) {
+                    $c.HoverAnimStep = 0
+                    $c.BackColor = $NormalColor
+                    $c.FlatAppearance.MouseOverBackColor = $NormalColor
+                    $c.HoverAnimTimer.Stop()
+                }
+                else {
+                    $pct = $c.HoverAnimStep / 6.0
+                    $r = [int]($NormalColor.R + ($HoverColor.R - $NormalColor.R) * $pct)
+                    $g = [int]($NormalColor.G + ($HoverColor.G - $NormalColor.G) * $pct)
+                    $b = [int]($NormalColor.B + ($HoverColor.B - $NormalColor.B) * $pct)
+                    $col = [System.Drawing.Color]::FromArgb($r, $g, $b)
+                    $c.BackColor = $col
+                    $c.FlatAppearance.MouseOverBackColor = $col
+                }
+            })
 
         $c.add_MouseEnter({
-            if ($global:ThemeCustomActive -and $c.Enabled) {
-                $c.HoverAnimDirection = 1
-                $c.HoverAnimTimer.Start()
-            }
-        })
+                if ($global:ThemeCustomActive -and $c.Enabled) {
+                    $c.HoverAnimDirection = 1
+                    $c.HoverAnimTimer.Start()
+                }
+            })
 
         $c.add_MouseLeave({
-            if ($global:ThemeCustomActive -and $c.Enabled) {
-                $c.HoverAnimDirection = -1
-                $c.HoverAnimTimer.Start()
-            }
-        })
+                if ($global:ThemeCustomActive -and $c.Enabled) {
+                    $c.HoverAnimDirection = -1
+                    $c.HoverAnimTimer.Start()
+                }
+            })
     }
 }
 
@@ -286,45 +234,11 @@ function global:Save-OriginalStyles {
     Walk-Save $Form.Controls
 }
 
-function global:Get-NextTheme {
-    $current = "Normal"
-    $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
-    if (Test-Path -LiteralPath $cfgPath) {
-        try {
-            $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json
-            if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
-                $current = $cfg.Theme
-            }
-        } catch {}
-    }
-    
-    $appDir = if ($global:PackageDir) { Join-Path $global:PackageDir "App" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\App" }
-    $hasCustom = Test-Path -LiteralPath (Join-Path $appDir "custom_theme.json")
-    
-    switch ($current) {
-        "Normal" {
-            if ($hasCustom) { return "Custom" } else { return "Neon" }
-        }
-        "Custom" {
-            return "Neon"
-        }
-        "Neon" {
-            return "Normal"
-        }
-        default {
-            return "Normal"
-        }
-    }
-}
-
 function global:Invoke-BrandSequence {
     param([System.Windows.Forms.Form]$Form)
 
     if ($global:IsThemeAnimating) { return }
     $global:IsThemeAnimating = $true
-    
-    $targetTheme = Get-NextTheme
-    $isReverting = ($targetTheme -eq "Normal")
     
     if (-not $global:ThemeCustomActive) {
         Save-OriginalStyles -Form $Form
@@ -339,11 +253,11 @@ function global:Invoke-BrandSequence {
 
     # Load the logo image directly into a Drawing.Image - no PictureBox needed.
     # GDI+ DrawImage handles PNG transparency correctly in one pass.
-    $imgPath = if ($isReverting) { $global:ImgGrayPath } else { $global:ImgColorPath }
+    $imgPath = if ($global:ThemeCustomActive) { $global:ImgGrayPath } else { $global:ImgColorPath }
     $logoImage = $null
     try { $logoImage = [System.Drawing.Image]::FromFile($imgPath) } catch {}
 
-    Run-TakeoverAnimation -Form $Form -LogoImage $logoImage -TargetSize $targetSize -Reverting $isReverting -TargetTheme $targetTheme
+    Run-TakeoverAnimation -Form $Form -LogoImage $logoImage -TargetSize $targetSize -Reverting $global:ThemeCustomActive
 }
 
 function global:Run-TakeoverAnimation {
@@ -351,8 +265,7 @@ function global:Run-TakeoverAnimation {
         [System.Windows.Forms.Form]$Form,
         [System.Drawing.Image]$LogoImage,
         [int]$TargetSize,
-        [bool]$Reverting,
-        [string]$TargetTheme
+        [bool]$Reverting
     )
 
     $PackageDir_Local = $global:PackageDir
@@ -377,7 +290,6 @@ function global:Run-TakeoverAnimation {
         FlashColor        = $global:ThemeCustomBackground
         TargetSize        = $TargetSize
         Reverting         = $Reverting
-        TargetTheme       = $TargetTheme
         ScaleVelocity     = 1.0
         ScaleAcceleration = if ($Reverting) { 1.6 } else { 1.1 }
         StrobeFrames      = @()
@@ -513,7 +425,7 @@ function global:Run-TakeoverAnimation {
                         $state.StrobeIndex++
                         $state.Form.BackColor = $strobeColor
                         $state.FlashColor = $strobeColor
-                        # One Invalidate() -> one Paint pass -> background + logo drawn together atomically.
+                        # One Invalidate() → one Paint pass → background + logo drawn together atomically.
                         $state.FadeForm.Invalidate()
                         return
                     }
@@ -525,15 +437,10 @@ function global:Run-TakeoverAnimation {
                     }
 
                     try {
-                        if ($state.TargetTheme -eq "Normal") {
+                        if ($state.Reverting) {
                             Set-BrandTheme -Form $state.Form -IsCustom $false
                         }
                         else {
-                            if ($state.TargetTheme -eq "Custom") {
-                                Load-CustomThemeColors
-                            } else {
-                                Load-NeonThemeColors
-                            }
                             Set-BrandTheme -Form $state.Form -IsCustom $true
                         }
                     }
@@ -667,14 +574,14 @@ function global:Run-DropAnimation {
                 $state.FadeForm.Close()
                 $state.FadeForm.Dispose()
                 
-                if ($state.TargetTheme -eq "Normal") {
+                if ($state.Reverting) {
                     $global:ThemeCustomActive = $false
                     $global:OriginalControlStyles.Clear()
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName "Normal" }
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsCustom $false }
                 }
                 else {
                     $global:ThemeCustomActive = $true
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName $state.TargetTheme }
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsCustom $true }
                 }
                 $global:IsThemeAnimating = $false
             }
@@ -898,24 +805,27 @@ function global:Set-BrandTheme {
                         $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
                         if ($c -is [System.Windows.Forms.CheckBox]) {
                             $c.add_Paint($checkboxPaintBlock)
-                        } else {
+                        }
+                        else {
                             $c.add_Paint($radioPaintBlock)
                         }
                         
                         $c.add_EnabledChanged({
-                            param($sender, $e)
-                            if ($global:ThemeCustomActive) {
-                                if (-not $sender.Enabled) {
-                                    $sender.ForeColor = $global:ThemeCustomDisabledText
-                                } else {
-                                    if ($sender.Name -eq "chkUiMode") {
+                                param($sender, $e)
+                                if ($global:ThemeCustomActive) {
+                                    if (-not $sender.Enabled) {
                                         $sender.ForeColor = $global:ThemeCustomDisabledText
-                                    } else {
-                                        $sender.ForeColor = $global:ThemeCustomText
+                                    }
+                                    else {
+                                        if ($sender.Name -eq "chkUiMode") {
+                                            $sender.ForeColor = $global:ThemeCustomDisabledText
+                                        }
+                                        else {
+                                            $sender.ForeColor = $global:ThemeCustomText
+                                        }
                                     }
                                 }
-                            }
-                        })
+                            })
                     }
                     
                     # Add leading spaces for GDI+ flat style padding if not already present
@@ -929,11 +839,13 @@ function global:Set-BrandTheme {
                     else {
                         if (-not $c.Enabled) {
                             $c.ForeColor = $global:ThemeCustomDisabledText
-                        } else {
+                        }
+                        else {
                             if ($c.Name -eq "chkUiMode") {
                                 $c.ForeColor = $global:ThemeCustomDisabledText
                                 $c.FlatAppearance.BorderColor = $global:ThemeCustomAlert
-                            } else {
+                            }
+                            else {
                                 $c.ForeColor = $global:ThemeCustomText
                             }
                         }
@@ -1027,6 +939,104 @@ function global:Set-BrandTheme {
                         if ($c.Name -match "^btnDiag|^btnTest|^btnTelemetry") {
                             $c.FlatAppearance.BorderColor = [System.Drawing.Color]::DarkGray
                             $c.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(230, 230, 230)
+                        }
+                        else {
+                            if ($styles.ContainsKey('BorderColor')) {
+                                $c.FlatAppearance.BorderColor = $styles['BorderColor']
+                            }
+                            if ($styles.ContainsKey('MouseOverBackColor')) {
+                                $c.FlatAppearance.MouseOverBackColor = $styles['MouseOverBackColor']
+                            }
+                        }
+                        if ($c.Name -match '^btnDrawer2Tab|^btnSubTab|^btnTab') {
+                            $c.FlatAppearance.BorderSize = 0
+                            $c.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+                        }
+                        elseif ($styles.ContainsKey('BorderSize')) {
+                            $c.FlatAppearance.BorderSize = $styles['BorderSize']
+                        }
+                    }
+                }
+                else {
+                    $c.ResetBackColor()
+                    $c.ResetForeColor()
+                }
+                
+                if ($c -is [System.Windows.Forms.PictureBox] -and $c.Name -eq "logo") {
+                    $c.ImageLocation = $global:ImgColorPath
+                }
+            }
+
+            try { $c.Invalidate() } catch {}
+
+            if ($c.HasChildren) {
+                Walk-Controls $c.Controls
+            }
+        }
+    }
+
+    Walk-Controls -ctrls $Form.Controls
+
+    # Restore z-order for the version label so its double-click handler remains reachable
+    if ($script:bottomMetadata) { $script:bottomMetadata.BringToFront() }
+
+    # Sync active tab / secondary tab colors
+    if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {
+        try { Update-TabIndicator } catch {}
+    }
+    if (Get-Command Update-SecondaryTabStyles -ErrorAction SilentlyContinue) {
+        try { Update-SecondaryTabStyles } catch {}
+    }
+    # Ensure current state of Operating Mode box is rendered with correct colors for active theme
+    if (Get-Command Set-OperatingModeBoxState -ErrorAction SilentlyContinue) {
+        try {
+            $isBoxEnabled = $true
+            if ($script:listAutomated) {
+                $isBoxEnabled = ($script:listAutomated.SelectedIndex -ge 0 -and $script:listAutomated.SelectedIndex -lt $script:MonitoredApps.Count)
+            }
+            Set-OperatingModeBoxState -Enabled $isBoxEnabled
+        }
+        catch {}
+    }
+    # Ensure current state of Operating Mode Tests box is rendered with correct colors for active theme
+    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+        try { Update-TestGroupState } catch {}
+    }
+}
+
+function global:Save-ThemePreference {
+    param([bool]$IsCustom)
+    try {
+        $cfgPath = $null
+        if ($global:PackageDir) {
+            $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+        }
+        else {
+            $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+        }
+        
+        $cfg = @{}
+        if (Test-Path -LiteralPath $cfgPath) {
+            try { $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json } catch { $cfg = @{} }
+        }
+        else {
+            $dir = Split-Path -Parent $cfgPath
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        }
+        
+        $themeVal = if ($IsCustom) { "Neon" } else { "Normal" }
+        $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $themeVal -Force
+        
+        $json = $cfg | ConvertTo-Json -Depth 6
+        Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8
+    }
+    catch {}
+}
+        $json = $cfg | ConvertTo-Json -Depth 6
+        Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8
+    }
+    catch {}
+}
                         }
                         else {
                             if ($styles.ContainsKey('BorderColor')) {

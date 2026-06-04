@@ -1,4 +1,4 @@
-﻿# Suggested filename: SAMISH.ps1
+# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -1120,28 +1120,42 @@ try {
                 }
 
                 Add-Content -LiteralPath $logPath -Value "Setup is not running. Launching new instance..." -ErrorAction SilentlyContinue
+                $setupPath = $null
                 if (Test-Path -LiteralPath $ConfigPath) {
                     $cfgRaw = Get-Content -LiteralPath $ConfigPath -Raw
                     if (-not [string]::IsNullOrWhiteSpace($cfgRaw)) {
                         $cfg = $cfgRaw | ConvertFrom-Json
                         if ($cfg -and $cfg.PSObject.Properties.Name -contains "SetupPath") {
                             $setupPath = [string]$cfg.SetupPath
-                            if (-not [string]::IsNullOrWhiteSpace($setupPath) -and (Test-Path -LiteralPath $setupPath)) {
-                                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                                if ($setupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
-                                    $psi.FileName = "powershell.exe"
-                                    $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$setupPath`""
-                                } else {
-                                    $psi.FileName = $setupPath
-                                    $psi.Arguments = ""
-                                }
-                                $psi.UseShellExecute = $true
-                                [System.Diagnostics.Process]::Start($psi) | Out-Null
-                                Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
-                                return
-                            }
                         }
                     }
+                }
+                
+                # Robust fallback to parent directory if SetupPath is missing or invalid
+                if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
+                    $parentDir = Split-Path -Parent $PSScriptRoot
+                    $candidateExe = Join-Path $parentDir "Setup.exe"
+                    $candidatePs1 = Join-Path $parentDir "Setup.ps1"
+                    if (Test-Path -LiteralPath $candidateExe) {
+                        $setupPath = $candidateExe
+                    } elseif (Test-Path -LiteralPath $candidatePs1) {
+                        $setupPath = $candidatePs1
+                    }
+                }
+                
+                if (-not [string]::IsNullOrWhiteSpace($setupPath) -and (Test-Path -LiteralPath $setupPath)) {
+                    $psi = New-Object System.Diagnostics.ProcessStartInfo
+                    if ($setupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $psi.FileName = "powershell.exe"
+                        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$setupPath`""
+                    } else {
+                        $psi.FileName = $setupPath
+                        $psi.Arguments = ""
+                    }
+                    $psi.UseShellExecute = $true
+                    [System.Diagnostics.Process]::Start($psi) | Out-Null
+                    Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
+                    return
                 }
                 
                 [System.Windows.Forms.MessageBox]::Show(

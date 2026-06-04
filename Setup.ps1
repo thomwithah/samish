@@ -1908,7 +1908,7 @@ A backup will be created before any changes are applied.
     if (Test-Path -LiteralPath $ConfigPath) {
         try {
             $cfgBoot = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
-            if ($cfgBoot -and $cfgBoot.PSObject.Properties.Name -contains "Theme") {
+            if ($cfgBoot -and $cfgBoot.PSObject.Properties.Name -contains "Theme" -and $cfgBoot.Theme) {
                 $global:ThemeActiveType = $cfgBoot.Theme
             }
         }
