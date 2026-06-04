@@ -47,10 +47,10 @@ You can toggle between layouts at any time using the **Full View Checkbox** in t
     - **Set Preferred Audio Device:** Capture and persist your default playback and communication endpoints so SAMISH can restore them after wake cycles.
     - **Game Mode Settings:** Configure automated exclusions so SAMISH skips telemetry scans while full-screen games or specific applications are running.
   * **Live Log Tab:** Stream real-time logs directly from the background engine (`samish.log`) to inspect sleep triggers.
-* **Diagnostics Drawer (Page 2):** Expand this by clicking **Diagnostics >>** to access real-time system/hardware telemetry and dry-run tests:
-  - **Operating Mode Tests:** Dry-run simulate sleep, wake, graceful close, and force close routines. This allows developers and users to verify that audio mixer software and other target applications close and relaunch correctly without needing to put the entire PC to sleep.
-  - **System Telemetry Tab:** View your sleep/wake history (last 5 standby cycles) and inspect active wake timers to trace exactly what scheduled tasks or apps are waking or keeping the system awake.
-  - **Hardware Telemetry Tab:** Review Windows Kernel data on armed wake-capable devices (like network adapters or input devices) and scan active USB & PCIe power management configurations to diagnose accidental hardware-triggered wake-ups.
+* **Diagnostics Drawer (Page 2):** Expand this by clicking **Diagnostics >>** to access real-time system/hardware telemetry, control options, and dry-run tests:
+  - **Operating Mode Tests:** Dry-run simulate sleep, wake, graceful close, and force close routines. This allows developers and users to verify that audio mixer software and other target applications close and relaunch correctly, and test how SAMISH will interact with the mixer software or other SAMISH Automated Apps, without needing to put the entire PC to sleep.
+  - **System Telemetry Tab:** View your sleep/wake history (last 5 standby cycles) and inspect active wake timers to trace exactly what scheduled tasks, apps, or services are waking or keeping the system awake. If a rogue wake timer is detected, you can take direct action from the UI (such as disabling the timer for scheduled tasks, disabling the service, or stopping the process).
+  - **Hardware Telemetry Tab:** Review Windows Kernel data on armed wake-capable devices (like network adapters or input devices) and scan active USB & PCIe power management configurations to diagnose accidental hardware-triggered wake-ups. This tab allows direct corrective control from the UI, letting you disable wake support on specific devices or toggle USB selective suspend settings.
 
 #### Color Theme Configurator
 SAMISH includes a standalone color theme utility. You can customize the dashboard palette to match your streaming setup:
