@@ -28,6 +28,18 @@ By monitoring system idle states, it automatically closes your audio software wh
 
 <img width="1180" alt="Diagnostics Hardware Telemetry" src="App/Assets/screenshots/7.png" />
 
+> [!WARNING]
+> **Windows SmartScreen & Antivirus False Positives**
+>
+> Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the setup installer (`SAMISH_Setup_v1.3.2.exe` and `Setup.exe`) does not have a paid digital signature. Your web browser and Windows Defender/SmartScreen will likely flag it as an "unrecognized app" or "unsafe file" until it builds up a download reputation.
+>
+> **What to expect:**
+> * **Browser Warning:** Chrome or Edge may warn that the file "is not commonly downloaded." Click the options menu (three dots) and select **Keep**.
+> * **Windows SmartScreen:** Windows may show a blue "Windows protected your PC" screen. Click **More info**, then click **Run anyway**.
+> * **UAC Admin Prompt:** Setup requires Administrator rights to configure your Windows power profiles (to manage screen sleep timers). Click **Yes** when prompted.
+>
+> *Transparency is important! If you are ever uncomfortable bypassing these warnings, the complete, uncompiled PowerShell source code is always available in this repository for you to review and run manually.*
+
 ---
 
 ## How to Run / Install
@@ -251,16 +263,4 @@ SAMISH includes out-of-the-box support for the most popular streaming and audio 
 
 SAMISH is designed to be fully extensible. Developers can easily write custom adapters using the template structure provided by the mock **Demo-Only** adapter and drop new `.json` configurations into the `Profiles` folder. Future updates will focus on deeper integration with virtual routing tables.
 
----
-⚠️ Note on Installation & Windows SmartScreen
-Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the installer (SAMISH_Setup_v1.2.4.exe) does not currently have an expensive digital signature. As a result, Windows and your web browser will likely flag it as an "unrecognized app" until it builds up a download reputation.
 
-When downloading and installing, you can expect the following:
-
-Browser Warning: Chrome or Edge might say the file "is not commonly downloaded." You will need to click the options menu (three dots) and select Keep to finish the download.
-
-Windows SmartScreen: When you run the installer, Windows may show a blue "Windows protected your PC" screen. Click More info, then click Run anyway.
-
-User Account Control (UAC): SAMISH requires Administrator rights to help configure your Windows power profiles (so it can manage your screen sleep timers). You will see a standard Windows prompt asking to allow the app to make changes. Click Yes.
-
-Transparency is important to us! If you are ever uncomfortable bypassing these warnings, the complete, uncompiled PowerShell source code is always available in this repository for you to review and run manually.
