@@ -25,21 +25,36 @@ $global:ImgColorPath = Join-Path $global:PackageDir "Assets\SAMISH-SQUARE-STYLIZ
 $global:ImgGrayPath = Join-Path $global:PackageDir "Assets\SAMISH-SQUARE-GREYSCALE-STYLIZED3.png"
 
 # Neon Palette - MUST BE GLOBAL to survive dot-sourcing inside a scriptblock
-$global:ThemeCustomBackground = [System.Drawing.Color]::FromArgb(15, 15, 18)       # #0F0F12
-$global:ThemeCustomSecondary = [System.Drawing.Color]::FromArgb(153, 51, 255)      # From stylized logo
-$global:ThemeCustomAlert = [System.Drawing.Color]::FromArgb(255, 0, 102)           # #FF0066
-$global:ThemeCustomHighlight = [System.Drawing.Color]::FromArgb(179, 255, 0)       # #b3ff00
-$global:ThemeCustomPrimary = [System.Drawing.Color]::FromArgb(0, 245, 212)         # #00f5d4
-$global:ThemeCustomText = [System.Drawing.Color]::FromArgb(255, 255, 255)          # #FFFFFF
-$global:ThemeCustomButton = [System.Drawing.Color]::FromArgb(35, 35, 40)           # #232328
-$global:ThemeCustomButtonHover = [System.Drawing.Color]::FromArgb(50, 50, 60)      # #32323C
-$global:ThemeCustomInput = [System.Drawing.Color]::FromArgb(25, 25, 30)            # #19191E
-$global:ThemeCustomPanel = [System.Drawing.Color]::FromArgb(18, 18, 22)            # #121216
-$global:ThemeCustomDisabled = [System.Drawing.Color]::FromArgb(10, 10, 12)         # #0A0A0C
-$global:ThemeCustomDisabledText = [System.Drawing.Color]::FromArgb(115, 135, 145)  # #738791
-$global:ThemeCustomCheckboxBg = $global:ThemeCustomInput                           # Background color for CheckBox boxes
-$global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary                   # Border color for CheckBoxes
-$global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary                      # Checkmark/Dot color for CheckBoxes (SAMISH Blue)
+# Fallback Neon Theme Set (hardcoded Easter egg values)
+$global:ThemeNeonBackground = [System.Drawing.Color]::FromArgb(15, 15, 18)       # #0F0F12
+$global:ThemeNeonSecondary = [System.Drawing.Color]::FromArgb(153, 51, 255)      # From stylized logo
+$global:ThemeNeonAlert = [System.Drawing.Color]::FromArgb(255, 0, 102)           # #FF0066
+$global:ThemeNeonHighlight = [System.Drawing.Color]::FromArgb(179, 255, 0)       # #b3ff00
+$global:ThemeNeonPrimary = [System.Drawing.Color]::FromArgb(0, 245, 212)         # #00f5d4
+$global:ThemeNeonText = [System.Drawing.Color]::FromArgb(255, 255, 255)          # #FFFFFF
+$global:ThemeNeonButton = [System.Drawing.Color]::FromArgb(35, 35, 40)           # #232328
+$global:ThemeNeonButtonHover = [System.Drawing.Color]::FromArgb(50, 50, 60)      # #32323C
+$global:ThemeNeonInput = [System.Drawing.Color]::FromArgb(25, 25, 30)            # #19191E
+$global:ThemeNeonPanel = [System.Drawing.Color]::FromArgb(18, 18, 22)            # #121216
+$global:ThemeNeonDisabled = [System.Drawing.Color]::FromArgb(10, 10, 12)         # #0A0A0C
+$global:ThemeNeonDisabledText = [System.Drawing.Color]::FromArgb(115, 135, 145)  # #738791
+
+# Active custom variables that paint elements in the UI (initialized with Neon values by default)
+$global:ThemeCustomBackground = $global:ThemeNeonBackground
+$global:ThemeCustomSecondary = $global:ThemeNeonSecondary
+$global:ThemeCustomAlert = $global:ThemeNeonAlert
+$global:ThemeCustomHighlight = $global:ThemeNeonHighlight
+$global:ThemeCustomPrimary = $global:ThemeNeonPrimary
+$global:ThemeCustomText = $global:ThemeNeonText
+$global:ThemeCustomButton = $global:ThemeNeonButton
+$global:ThemeCustomButtonHover = $global:ThemeNeonButtonHover
+$global:ThemeCustomInput = $global:ThemeNeonInput
+$global:ThemeCustomPanel = $global:ThemeNeonPanel
+$global:ThemeCustomDisabled = $global:ThemeNeonDisabled
+$global:ThemeCustomDisabledText = $global:ThemeNeonDisabledText
+$global:ThemeCustomCheckboxBg = $global:ThemeCustomInput
+$global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary
+$global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary
 
 # Helper to convert various string formats (Hex, RGB, Name) into Color objects
 function global:Get-ColorFromString {
@@ -119,8 +134,45 @@ function global:Load-CustomThemeColors {
     catch {}
 }
 
+function global:Load-NeonThemeColors {
+    $global:ThemeCustomBackground = $global:ThemeNeonBackground
+    $global:ThemeCustomSecondary = $global:ThemeNeonSecondary
+    $global:ThemeCustomAlert = $global:ThemeNeonAlert
+    $global:ThemeCustomHighlight = $global:ThemeNeonHighlight
+    $global:ThemeCustomPrimary = $global:ThemeNeonPrimary
+    $global:ThemeCustomText = $global:ThemeNeonText
+    $global:ThemeCustomButton = $global:ThemeNeonButton
+    $global:ThemeCustomButtonHover = $global:ThemeNeonButtonHover
+    $global:ThemeCustomInput = $global:ThemeNeonInput
+    $global:ThemeCustomPanel = $global:ThemeNeonPanel
+    $global:ThemeCustomDisabled = $global:ThemeNeonDisabled
+    $global:ThemeCustomDisabledText = $global:ThemeNeonDisabledText
+    $global:ThemeCustomCheckboxBg = $global:ThemeCustomInput
+    $global:ThemeCustomCheckboxBorder = $global:ThemeCustomSecondary
+    $global:ThemeCustomCheckboxCheck = $global:ThemeCustomPrimary
+}
+
+function global:Initialize-ActiveThemeColors {
+    $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+    $theme = "Normal"
+    if (Test-Path -LiteralPath $cfgPath) {
+        try {
+            $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json
+            if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
+                $theme = $cfg.Theme
+            }
+        } catch {}
+    }
+    
+    if ($theme -eq "Custom") {
+        Load-CustomThemeColors
+    } else {
+        Load-NeonThemeColors
+    }
+}
+
 # Run color loading immediately to initialize custom theme colors
-Load-CustomThemeColors
+Initialize-ActiveThemeColors
 
 function global:Register-HoverFadeAnimation {
     param(
@@ -234,11 +286,45 @@ function global:Save-OriginalStyles {
     Walk-Save $Form.Controls
 }
 
+function global:Get-NextTheme {
+    $current = "Normal"
+    $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+    if (Test-Path -LiteralPath $cfgPath) {
+        try {
+            $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json
+            if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
+                $current = $cfg.Theme
+            }
+        } catch {}
+    }
+    
+    $appDir = if ($global:PackageDir) { Join-Path $global:PackageDir "App" } else { "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\App" }
+    $hasCustom = Test-Path -LiteralPath (Join-Path $appDir "custom_theme.json")
+    
+    switch ($current) {
+        "Normal" {
+            if ($hasCustom) { return "Custom" } else { return "Neon" }
+        }
+        "Custom" {
+            return "Neon"
+        }
+        "Neon" {
+            return "Normal"
+        }
+        default {
+            return "Normal"
+        }
+    }
+}
+
 function global:Invoke-BrandSequence {
     param([System.Windows.Forms.Form]$Form)
 
     if ($global:IsThemeAnimating) { return }
     $global:IsThemeAnimating = $true
+    
+    $targetTheme = Get-NextTheme
+    $isReverting = ($targetTheme -eq "Normal")
     
     if (-not $global:ThemeCustomActive) {
         Save-OriginalStyles -Form $Form
@@ -253,11 +339,11 @@ function global:Invoke-BrandSequence {
 
     # Load the logo image directly into a Drawing.Image - no PictureBox needed.
     # GDI+ DrawImage handles PNG transparency correctly in one pass.
-    $imgPath = if ($global:ThemeCustomActive) { $global:ImgGrayPath } else { $global:ImgColorPath }
+    $imgPath = if ($isReverting) { $global:ImgGrayPath } else { $global:ImgColorPath }
     $logoImage = $null
     try { $logoImage = [System.Drawing.Image]::FromFile($imgPath) } catch {}
 
-    Run-TakeoverAnimation -Form $Form -LogoImage $logoImage -TargetSize $targetSize -Reverting $global:ThemeCustomActive
+    Run-TakeoverAnimation -Form $Form -LogoImage $logoImage -TargetSize $targetSize -Reverting $isReverting -TargetTheme $targetTheme
 }
 
 function global:Run-TakeoverAnimation {
@@ -265,7 +351,8 @@ function global:Run-TakeoverAnimation {
         [System.Windows.Forms.Form]$Form,
         [System.Drawing.Image]$LogoImage,
         [int]$TargetSize,
-        [bool]$Reverting
+        [bool]$Reverting,
+        [string]$TargetTheme
     )
 
     $PackageDir_Local = $global:PackageDir
@@ -290,6 +377,7 @@ function global:Run-TakeoverAnimation {
         FlashColor        = $global:ThemeCustomBackground
         TargetSize        = $TargetSize
         Reverting         = $Reverting
+        TargetTheme       = $TargetTheme
         ScaleVelocity     = 1.0
         ScaleAcceleration = if ($Reverting) { 1.6 } else { 1.1 }
         StrobeFrames      = @()
@@ -437,10 +525,15 @@ function global:Run-TakeoverAnimation {
                     }
 
                     try {
-                        if ($state.Reverting) {
+                        if ($state.TargetTheme -eq "Normal") {
                             Set-BrandTheme -Form $state.Form -IsCustom $false
                         }
                         else {
+                            if ($state.TargetTheme -eq "Custom") {
+                                Load-CustomThemeColors
+                            } else {
+                                Load-NeonThemeColors
+                            }
                             Set-BrandTheme -Form $state.Form -IsCustom $true
                         }
                     }
@@ -574,14 +667,14 @@ function global:Run-DropAnimation {
                 $state.FadeForm.Close()
                 $state.FadeForm.Dispose()
                 
-                if ($state.Reverting) {
+                if ($state.TargetTheme -eq "Normal") {
                     $global:ThemeCustomActive = $false
                     $global:OriginalControlStyles.Clear()
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsCustom $false }
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName "Normal" }
                 }
                 else {
                     $global:ThemeCustomActive = $true
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -IsCustom $true }
+                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName $state.TargetTheme }
                 }
                 $global:IsThemeAnimating = $false
             }
@@ -1000,7 +1093,7 @@ function global:Set-BrandTheme {
 }
 
 function global:Save-ThemePreference {
-    param([bool]$IsCustom)
+    param([string]$ThemeName)
     try {
         $cfgPath = $null
         if ($global:PackageDir) {
@@ -1019,8 +1112,7 @@ function global:Save-ThemePreference {
             if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         }
         
-        $themeVal = if ($IsCustom) { "Neon" } else { "Normal" }
-        $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $themeVal -Force
+        $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $ThemeName -Force
         
         $json = $cfg | ConvertTo-Json -Depth 6
         Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8

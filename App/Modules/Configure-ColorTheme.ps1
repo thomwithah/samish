@@ -15,6 +15,55 @@ if (-not (Test-Path $TemplateFile)) {
 
 Add-Type -AssemblyName System.Drawing
 
+function Set-ConfigThemeValue {
+    param([string]$ThemeValue)
+    try {
+        $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+        $cfg = @{}
+        if (Test-Path -LiteralPath $cfgPath) {
+            $raw = Get-Content -LiteralPath $cfgPath -Raw -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $cfg = $raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            }
+        }
+        if ($null -eq $cfg) { $cfg = @{} }
+        $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $ThemeValue -Force
+        $json = $cfg | ConvertTo-Json -Depth 6
+        Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8
+    } catch {
+        Write-Host "Warning: Failed to update Theme in config.json: $_" -ForegroundColor Yellow
+    }
+}
+
+# Startup custom theme verification check
+if (Test-Path -LiteralPath $TargetFile) {
+    $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+    $currentTheme = "Normal"
+    if (Test-Path -LiteralPath $cfgPath) {
+        try {
+            $raw = Get-Content -LiteralPath $cfgPath -Raw -ErrorAction SilentlyContinue
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $cfg = $raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
+                    $currentTheme = $cfg.Theme
+                }
+            }
+        } catch {}
+    }
+    if ($currentTheme -ne "Custom") {
+        Write-Host "=============================================" -ForegroundColor Cyan
+        Write-Host " A saved custom theme configuration was found." -ForegroundColor Cyan
+        Write-Host "=============================================" -ForegroundColor Cyan
+        Write-Host ""
+        $applyChoice = Read-Host "Would you like to activate and apply it as your active theme now? (Y/N)"
+        if ($applyChoice -match "^y" -or $applyChoice -match "^Y") {
+            Set-ConfigThemeValue -ThemeValue "Custom"
+            Write-Host "Custom theme activated successfully." -ForegroundColor Green
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 function Prompt-Color {
     param(
         [string]$PromptText,
@@ -96,7 +145,8 @@ function Run-Wizard {
     Set-Content -Path $TargetFile -Value $jsonOutput -Encoding UTF8
 
     Write-Host "`nTheme configuration saved to: $TargetFile" -ForegroundColor Green
-    Write-Host "SAMISH will use these colors when the Custom theme is active!" -ForegroundColor Green
+    Set-ConfigThemeValue -ThemeValue "Custom"
+    Write-Host "Custom theme set as active in config.json!" -ForegroundColor Green
     
     if (Test-Path $Executable) {
         Write-Host ""
@@ -116,7 +166,7 @@ while ($true) {
     Write-Host ""
     Write-Host "Please select an option:"
     Write-Host " [1] Create or edit your Custom Color Theme"
-    Write-Host " [2] Reset Custom Theme to original defaults"
+    Write-Host " [2] Restore default brand theme"
     Write-Host " [3] Restore your previously saved Custom Theme (from backup)"
     Write-Host " [X] Exit"
     Write-Host ""
@@ -128,20 +178,28 @@ while ($true) {
         break
     }
     elseif ($choice -eq "2") {
-        if (Test-Path $TargetFile) {
-            Move-Item $TargetFile $BackupFile -Force
-            Write-Host "`nSuccessfully backed up and removed custom_theme.json." -ForegroundColor Green
-            Write-Host "SAMISH has been reset to the original default custom colors." -ForegroundColor Green
+        $saveCustom = Read-Host "`nWould you like to save/keep your current custom theme colors before reverting to defaults? (Y/N)"
+        if ($saveCustom -match "^y" -or $saveCustom -match "^Y") {
+            if (Test-Path $TargetFile) {
+                Copy-Item $TargetFile $BackupFile -Force
+                Write-Host "`nYour custom theme configuration has been saved/backed up to custom_theme.json.bak." -ForegroundColor Green
+            }
         } else {
-            Write-Host "`ncustom_theme.json not found. SAMISH is already using the original defaults." -ForegroundColor Yellow
+            if (Test-Path $TargetFile) {
+                Move-Item $TargetFile $BackupFile -Force
+                Write-Host "`nCustom theme backed up to custom_theme.json.bak and removed." -ForegroundColor Green
+            }
         }
+        Set-ConfigThemeValue -ThemeValue "Normal"
+        Write-Host "SAMISH theme reset to default brand colors." -ForegroundColor Green
         Start-Sleep -Seconds 3
         break
     }
     elseif ($choice -eq "3") {
         if (Test-Path $BackupFile) {
             Copy-Item $BackupFile $TargetFile -Force
-            Write-Host "`nSuccessfully restored Custom Theme from backup." -ForegroundColor Green
+            Set-ConfigThemeValue -ThemeValue "Custom"
+            Write-Host "`nSuccessfully restored Custom Theme from backup and set as active." -ForegroundColor Green
         } else {
             Write-Host "`nNo backup file found at $BackupFile" -ForegroundColor Red
         }

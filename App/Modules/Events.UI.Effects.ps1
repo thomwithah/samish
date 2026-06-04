@@ -739,6 +739,50 @@ if ($form) {
 
     $form.add_LocationChanged($script:ResolutionCheckHandler)
     $form.add_Resize($script:ResolutionCheckHandler)
+
+    # Reload theme dynamically when form gains focus if theme changed on disk (e.g., via standalone configurator)
+    $form.add_Activated({
+            if ($global:IsThemeAnimating) { return }
+            
+            $diskTheme = "Normal"
+            $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"
+            if (Test-Path -LiteralPath $cfgPath) {
+                try {
+                    $cfg = (Get-Content -LiteralPath $cfgPath -Raw) | ConvertFrom-Json
+                    if ($cfg -and $cfg.PSObject.Properties.Match('Theme').Count -gt 0) {
+                        $diskTheme = $cfg.Theme
+                    }
+                } catch {}
+            }
+            
+            if ($diskTheme -ne $global:ThemeActiveType) {
+                if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
+                    $themeExt = Join-Path $global:PackageDir "Modules\Theme-Extension.ps1"
+                    if (Test-Path -LiteralPath $themeExt) {
+                        . $themeExt
+                    }
+                }
+                
+                $global:ThemeActiveType = $diskTheme
+                if ($diskTheme -eq "Normal") {
+                    $global:ThemeCustomActive = $false
+                    try { Set-BrandTheme -Form $form -IsCustom $false } catch {}
+                }
+                else {
+                    if ($diskTheme -eq "Custom") {
+                        try { Load-CustomThemeColors } catch {}
+                    } else {
+                        try { Load-NeonThemeColors } catch {}
+                    }
+                    $global:ThemeCustomActive = $true
+                    try { Set-BrandTheme -Form $form -IsCustom $true } catch {}
+                }
+                
+                if (Get-Command Update-TabIndicator -ErrorAction SilentlyContinue) {
+                    try { Update-TabIndicator } catch {}
+                }
+            }
+        })
 }
 
 

@@ -863,8 +863,8 @@ A backup will be created before any changes are applied.
         }
 
         $themeVal = "Normal"
-        if ($null -ne $global:ThemeNeonActive) {
-            $themeVal = if ($global:ThemeNeonActive) { "Neon" } else { "Normal" }
+        if ($null -ne $global:ThemeActiveType) {
+            $themeVal = $global:ThemeActiveType
         }
         elseif ($existing -and $existing.PSObject.Properties.Name -contains "Theme" -and $existing.Theme) {
             $themeVal = $existing.Theme
@@ -1903,18 +1903,19 @@ A backup will be created before any changes are applied.
             }
         })
 
-    # Pre-initialize Neon theme state from config before form render
+    # Pre-initialize Theme active state from config before form render
+    $global:ThemeActiveType = "Normal"
     if (Test-Path -LiteralPath $ConfigPath) {
         try {
             $cfgBoot = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
             if ($cfgBoot -and $cfgBoot.PSObject.Properties.Name -contains "Theme") {
-                $global:ThemeNeonActive = ($cfgBoot.Theme -eq "Neon")
+                $global:ThemeActiveType = $cfgBoot.Theme
             }
         }
         catch {}
     }
 
-    if ($global:ThemeNeonActive) {
+    if ($global:ThemeActiveType -eq "Neon" -or $global:ThemeActiveType -eq "Custom") {
         # Initialize Neon colors globally as default fallbacks in case Theme-Extension fails or loading is delayed
         if ($null -eq $global:NeonBackground) { $global:NeonBackground = [System.Drawing.Color]::FromArgb(15, 15, 18) }
         if ($null -eq $global:NeonPurple) { $global:NeonPurple = [System.Drawing.Color]::FromArgb(153, 51, 255) }
@@ -1929,6 +1930,14 @@ A backup will be created before any changes are applied.
                 . $themeExt
             }
         }
+        
+        # Load correct color variables prior to drawing
+        if ($global:ThemeActiveType -eq "Custom") {
+            try { Load-CustomThemeColors } catch {}
+        } else {
+            try { Load-NeonThemeColors } catch {}
+        }
+
         try { Set-BrandTheme -Form $form -IsCustom $true } catch {}
         # Sync the tab indicator after the theme is applied -- Set-BrandTheme calls Update-TabIndicator
         # internally but at that point the form geometry may not be finalised yet; calling it again
