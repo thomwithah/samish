@@ -1,0 +1,61 @@
+name: SAMISH PSScriptAnalyzer Lint
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    name: Run PSScriptAnalyzer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $settings = ".github/workflows/PSScriptAnalyzerSettings.psd1"
+
+          # Scan production modules (matches Tests/CodeQuality.Tests.ps1 scope)
+          $files = Get-ChildItem -Path "./App/Modules" -Filter "*.ps1" -Recurse
+
+          $results = @()
+          foreach ($f in $files) {
+              $results += @(Invoke-ScriptAnalyzer -Path $f.FullName -Settings $settings -Severity Warning, Error)
+          }
+
+          if ($results.Count -gt 0) {
+              Write-Host "=== PSScriptAnalyzer Results ==="
+              $results | Format-Table -Property ScriptName, Line, Severity, RuleName, Message -AutoSize
+
+              $errors = @($results | Where-Object { $_.Severity -eq 'Error' })
+              if ($errors.Count -gt 0) {
+                  Write-Error "PSScriptAnalyzer found $($errors.Count) error(s). Build failed."
+                  exit 1
+              }
+
+              # Enforce warning baseline: no new warnings beyond the established count
+              # This baseline is also tracked in Tests/CodeQuality.Tests.ps1
+              $warningBaseline = 21
+              $warnings = @($results | Where-Object { $_.Severity -eq 'Warning' })
+              if ($warnings.Count -gt $warningBaseline) {
+                  Write-Error "PSScriptAnalyzer found $($warnings.Count) warnings (baseline: $warningBaseline). A regression was introduced."
+                  exit 1
+              }
+
+              Write-Host ""
+              Write-Host "Warnings: $($warnings.Count) (baseline: $warningBaseline)"
+              Write-Host "Errors: $($errors.Count)"
+          }
+          else {
+              Write-Host "No PSScriptAnalyzer issues found."
+          }

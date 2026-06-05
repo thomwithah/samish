@@ -250,9 +250,11 @@ function Update-TestButtonsTooltips {
             $tipForce = "$reason`r`n`r`n$baseForce"
         }
         else {
-            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue |
-                Where-Object { $_.MainWindowHandle -ne 0 } |
-                Select-Object -First 1
+            $procs = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue
+            if (-not $target.IsDeviceSoftware) {
+                $procs = $procs | Where-Object { $_.MainWindowHandle -ne 0 }
+            }
+            $proc = $procs | Select-Object -First 1
             $running = $null -ne $proc
 
             if ($running) {
@@ -312,7 +314,8 @@ function Update-TestButtonsTooltips {
                 $isWakeUnavailable = $true
             }
         }
-    } catch {}
+    }
+    catch {}
 
     # Apply visual styling to the wake button based on unavailable state
     if ($script:btnTestStart) {
@@ -321,16 +324,19 @@ function Update-TestButtonsTooltips {
                 if ($global:ThemeCustomActive) {
                     $script:btnTestStart.BackColor = $global:ThemeCustomDisabled
                     $script:btnTestStart.ForeColor = $global:ThemeCustomDisabledText
-                } else {
+                }
+                else {
                     $script:btnTestStart.BackColor = [System.Drawing.SystemColors]::Control
                     $script:btnTestStart.ForeColor = [System.Drawing.SystemColors]::GrayText
                 }
                 $script:btnTestStart.Tag = 'VisuallyDisabled'
-            } else {
+            }
+            else {
                 if ($global:ThemeCustomActive) {
                     $script:btnTestStart.BackColor = $global:ThemeCustomButton
                     $script:btnTestStart.ForeColor = $global:ThemeCustomPrimary
-                } else {
+                }
+                else {
                     $script:btnTestStart.BackColor = [System.Drawing.SystemColors]::Control
                     $script:btnTestStart.ForeColor = [System.Drawing.SystemColors]::ControlText
                 }
@@ -338,7 +344,8 @@ function Update-TestButtonsTooltips {
                     $script:btnTestStart.Tag = $null
                 }
             }
-        } catch {}
+        }
+        catch {}
     }
 
     # Set tooltips dynamically
@@ -503,12 +510,13 @@ $script:btnTestStart.add_Click({
                 if ($target.BeforeSleepMode -eq "PauseMedia") {
                     # Determine the correct wake action to mirror engine behavior
                     $wakeAction = switch ($target.OnWakeAction) {
-                        "Play"  { "Play" }
+                        "Play" { "Play" }
                         "Pause" { "Pause" }
                         "Smart" {
                             if ($null -ne $script:TestPreSleepPlayState -and -not $script:TestPreSleepPlayState) {
                                 "Pause"
-                            } else {
+                            }
+                            else {
                                 "Play"
                             }
                         }
@@ -521,7 +529,8 @@ $script:btnTestStart.add_Click({
                         if ($null -ne $script:TestPreSleepPlayState) {
                             $stateLabel = if ($script:TestPreSleepPlayState) { "Playing" } else { "Paused" }
                             $smartContext = " Smart Restore: restoring to $stateLabel (captured from Test Sleep)."
-                        } else {
+                        }
+                        else {
                             $smartContext = " Smart Restore: no prior Test Sleep detected -- defaulting to Play. Run Test Sleep/Hibernate first for accurate Smart Restore testing."
                         }
                     }
@@ -565,13 +574,14 @@ $script:btnTestStart.add_Click({
 
             # Determine the wake media action based on OnWakeAction setting
             $wakeAction = switch ($target.OnWakeAction) {
-                "Play"  { "Play" }
+                "Play" { "Play" }
                 "Pause" { "Pause" }
                 "ReopenOnly" { $null }
                 "Smart" {
                     if ($null -ne $script:TestPreSleepPlayState -and -not $script:TestPreSleepPlayState) {
                         "Pause"
-                    } else {
+                    }
+                    else {
                         "Play"
                     }
                 }
@@ -584,7 +594,8 @@ $script:btnTestStart.add_Click({
                 if ($null -ne $script:TestPreSleepPlayState) {
                     $stateLabel = if ($script:TestPreSleepPlayState) { "Playing" } else { "Paused" }
                     $smartContext = "Smart Restore: restoring to $stateLabel (captured from Test Sleep)."
-                } else {
+                }
+                else {
                     $smartContext = "Smart Restore: no prior Test Sleep detected -- defaulting to Play. Run Test Sleep/Hibernate first for accurate Smart Restore testing."
                 }
             }
@@ -764,7 +775,8 @@ $script:btnTestStop.add_Click({
                 # SMTC status 4 = Playing
                 $script:TestPreSleepPlayState = ($smtcStatus -eq 4)
                 Write-SetupLog "Operating Mode Test (Stop): Captured pre-sleep play state for $($target.DisplayName): $(if ($script:TestPreSleepPlayState) { 'Playing' } else { 'Paused/Stopped' })"
-            } catch {
+            }
+            catch {
                 Write-SetupLog "Operating Mode Test (Stop): Could not capture pre-sleep play state: $($_.Exception.Message)"
                 $script:TestPreSleepPlayState = $null
             }

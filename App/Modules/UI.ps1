@@ -1,4 +1,64 @@
 # ---------- UI ----------
+
+# ---- Extracted WinForms Event Handlers ---------------------
+
+function Handle-SubtitlePaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for SAMISH acronym subtitle custom paint')]
+    param($sender, $e)
+    $normalFont = $sender.Font
+    $boldFont = New-Object System.Drawing.Font($normalFont.FontFamily, $normalFont.Size, [System.Drawing.FontStyle]::Bold)
+
+    $words = @(
+        @{ Init = "S"; Rest = "treaming" },
+        @{ Init = "A"; Rest = "udio" },
+        @{ Init = "M"; Rest = "ixer" },
+        @{ Init = "I"; Rest = "nterface" },
+        @{ Init = "S"; Rest = "leep" },
+        @{ Init = "H"; Rest = "elper" }
+    )
+
+    $brush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
+    $sf = [System.Drawing.StringFormat]::GenericTypographic
+    $x = 0.0
+    $y = 0.0
+    $spaceWidth = 5.0
+
+    for ($i = 0; $i -lt $words.Count; $i++) {
+        $w = $words[$i]
+
+        # Draw bold initial
+        $e.Graphics.DrawString($w.Init, $boldFont, $brush, $x, $y, $sf)
+        $initSize = $e.Graphics.MeasureString($w.Init, $boldFont, [System.Drawing.PointF]::Empty, $sf)
+        $x += $initSize.Width
+
+        # Draw normal rest
+        $e.Graphics.DrawString($w.Rest, $normalFont, $brush, $x, $y, $sf)
+        $restSize = $e.Graphics.MeasureString($w.Rest, $normalFont, [System.Drawing.PointF]::Empty, $sf)
+        $x += $restSize.Width
+
+        # Add space after word (except for the last word)
+        if ($i -lt $words.Count - 1) {
+            $x += $spaceWidth
+        }
+    }
+
+    $brush.Dispose()
+    $boldFont.Dispose()
+}
+
+function Handle-TabWrapperPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for tab wrapper panel neon border paint')]
+    param($sender, $e)
+    if ($global:ThemeCustomActive) {
+        $penColor = if ($global:ThemeCustomSecondary) { $global:ThemeCustomSecondary } else { [System.Drawing.Color]::FromArgb(153, 51, 255) }
+        $pen = New-Object System.Drawing.Pen($penColor, 1)
+        $e.Graphics.DrawRectangle($pen, 0, 0, $sender.Width - 1, $sender.Height - 1)
+        $pen.Dispose()
+    }
+}
+
 function Set-ButtonVisualState {
     <#
     .SYNOPSIS
@@ -107,48 +167,7 @@ $subtitle.Size = New-Object System.Drawing.Size(300, 20)
 $subtitle.UseMnemonic = $false
 $subtitle.Location = New-Object System.Drawing.Point(20, 60)
 
-$subtitle.add_Paint({
-        param($sender, $e)
-        $normalFont = $sender.Font
-        $boldFont = New-Object System.Drawing.Font($normalFont.FontFamily, $normalFont.Size, [System.Drawing.FontStyle]::Bold)
-    
-        $words = @(
-            @{ Init = "S"; Rest = "treaming" },
-            @{ Init = "A"; Rest = "udio" },
-            @{ Init = "M"; Rest = "ixer" },
-            @{ Init = "I"; Rest = "nterface" },
-            @{ Init = "S"; Rest = "leep" },
-            @{ Init = "H"; Rest = "elper" }
-        )
-    
-        $brush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
-        $sf = [System.Drawing.StringFormat]::GenericTypographic
-        $x = 0.0
-        $y = 0.0
-        $spaceWidth = 5.0
-    
-        for ($i = 0; $i -lt $words.Count; $i++) {
-            $w = $words[$i]
-        
-            # Draw bold initial
-            $e.Graphics.DrawString($w.Init, $boldFont, $brush, $x, $y, $sf)
-            $initSize = $e.Graphics.MeasureString($w.Init, $boldFont, [System.Drawing.PointF]::Empty, $sf)
-            $x += $initSize.Width
-        
-            # Draw normal rest
-            $e.Graphics.DrawString($w.Rest, $normalFont, $brush, $x, $y, $sf)
-            $restSize = $e.Graphics.MeasureString($w.Rest, $normalFont, [System.Drawing.PointF]::Empty, $sf)
-            $x += $restSize.Width
-        
-            # Add space after word (except for the last word)
-            if ($i -lt $words.Count - 1) {
-                $x += $spaceWidth
-            }
-        }
-    
-        $brush.Dispose()
-        $boldFont.Dispose()
-    })
+$subtitle.add_Paint({ Handle-SubtitlePaint @args })
 
 $form.Controls.Add($subtitle)
 
@@ -230,15 +249,7 @@ $pnlTabWrapper.BackColor = [System.Drawing.Color]::Transparent
 $form.Controls.Add($pnlTabWrapper)
 $script:pnlTabWrapper = $pnlTabWrapper
 
-$pnlTabWrapper.add_Paint({
-        param($sender, $e)
-        if ($global:ThemeCustomActive) {
-            $penColor = if ($global:ThemeCustomSecondary) { $global:ThemeCustomSecondary } else { [System.Drawing.Color]::FromArgb(153, 51, 255) }
-            $pen = New-Object System.Drawing.Pen($penColor, 1)
-            $e.Graphics.DrawRectangle($pen, 0, 0, $sender.Width - 1, $sender.Height - 1)
-            $pen.Dispose()
-        }
-    })
+$pnlTabWrapper.add_Paint({ Handle-TabWrapperPaint @args })
 
 # Create borderless TabControl (clipped inside wrapper panel)
 $tabControl = New-Object System.Windows.Forms.TabControl

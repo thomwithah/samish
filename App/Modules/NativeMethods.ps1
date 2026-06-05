@@ -310,6 +310,20 @@ function global:Get-ControlAtPoint {
     return $Parent
 }
 
+# Cleanup handler for controls with registered tooltips
+function Handle-TooltipControlDisposed {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for Control.Disposed tooltip cleanup')]
+    param($sender, $e)
+    if ($script:CustomTooltipTexts -and $script:CustomTooltipTexts.ContainsKey($sender)) {
+        $script:CustomTooltipTexts.Remove($sender)
+    }
+    if ($script:HoveredControl -eq $sender) {
+        if ($script:TooltipForm -and -not $script:TooltipForm.IsDisposed) { $script:TooltipForm.Hide() }
+        $script:HoveredControl = $null
+    }
+}
+
 # Registers or updates tooltip text and starts the hover tracker timer
 function global:Register-CustomToolTip {
     param($Control, $Text)
@@ -429,16 +443,7 @@ function global:Register-CustomToolTip {
     $script:CustomTooltipTexts[$Control] = $Text
     
     if ($isNew) {
-        $Control.add_Disposed({
-            param($sender, $e)
-            if ($script:CustomTooltipTexts -and $script:CustomTooltipTexts.ContainsKey($sender)) {
-                $script:CustomTooltipTexts.Remove($sender)
-            }
-            if ($script:HoveredControl -eq $sender) {
-                if ($script:TooltipForm -and -not $script:TooltipForm.IsDisposed) { $script:TooltipForm.Hide() }
-                $script:HoveredControl = $null
-            }
-        })
+        $Control.add_Disposed({ Handle-TooltipControlDisposed @args })
     }
 }
 

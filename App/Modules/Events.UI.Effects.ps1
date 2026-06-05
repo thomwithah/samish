@@ -7,10 +7,12 @@
 # Outputs: None (applies custom UI drawing and changes control styles).
 # Error Handling: Handles drawing and transition errors gracefully.
 # ==============================================================================
-# ---------- UI wiring ----------
 
-# ---------- Custom DrawItem event for ComboBoxes (SAMISH Cyan Highlight) ----------
-$global:comboDrawItem = {
+# ---- Extracted WinForms Event Handlers ---------------------
+
+function Handle-ComboBoxDrawItem {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for ComboBox OwnerDraw cyan highlight')]
     param($sender, $e)
     if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
 
@@ -65,6 +67,44 @@ $global:comboDrawItem = {
     $e.DrawFocusRectangle()
 }
 
+function Handle-CfgGroupPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for config GroupBox focus border paint')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'sender',
+        Justification = 'Required by WinForms EventHandler delegate; controls resolved via $script: scope')]
+    param($sender, $e)
+    try {
+        $tbLog = $null
+        $arrLog = @($script:tbLogCustom | Where-Object { $_ -is [System.Windows.Forms.Control] })
+        if ($arrLog.Count -gt 0) { $tbLog = $arrLog[-1] }
+    
+        $tbKey = $null
+        $arrKey = @($script:tbCustomKey | Where-Object { $_ -is [System.Windows.Forms.Control] })
+        if ($arrKey.Count -gt 0) { $tbKey = $arrKey[-1] }
+
+        if ($tbLog -is [System.Windows.Forms.Control] -and $tbLog.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbLog.Location.X - 1, $tbLog.Location.Y - 1, $tbLog.Width + 1, $tbLog.Height + 1)
+            $pen = New-Object System.Drawing.Pen($script:BrandCyan, 2)
+            $e.Graphics.DrawRectangle($pen, $rect)
+            $pen.Dispose()
+        }
+        if ($tbKey -is [System.Windows.Forms.Control] -and $tbKey.Focused) {
+            $rect = New-Object System.Drawing.Rectangle($tbKey.Location.X - 1, $tbKey.Location.Y - 1, $tbKey.Width + 1, $tbKey.Height + 1)
+            $pen = New-Object System.Drawing.Pen($script:BrandCyan, 2)
+            $e.Graphics.DrawRectangle($pen, $rect)
+            $pen.Dispose()
+        }
+    }
+    catch {
+        # Silently suppress any drawing exceptions (like legacy array indexing bugs)
+    }
+}
+
+# ---------- UI wiring ----------
+
+# ---------- Custom DrawItem event for ComboBoxes (SAMISH Cyan Highlight) ----------
+$global:comboDrawItem = { Handle-ComboBoxDrawItem @args }
+
 $logCtrl = if ($script:ddLogInterval) { $script:ddLogInterval } else { $ddLogInterval }
 if ($logCtrl) { $logCtrl.add_DrawItem($global:comboDrawItem) }
 
@@ -89,34 +129,7 @@ $arrKeySingle = @($tbCustomKey | Where-Object { $_ -is [System.Windows.Forms.Con
 if ($arrKeySingle.Count -gt 0) { $tbKeySingle = $arrKeySingle[-1] }
 
 if ($cfgGroup) {
-    $cfgGroup.add_Paint({
-            param($sender, $e)
-            try {
-                $tbLog = $null
-                $arrLog = @($tbLogCustom | Where-Object { $_ -is [System.Windows.Forms.Control] })
-                if ($arrLog.Count -gt 0) { $tbLog = $arrLog[-1] }
-            
-                $tbKey = $null
-                $arrKey = @($tbCustomKey | Where-Object { $_ -is [System.Windows.Forms.Control] })
-                if ($arrKey.Count -gt 0) { $tbKey = $arrKey[-1] }
-
-                if ($tbLog -is [System.Windows.Forms.Control] -and $tbLog.Focused) {
-                    $rect = New-Object System.Drawing.Rectangle($tbLog.Location.X - 1, $tbLog.Location.Y - 1, $tbLog.Width + 1, $tbLog.Height + 1)
-                    $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
-                    $e.Graphics.DrawRectangle($pen, $rect)
-                    $pen.Dispose()
-                }
-                if ($tbKey -is [System.Windows.Forms.Control] -and $tbKey.Focused) {
-                    $rect = New-Object System.Drawing.Rectangle($tbKey.Location.X - 1, $tbKey.Location.Y - 1, $tbKey.Width + 1, $tbKey.Height + 1)
-                    $pen = New-Object System.Drawing.Pen($BrandCyan, 2)
-                    $e.Graphics.DrawRectangle($pen, $rect)
-                    $pen.Dispose()
-                }
-            }
-            catch {
-                # Silently suppress any drawing exceptions (like legacy array indexing bugs)
-            }
-        })
+    $cfgGroup.add_Paint({ Handle-CfgGroupPaint @args })
 
     $tbLogSingle.add_GotFocus({ $cfgGroup.Invalidate() })
     $tbLogSingle.add_LostFocus({ $cfgGroup.Invalidate() })

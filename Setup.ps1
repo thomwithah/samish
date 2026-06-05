@@ -9,6 +9,40 @@
 #   - SAMISH-InteractiveTask.xml
 # ==========================================
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'StateFile',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'InstallMode',
+    Justification = 'Consumed by dot-sourced module Install.Engine.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'OperatingMode',
+    Justification = 'Consumed by dot-sourced module Install.Engine.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'EnableTrayIcon',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'EnableHotkey',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'HotkeyMode',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'CustomHotkey',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'ApplyPowerPlanFix',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'AcceptPowerPlanChanges',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'EnableLogging',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'LogEverySeconds',
+    Justification = 'Consumed by dot-sourced module Events.Setup.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'EnableAutoRecovery',
+    Justification = 'Consumed by dot-sourced module Install.Engine.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'tooltip',
+    Justification = 'Consumed by dot-sourced modules UI.SetupTab.ps1 and UI.DiagTab.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'ProductName',
+    Justification = 'Consumed by dot-sourced module UI.SetupTab.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'ProductLong',
+    Justification = 'Consumed by dot-sourced module UI.SetupTab.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'ProductVersion',
+    Justification = 'Consumed by dot-sourced module UI.SetupTab.ps1')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', 'AuthorLine',
+    Justification = 'Consumed by dot-sourced module UI.SetupTab.ps1')]
 param(
     [string]$StateFile = "",
 
@@ -1737,6 +1771,12 @@ A backup will be created before any changes are applied.
     }
 
     function Show-DiagnosticsHeader {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'TrayRequested',
+            Justification = 'Passed by Events.Setup.ps1 callers; reserved for future diagnostic detail rendering')]
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'HotkeyRequested',
+            Justification = 'Passed by Events.Setup.ps1 callers; reserved for future diagnostic detail rendering')]
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'LoggingRequested',
+            Justification = 'Passed by Events.Setup.ps1 callers; reserved for future diagnostic detail rendering')]
         param(
             [string]$Context = "",
             [string]$Mode = "",

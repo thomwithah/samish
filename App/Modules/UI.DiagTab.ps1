@@ -1,4 +1,43 @@
 # ---------- UI.DiagTab.ps1 ----------
+
+# ---- Extracted WinForms Event Handlers ---------------------
+
+function Handle-TestGroupFlashTimerTick {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for test group flash timer tick')]
+    param($sender, $e)
+    $script:testGroupFlashTick++
+    $colors = $sender.Tag
+    if ($script:testGroupFlashTick % 2 -eq 0) {
+        $script:testGroup.ForeColor = $colors.Color1
+    }
+    else {
+        $script:testGroup.ForeColor = $colors.Color2
+    }
+    if ($script:testGroupFlashTick -ge 5) {
+        $script:testGroup.ForeColor = $colors.Color2
+        try {
+            if ($script:testGroupFlashTimer) {
+                $script:testGroupFlashTimer.Stop()
+                $script:testGroupFlashTimer.Dispose()
+                $script:testGroupFlashTimer = $null
+            }
+        }
+        catch {}
+    }
+}
+
+function Handle-AdvancedDiagPanelPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for advanced diagnostics panel background paint')]
+    param($sender, $e)
+    $color = if ($global:ThemeCustomActive) { $global:ThemeCustomBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
+    if ($null -eq $color) { $color = [System.Drawing.Color]::FromArgb(240, 240, 240) }
+    $brush = New-Object System.Drawing.SolidBrush($color)
+    $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)
+    $brush.Dispose()
+}
+
 # ---------- Operating Mode Tests ----------
 # GroupBox is always Enabled so the tooltip is accessible even when children
 # are disabled. ForeColor is managed dynamically by Update-TestGroupState.
@@ -188,28 +227,7 @@ function Update-TestGroupState {
             Color1 = $color1
             Color2 = $color2
         }
-        $script:testGroupFlashTimer.add_Tick({
-                param($sender, $e)
-                $script:testGroupFlashTick++
-                $colors = $sender.Tag
-                if ($script:testGroupFlashTick % 2 -eq 0) {
-                    $script:testGroup.ForeColor = $colors.Color1
-                }
-                else {
-                    $script:testGroup.ForeColor = $colors.Color2
-                }
-                if ($script:testGroupFlashTick -ge 5) {
-                    $script:testGroup.ForeColor = $colors.Color2
-                    try {
-                        if ($script:testGroupFlashTimer) {
-                            $script:testGroupFlashTimer.Stop()
-                            $script:testGroupFlashTimer.Dispose()
-                            $script:testGroupFlashTimer = $null
-                        }
-                    }
-                    catch {}
-                }
-            })
+        $script:testGroupFlashTimer.add_Tick({ Handle-TestGroupFlashTimerTick @args })
         $script:testGroupFlashTimer.Start()
     }
     else {
@@ -543,14 +561,7 @@ $grpAdvancedDiag.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
 $grpAdvancedDiag.Size = New-Object System.Drawing.Size(370, 436)
 $grpAdvancedDiag.Location = New-Object System.Drawing.Point(790, 10)
 $grpAdvancedDiag.Visible = $false
-$grpAdvancedDiag.add_Paint({
-        param($sender, $e)
-        $color = if ($global:ThemeCustomActive) { $global:ThemeCustomBackground } else { [System.Drawing.Color]::FromArgb(240, 240, 240) }
-        if ($null -eq $color) { $color = [System.Drawing.Color]::FromArgb(240, 240, 240) }
-        $brush = New-Object System.Drawing.SolidBrush($color)
-        $e.Graphics.FillRectangle($brush, $sender.ClientRectangle)
-        $brush.Dispose()
-    })
+$grpAdvancedDiag.add_Paint({ Handle-AdvancedDiagPanelPaint @args })
 $tabPage2.Controls.Add($grpAdvancedDiag)
 $script:grpAdvancedDiag = $grpAdvancedDiag
 

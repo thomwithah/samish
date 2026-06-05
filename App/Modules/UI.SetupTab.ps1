@@ -7,6 +7,41 @@
 # Outputs: None (defines form controls added to the main Setup form).
 # Error Handling: Standard control initialization, handles DPI scaling.
 # ==============================================================================
+
+# ---- Extracted WinForms Event Handlers ---------------------
+
+function Handle-ProfileRadioCheckedChanged {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for profile radio button selection')]
+    param($sender, $e)
+    if (-not $sender.Checked) { return }
+
+    $selectedId = [string]$sender.Tag
+    $script:ActiveProfileId = $selectedId
+    $script:ProfilesEnabled = @($selectedId)
+
+    if ($script:ProfileMetaById.ContainsKey($selectedId)) {
+        Set-ProfileDetails $script:ProfileMetaById[$selectedId]
+    }
+    else {
+        Set-ProfileDetails $null
+    }
+
+    # Sync all checkbox indicators in the parent profiles panel
+    foreach ($ctl in $sender.Parent.Controls) {
+        if ($ctl -is [System.Windows.Forms.CheckBox]) {
+            $tagId = [string]$ctl.Tag
+            $ctl.Checked = ($tagId -eq $script:ActiveProfileId)
+        }
+    }
+
+    # Keep the test group dropdown and enabled state in sync
+    # when the user switches profiles.
+    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
+        try { Update-TestGroupState } catch {}
+    }
+}
+
 # ---------- Install Mode + Operating Mode -----------
 $topY = 95
 $leftX = 18
@@ -396,34 +431,7 @@ function Build-ProfilesUI {
                 $tooltip.SetToolTip($rb, "Custom Device (Advanced User Mode):`nAllows you to control any unsupported mixer or application.`n`nTo configure:`n1. Open and edit the profile config file in your installation directory:`n   %APPDATA%\SAMISH\Profiles\Custom-Device.json`n2. Modify the Display Name, Process Name, and executable path.`n3. Click 'Read Setup Status' in Setup to apply changes instantly.`n`n*Tip: Run 'Configure-CustomProfile.bat' in the install folder for an interactive, guided setup helper.")
             }
 
-            $rb.add_CheckedChanged({
-                    param($sender, $e)
-                    if (-not $sender.Checked) { return }
-
-                    $selectedId = [string]$sender.Tag
-                    $script:ActiveProfileId = $selectedId
-                    $script:ProfilesEnabled = @($selectedId)
-
-                    if ($script:ProfileMetaById.ContainsKey($selectedId)) {
-                        Set-ProfileDetails $script:ProfileMetaById[$selectedId]
-                    }
-                    else {
-                        Set-ProfileDetails $null
-                    }
-
-                    foreach ($ctl in $profilesPanel.Controls) {
-                        if ($ctl -is [System.Windows.Forms.CheckBox]) {
-                            $tagId = [string]$ctl.Tag
-                            $ctl.Checked = ($tagId -eq $script:ActiveProfileId)
-                        }
-                    }
-
-                    # Keep the test group dropdown and enabled state in sync
-                    # when the user switches profiles.
-                    if (Get-Command Update-TestGroupState -ErrorAction SilentlyContinue) {
-                        try { Update-TestGroupState } catch {}
-                    }
-                })
+            $rb.add_CheckedChanged({ Handle-ProfileRadioCheckedChanged @args })
 
             $y += 28
         }

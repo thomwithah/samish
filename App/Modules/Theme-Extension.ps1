@@ -1,6 +1,362 @@
 # SAMISH Stealth Theme Extension Module
 # Handles the "Anti-Gravity Cyberpunk" Sequence
 
+# ---- Extracted WinForms Event Handlers ---------------------
+# Named functions for handlers that use param($sender, $e).
+# Allows per-instance [SuppressMessage] for PSAvoidAssignmentToAutomaticVariable.
+# MUST be global: because they are called from scriptblocks inside global: functions
+# (Run-ThemeTakeover, Run-DropAnimation, Set-BrandTheme). Script-scoped functions
+# are not visible from timer callbacks firing in the global scope chain.
+
+function global:Handle-FadeFormPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for theme transition overlay paint')]
+    param($sender, $e)
+    $s = $sender.Tag
+    if ($null -eq $s) { return }
+    $g = $e.Graphics
+    $g.Clear($s.FlashColor)
+    if ($null -ne $s.LogoImage -and $s.LogoSize -gt 0) {
+        try {
+            $sz = [int]$s.LogoSize
+            $x = [int](($sender.Width - $sz) / 2)
+            $y = [int](($sender.Height - $sz) / 2)
+            $g.DrawImage($s.LogoImage, $x, $y, $sz, $sz)
+        }
+        catch {}
+    }
+}
+
+function global:Handle-ZoomFadeStrobeTimerTick {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for theme zoom/fade/strobe animation timer')]
+    param($sender, $e)
+    try {
+        $state = $sender.Tag
+
+        if ($state.LogoSize -lt $state.TargetSize) {
+            # === ZOOM phase: grow logo ===
+            $state.ScaleVelocity += $state.ScaleAcceleration
+            $newSz = $state.LogoSize + [int]$state.ScaleVelocity
+            if ($newSz -gt $state.TargetSize) { $newSz = $state.TargetSize }
+            $state.LogoSize = $newSz
+            $state.FadeForm.Invalidate()
+        }
+        else {
+            # === FADE-IN phase ===
+            $newOp = $state.FadeForm.Opacity + 0.05
+            if ($newOp -gt 1.0) { $newOp = 1.0 }
+            $state.FadeForm.Opacity = $newOp
+
+            if ($state.FadeForm.Opacity -ge 1.0) {
+                # === STROBE phase ===
+                if (-not $state.Reverting -and $state.StrobeFrames -and $state.StrobeIndex -lt $state.StrobeFrames.Count) {
+                    $strobeColor = $state.StrobeFrames[$state.StrobeIndex]
+                    $state.StrobeIndex++
+                    $state.Form.BackColor = $strobeColor
+                    $state.FlashColor = $strobeColor
+                    # One Invalidate() -> one Paint pass -> background + logo drawn together atomically.
+                    $state.FadeForm.Invalidate()
+                    return
+                }
+
+                $sender.Stop()
+
+                if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
+                    . (Join-Path $PackageDir_Local "Modules\Theme-Extension.ps1")
+                }
+
+                try {
+                    if ($state.Reverting) {
+                        Set-BrandTheme -Form $state.Form -IsCustom $false
+                    }
+                    else {
+                        if ($state.TargetTheme -eq "Custom") {
+                            Load-CustomThemeColors
+                        }
+                        else {
+                            Load-NeonThemeColors
+                        }
+                        Set-BrandTheme -Form $state.Form -IsCustom $true
+                    }
+                }
+                catch {
+                    Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Set-BrandTheme Error: $($_.Exception.ToString())" -Append
+                }
+
+                $global:OriginalTops.Clear()
+                foreach ($ctrl in $state.Form.Controls) {
+                    if ($null -eq $ctrl) { continue }
+                    try { if ($ctrl.IsDisposed) { continue } } catch { continue }
+                    $global:OriginalTops[$ctrl.Handle] = $ctrl.Top
+                    if (-not $state.Reverting) {
+                        $ctrl.Top -= 220
+                    }
+                }
+
+                # Dispose the logo image now that we're done with the overlay
+                try {
+                    if ($state.LogoImage) {
+                        $state.LogoImage.Dispose()
+                        $state.LogoImage = $null
+                    }
+                }
+                catch {}
+
+                Run-DropAnimation -Form $state.Form -FadeForm $state.FadeForm -Reverting $state.Reverting -TargetTheme $state.TargetTheme
+            }
+        }
+    }
+    catch {
+        Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Takeover Error: $($_.Exception.ToString())" -Append
+        try { $sender.Stop() } catch {}
+        try { if ($state -and $state.FadeForm -and -not $state.FadeForm.IsDisposed) { $state.FadeForm.Close(); $state.FadeForm.Dispose() } } catch {}
+        try {
+            if ($state -and $state.LogoImage) {
+                $state.LogoImage.Dispose()
+                $state.LogoImage = $null
+            }
+        }
+        catch {}
+        $global:IsThemeAnimating = $false
+    }
+}
+
+function global:Handle-DropAnimationTimerTick {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for theme drop animation timer')]
+    param($sender, $e)
+    try {
+        $state = $sender.Tag
+        $state.TickCount++
+
+        if ($state.FadeForm.Opacity -gt 0.0) {
+            $newOp = $state.FadeForm.Opacity - 0.05
+            if ($newOp -lt 0.0) { $newOp = 0.0 }
+            $state.FadeForm.Opacity = $newOp
+        }
+
+        $allDropped = $true
+        if (-not $state.Reverting) {
+            # Cascaded physics gravity drop with elastic rebound (Neon Mode only)
+            foreach ($ctrl in $state.Form.Controls) {
+                $ctrlKey = $ctrl.Handle
+                $targetTop = $global:OriginalTops[$ctrlKey]
+                if ($null -eq $targetTop) { continue }
+                
+                if (-not $state.ControlStates.ContainsKey($ctrlKey)) {
+                    $state.ControlStates[$ctrlKey] = [PSCustomObject]@{
+                        Velocity = 0.0
+                        Bounces  = 0
+                        Delay    = [int]($targetTop / 25)
+                    }
+                }
+                
+                $ctrlState = $state.ControlStates[$ctrlKey]
+                if ($state.TickCount -lt $ctrlState.Delay) {
+                    $allDropped = $false
+                    continue
+                }
+                
+                if ($ctrl.Top -lt $targetTop -or $ctrlState.Bounces -lt 2) {
+                    $allDropped = $false
+                    $ctrlState.Velocity += 1.6 # Gravity
+                    $nextTop = $ctrl.Top + $ctrlState.Velocity
+                    
+                    if ($nextTop -ge $targetTop) {
+                        if ($ctrlState.Bounces -lt 1) {
+                            $ctrlState.Velocity = - ($ctrlState.Velocity * 0.45) # Bounce back up with 45% velocity
+                            $ctrl.Top = $targetTop
+                            $ctrlState.Bounces++
+                        }
+                        else {
+                            $ctrl.Top = $targetTop
+                            $ctrlState.Velocity = 0.0
+                            $ctrlState.Bounces = 2 # Settle
+                        }
+                    }
+                    else {
+                        $ctrl.Top = $nextTop
+                    }
+                }
+            }
+        }
+        else {
+            # Normal mode reversion: instant restore, already in position
+            $allDropped = $true
+        }
+
+        if ($state.FadeForm.Opacity -le 0.0 -and $allDropped) {
+            $sender.Stop()
+            $state.FadeForm.Close()
+            $state.FadeForm.Dispose()
+            
+            if ($state.Reverting) {
+                $global:ThemeCustomActive = $false
+                $global:ThemeActiveType = "Normal"
+                $global:OriginalControlStyles.Clear()
+                if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName "Normal" }
+            }
+            else {
+                $global:ThemeCustomActive = $true
+                $global:ThemeActiveType = $state.TargetTheme
+                if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName $state.TargetTheme }
+            }
+            $global:IsThemeAnimating = $false
+        }
+    }
+    catch {
+        Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Drop Error: $($_.Exception.ToString())" -Append
+    }
+}
+
+function global:Handle-ThemeCheckboxPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for neon theme checkbox custom paint')]
+    param($sender, $e)
+    if (-not $global:ThemeCustomActive) { return }
+    $g = $e.Graphics
+    
+    $boxBgColor = $global:ThemeCustomCheckboxBg
+    if ($null -eq $boxBgColor) { $boxBgColor = [System.Drawing.Color]::FromArgb(25, 25, 30) }
+    
+    $borderColor = $global:ThemeCustomCheckboxBorder
+    if ($null -eq $borderColor) { $borderColor = $global:ThemeCustomSecondary }
+    
+    $checkColor = $global:ThemeCustomCheckboxCheck
+    if ($null -eq $checkColor) { $checkColor = $global:ThemeCustomPrimary }
+    
+    if ($sender.Name -eq "chkUiMode") {
+        $borderColor = $global:ThemeCustomAlert
+        $checkColor = $global:ThemeCustomPrimary
+    }
+    
+    $boxSize = 14
+    $boxX = 0
+    $boxY = [int](($sender.Height - $boxSize) / 2)
+    
+    $brush = [System.Drawing.SolidBrush]::new($boxBgColor)
+    $g.FillRectangle($brush, $boxX, $boxY, $boxSize, $boxSize)
+    $brush.Dispose()
+    
+    $pen = [System.Drawing.Pen]::new($borderColor, 1)
+    $g.DrawRectangle($pen, $boxX, $boxY, $boxSize, $boxSize)
+    $pen.Dispose()
+    
+    if ($sender.Checked) {
+        $checkPen = [System.Drawing.Pen]::new($checkColor, 2)
+        $p1 = New-Object System.Drawing.Point(($boxX + 3), ($boxY + 7))
+        $p2 = New-Object System.Drawing.Point(($boxX + 6), ($boxY + 10))
+        $p3 = New-Object System.Drawing.Point(($boxX + 11), ($boxY + 4))
+        
+        $g.DrawLine($checkPen, $p1, $p2)
+        $g.DrawLine($checkPen, $p2, $p3)
+        $checkPen.Dispose()
+    }
+}
+
+function global:Handle-ThemeRadioButtonPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for neon theme radio button custom paint')]
+    param($sender, $e)
+    if (-not $global:ThemeCustomActive) { return }
+    $g = $e.Graphics
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    
+    $boxBgColor = $global:ThemeCustomCheckboxBg
+    if ($null -eq $boxBgColor) { $boxBgColor = [System.Drawing.Color]::FromArgb(25, 25, 30) }
+    
+    $borderColor = $global:ThemeCustomCheckboxBorder
+    if ($null -eq $borderColor) { $borderColor = $global:ThemeCustomSecondary }
+    
+    $dotColor = $global:ThemeCustomCheckboxCheck
+    if ($null -eq $dotColor) { $dotColor = $global:ThemeCustomPrimary }
+    
+    $circleSize = 14
+    $circleX = 0
+    $circleY = [int](($sender.Height - $circleSize) / 2)
+    
+    $brush = [System.Drawing.SolidBrush]::new($boxBgColor)
+    $g.FillEllipse($brush, $circleX, $circleY, $circleSize, $circleSize)
+    $brush.Dispose()
+    
+    $pen = [System.Drawing.Pen]::new($borderColor, 1)
+    $g.DrawEllipse($pen, $circleX, $circleY, $circleSize, $circleSize)
+    $pen.Dispose()
+    
+    if ($sender.Checked) {
+        $dotBrush = [System.Drawing.SolidBrush]::new($dotColor)
+        $dotSize = 6
+        $dotX = $circleX + [int](($circleSize - $dotSize) / 2)
+        $dotY = $circleY + [int](($circleSize - $dotSize) / 2)
+        $g.FillEllipse($dotBrush, $dotX, $dotY, $dotSize, $dotSize)
+        $dotBrush.Dispose()
+    }
+}
+
+function global:Handle-ThemeGroupBoxPaint {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for neon theme GroupBox border and label paint')]
+    param($sender, $e)
+    if ($global:ThemeCustomActive) {
+        $g = $e.Graphics
+        $pen = New-Object System.Drawing.Pen($global:ThemeCustomDisabled, 1)
+        $gbW = [int]$sender.Width
+        $gbH = [int]$sender.Height
+        
+        # Draw border rectangle
+        $rect = New-Object System.Drawing.Rectangle(0, 7, ($gbW - 1), ($gbH - 8))
+        $g.DrawRectangle($pen, $rect)
+        $pen.Dispose()
+        
+        # Mask and draw text
+        if ($sender.PSObject.Properties.Match('OriginalText').Count -gt 0 -and $sender.OriginalText) {
+            $origText = $sender.OriginalText
+            $font = $sender.Font
+            $textSize = $g.MeasureString($origText, $font)
+            $textW = [int]($textSize.Width)
+            
+            $bg = Get-ParentSolidBackColor -c $sender
+            $bgBrush = New-Object System.Drawing.SolidBrush($bg)
+            $g.FillRectangle($bgBrush, 8, 0, $textW, 14)
+            $bgBrush.Dispose()
+            
+            $textBrush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
+            $g.DrawString($origText, $font, $textBrush, 8, 0)
+            $textBrush.Dispose()
+        }
+    }
+}
+
+function global:Handle-ThemeCheckboxRadioEnabledChanged {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for neon theme checkbox/radio enabled state change')]
+    param($sender, $e)
+    if ($global:ThemeCustomActive) {
+        if (-not $sender.Enabled) {
+            $sender.ForeColor = $global:ThemeCustomDisabledText
+        }
+        else {
+            if ($sender.Name -eq "chkUiMode") {
+                $sender.ForeColor = $global:ThemeCustomDisabledText
+            }
+            else {
+                $sender.ForeColor = $global:ThemeCustomText
+            }
+        }
+    }
+}
+
+function global:Handle-ThemeComboBoxEnabledChanged {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for neon theme combobox enabled state change')]
+    param($sender, $e)
+    if ($global:ThemeCustomActive) {
+        $sender.BackColor = if ($sender.Enabled) { $global:ThemeCustomInput } else { $global:ThemeCustomDisabled }
+        $sender.ForeColor = if ($sender.Enabled) { $global:ThemeCustomPrimary } else { $global:ThemeCustomDisabledText }
+    }
+}
+
 # Global state to prevent overlapping triggers
 if ($null -eq $global:ThemeCustomActive) { $global:ThemeCustomActive = $false }
 if ($null -eq $global:IsThemeAnimating) { $global:IsThemeAnimating = $false }
@@ -412,30 +768,15 @@ function global:Run-TakeoverAnimation {
 
     # Single GDI+ Paint pass: fill background color then draw logo on top.
     # Both happen in the same WM_PAINT - zero chance of mixed-state frames.
-    $FadeForm.add_Paint({
-            param($sender, $e)
-            $s = $sender.Tag
-            if ($null -eq $s) { return }
-            $g = $e.Graphics
-            $g.Clear($s.FlashColor)
-            if ($null -ne $s.LogoImage -and $s.LogoSize -gt 0) {
-                try {
-                    $sz = [int]$s.LogoSize
-                    $x = [int](($sender.Width - $sz) / 2)
-                    $y = [int](($sender.Height - $sz) / 2)
-                    $g.DrawImage($s.LogoImage, $x, $y, $sz, $sz)
-                }
-                catch {}
-            }
-        })
+    $FadeForm.add_Paint({ Handle-FadeFormPaint @args })
 
     $Form.Add_LocationChanged({
-            if ($FadeForm -ne $null -and -not $FadeForm.IsDisposed) {
+            if ($null -ne $FadeForm -and -not $FadeForm.IsDisposed) {
                 $FadeForm.Location = $Form.PointToScreen((New-Object System.Drawing.Point(0, 0)))
             }
         })
     $Form.Add_SizeChanged({
-            if ($FadeForm -ne $null -and -not $FadeForm.IsDisposed) {
+            if ($null -ne $FadeForm -and -not $FadeForm.IsDisposed) {
                 $FadeForm.Size = $Form.ClientSize
                 $FadeForm.Location = $Form.PointToScreen((New-Object System.Drawing.Point(0, 0)))
                 $FadeForm.Invalidate()
@@ -512,98 +853,7 @@ function global:Run-TakeoverAnimation {
     $timer.Interval = if ($Reverting) { 15 } else { 20 }
     $timer.Tag = $animState
 
-    $action = {
-        param($sender, $e)
-        try {
-            $state = $sender.Tag
-
-            if ($state.LogoSize -lt $state.TargetSize) {
-                # === ZOOM phase: grow logo ===
-                $state.ScaleVelocity += $state.ScaleAcceleration
-                $newSz = $state.LogoSize + [int]$state.ScaleVelocity
-                if ($newSz -gt $state.TargetSize) { $newSz = $state.TargetSize }
-                $state.LogoSize = $newSz
-                $state.FadeForm.Invalidate()
-            }
-            else {
-                # === FADE-IN phase ===
-                $newOp = $state.FadeForm.Opacity + 0.05
-                if ($newOp -gt 1.0) { $newOp = 1.0 }
-                $state.FadeForm.Opacity = $newOp
-
-                if ($state.FadeForm.Opacity -ge 1.0) {
-                    # === STROBE phase ===
-                    if (-not $state.Reverting -and $state.StrobeFrames -and $state.StrobeIndex -lt $state.StrobeFrames.Count) {
-                        $strobeColor = $state.StrobeFrames[$state.StrobeIndex]
-                        $state.StrobeIndex++
-                        $state.Form.BackColor = $strobeColor
-                        $state.FlashColor = $strobeColor
-                        # One Invalidate() -> one Paint pass -> background + logo drawn together atomically.
-                        $state.FadeForm.Invalidate()
-                        return
-                    }
-
-                    $sender.Stop()
-
-                    if (-not (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue)) {
-                        . (Join-Path $PackageDir_Local "Modules\Theme-Extension.ps1")
-                    }
-
-                    try {
-                        if ($state.Reverting) {
-                            Set-BrandTheme -Form $state.Form -IsCustom $false
-                        }
-                        else {
-                            if ($state.TargetTheme -eq "Custom") {
-                                Load-CustomThemeColors
-                            }
-                            else {
-                                Load-NeonThemeColors
-                            }
-                            Set-BrandTheme -Form $state.Form -IsCustom $true
-                        }
-                    }
-                    catch {
-                        Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Set-BrandTheme Error: $($_.Exception.ToString())" -Append
-                    }
-
-                    $global:OriginalTops.Clear()
-                    foreach ($ctrl in $state.Form.Controls) {
-                        if ($null -eq $ctrl) { continue }
-                        try { if ($ctrl.IsDisposed) { continue } } catch { continue }
-                        $global:OriginalTops[$ctrl.Handle] = $ctrl.Top
-                        if (-not $state.Reverting) {
-                            $ctrl.Top -= 220
-                        }
-                    }
-
-                    # Dispose the logo image now that we're done with the overlay
-                    try {
-                        if ($state.LogoImage) {
-                            $state.LogoImage.Dispose()
-                            $state.LogoImage = $null
-                        }
-                    }
-                    catch {}
-
-                    Run-DropAnimation -Form $state.Form -FadeForm $state.FadeForm -Reverting $state.Reverting -TargetTheme $state.TargetTheme
-                }
-            }
-        }
-        catch {
-            Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Takeover Error: $($_.Exception.ToString())" -Append
-            try { $sender.Stop() } catch {}
-            try { if ($state -and $state.FadeForm -and -not $state.FadeForm.IsDisposed) { $state.FadeForm.Close(); $state.FadeForm.Dispose() } } catch {}
-            try {
-                if ($state -and $state.LogoImage) {
-                    $state.LogoImage.Dispose()
-                    $state.LogoImage = $null
-                }
-            }
-            catch {}
-            $global:IsThemeAnimating = $false
-        }
-    }
+    $action = { Handle-ZoomFadeStrobeTimerTick @args }
 
     $timer.add_Tick($action)
     $timer.Start()
@@ -628,91 +878,7 @@ function global:Run-DropAnimation {
         ControlStates = @{}
     }
 
-    $action = {
-        param($sender, $e)
-        try {
-            $state = $sender.Tag
-            $state.TickCount++
-
-            if ($state.FadeForm.Opacity -gt 0.0) {
-                $newOp = $state.FadeForm.Opacity - 0.05
-                if ($newOp -lt 0.0) { $newOp = 0.0 }
-                $state.FadeForm.Opacity = $newOp
-            }
-
-            $allDropped = $true
-            if (-not $state.Reverting) {
-                # Cascaded physics gravity drop with elastic rebound (Neon Mode only)
-                foreach ($ctrl in $state.Form.Controls) {
-                    $ctrlKey = $ctrl.Handle
-                    $targetTop = $global:OriginalTops[$ctrlKey]
-                    if ($null -eq $targetTop) { continue }
-                    
-                    if (-not $state.ControlStates.ContainsKey($ctrlKey)) {
-                        $state.ControlStates[$ctrlKey] = [PSCustomObject]@{
-                            Velocity = 0.0
-                            Bounces  = 0
-                            Delay    = [int]($targetTop / 25)
-                        }
-                    }
-                    
-                    $ctrlState = $state.ControlStates[$ctrlKey]
-                    if ($state.TickCount -lt $ctrlState.Delay) {
-                        $allDropped = $false
-                        continue
-                    }
-                    
-                    if ($ctrl.Top -lt $targetTop -or $ctrlState.Bounces -lt 2) {
-                        $allDropped = $false
-                        $ctrlState.Velocity += 1.6 # Gravity
-                        $nextTop = $ctrl.Top + $ctrlState.Velocity
-                        
-                        if ($nextTop -ge $targetTop) {
-                            if ($ctrlState.Bounces -lt 1) {
-                                $ctrlState.Velocity = - ($ctrlState.Velocity * 0.45) # Bounce back up with 45% velocity
-                                $ctrl.Top = $targetTop
-                                $ctrlState.Bounces++
-                            }
-                            else {
-                                $ctrl.Top = $targetTop
-                                $ctrlState.Velocity = 0.0
-                                $ctrlState.Bounces = 2 # Settle
-                            }
-                        }
-                        else {
-                            $ctrl.Top = $nextTop
-                        }
-                    }
-                }
-            }
-            else {
-                # Normal mode reversion: instant restore, already in position
-                $allDropped = $true
-            }
-
-            if ($state.FadeForm.Opacity -le 0.0 -and $allDropped) {
-                $sender.Stop()
-                $state.FadeForm.Close()
-                $state.FadeForm.Dispose()
-                
-                if ($state.Reverting) {
-                    $global:ThemeCustomActive = $false
-                    $global:ThemeActiveType = "Normal"
-                    $global:OriginalControlStyles.Clear()
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName "Normal" }
-                }
-                else {
-                    $global:ThemeCustomActive = $true
-                    $global:ThemeActiveType = $state.TargetTheme
-                    if (Get-Command Save-ThemePreference -ErrorAction SilentlyContinue) { Save-ThemePreference -ThemeName $state.TargetTheme }
-                }
-                $global:IsThemeAnimating = $false
-            }
-        }
-        catch {
-            Out-File -FilePath "C:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\SAMISH_ERROR.txt" -InputObject "Drop Error: $($_.Exception.ToString())" -Append
-        }
-    }
+    $action = { Handle-DropAnimationTimerTick @args }
     
     $timer.add_Tick($action)
     $timer.Start()
@@ -727,85 +893,9 @@ function global:Set-BrandTheme {
     $global:ThemeCustomActive = $IsCustom
 
     # Pre-define CheckBox and RadioButton custom paint handlers for high-contrast neon styling
-    $checkboxPaintBlock = {
-        param($sender, $e)
-        if (-not $global:ThemeCustomActive) { return }
-        $g = $e.Graphics
-        
-        $boxBgColor = $global:ThemeCustomCheckboxBg
-        if ($null -eq $boxBgColor) { $boxBgColor = [System.Drawing.Color]::FromArgb(25, 25, 30) }
-        
-        $borderColor = $global:ThemeCustomCheckboxBorder
-        if ($null -eq $borderColor) { $borderColor = $global:ThemeCustomSecondary }
-        
-        $checkColor = $global:ThemeCustomCheckboxCheck
-        if ($null -eq $checkColor) { $checkColor = $global:ThemeCustomPrimary }
-        
-        if ($sender.Name -eq "chkUiMode") {
-            $borderColor = $global:ThemeCustomAlert
-            $checkColor = $global:ThemeCustomPrimary
-        }
-        
-        $boxSize = 14
-        $boxX = 0
-        $boxY = [int](($sender.Height - $boxSize) / 2)
-        
-        $brush = [System.Drawing.SolidBrush]::new($boxBgColor)
-        $g.FillRectangle($brush, $boxX, $boxY, $boxSize, $boxSize)
-        $brush.Dispose()
-        
-        $pen = [System.Drawing.Pen]::new($borderColor, 1)
-        $g.DrawRectangle($pen, $boxX, $boxY, $boxSize, $boxSize)
-        $pen.Dispose()
-        
-        if ($sender.Checked) {
-            $checkPen = [System.Drawing.Pen]::new($checkColor, 2)
-            $p1 = New-Object System.Drawing.Point(($boxX + 3), ($boxY + 7))
-            $p2 = New-Object System.Drawing.Point(($boxX + 6), ($boxY + 10))
-            $p3 = New-Object System.Drawing.Point(($boxX + 11), ($boxY + 4))
-            
-            $g.DrawLine($checkPen, $p1, $p2)
-            $g.DrawLine($checkPen, $p2, $p3)
-            $checkPen.Dispose()
-        }
-    }.GetNewClosure()
+    $checkboxPaintBlock = { Handle-ThemeCheckboxPaint @args }
 
-    $radioPaintBlock = {
-        param($sender, $e)
-        if (-not $global:ThemeCustomActive) { return }
-        $g = $e.Graphics
-        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        
-        $boxBgColor = $global:ThemeCustomCheckboxBg
-        if ($null -eq $boxBgColor) { $boxBgColor = [System.Drawing.Color]::FromArgb(25, 25, 30) }
-        
-        $borderColor = $global:ThemeCustomCheckboxBorder
-        if ($null -eq $borderColor) { $borderColor = $global:ThemeCustomSecondary }
-        
-        $dotColor = $global:ThemeCustomCheckboxCheck
-        if ($null -eq $dotColor) { $dotColor = $global:ThemeCustomPrimary }
-        
-        $circleSize = 14
-        $circleX = 0
-        $circleY = [int](($sender.Height - $circleSize) / 2)
-        
-        $brush = [System.Drawing.SolidBrush]::new($boxBgColor)
-        $g.FillEllipse($brush, $circleX, $circleY, $circleSize, $circleSize)
-        $brush.Dispose()
-        
-        $pen = [System.Drawing.Pen]::new($borderColor, 1)
-        $g.DrawEllipse($pen, $circleX, $circleY, $circleSize, $circleSize)
-        $pen.Dispose()
-        
-        if ($sender.Checked) {
-            $dotBrush = [System.Drawing.SolidBrush]::new($dotColor)
-            $dotSize = 6
-            $dotX = $circleX + [int](($circleSize - $dotSize) / 2)
-            $dotY = $circleY + [int](($circleSize - $dotSize) / 2)
-            $g.FillEllipse($dotBrush, $dotX, $dotY, $dotSize, $dotSize)
-            $dotBrush.Dispose()
-        }
-    }.GetNewClosure()
+    $radioPaintBlock = { Handle-ThemeRadioButtonPaint @args }
 
     # Save original styles first
     $formKey = $Form.GetHashCode()
@@ -866,37 +956,7 @@ function global:Set-BrandTheme {
                     $c.Text = ""
                     if ($c.PSObject.Properties.Match('ThemeHooked').Count -eq 0) {
                         $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
-                        $c.add_Paint({
-                                param($sender, $e)
-                                if ($global:ThemeCustomActive) {
-                                    $g = $e.Graphics
-                                    $pen = New-Object System.Drawing.Pen($global:ThemeCustomDisabled, 1)
-                                    $gbW = [int]$sender.Width
-                                    $gbH = [int]$sender.Height
-                                    
-                                    # Draw border rectangle
-                                    $rect = New-Object System.Drawing.Rectangle(0, 7, ($gbW - 1), ($gbH - 8))
-                                    $g.DrawRectangle($pen, $rect)
-                                    $pen.Dispose()
-                                    
-                                    # Mask and draw text
-                                    if ($sender.PSObject.Properties.Match('OriginalText').Count -gt 0 -and $sender.OriginalText) {
-                                        $origText = $sender.OriginalText
-                                        $font = $sender.Font
-                                        $textSize = $g.MeasureString($origText, $font)
-                                        $textW = [int]($textSize.Width)
-                                        
-                                        $bg = Get-ParentSolidBackColor -c $sender
-                                        $bgBrush = New-Object System.Drawing.SolidBrush($bg)
-                                        $g.FillRectangle($bgBrush, 8, 0, $textW, 14)
-                                        $bgBrush.Dispose()
-                                        
-                                        $textBrush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
-                                        $g.DrawString($origText, $font, $textBrush, 8, 0)
-                                        $textBrush.Dispose()
-                                    }
-                                }
-                            })
+                        $c.add_Paint({ Handle-ThemeGroupBoxPaint @args })
                     }
                 }
                 elseif ($c -is [System.Windows.Forms.Label]) {
@@ -933,22 +993,7 @@ function global:Set-BrandTheme {
                             $c.add_Paint($radioPaintBlock)
                         }
                         
-                        $c.add_EnabledChanged({
-                                param($sender, $e)
-                                if ($global:ThemeCustomActive) {
-                                    if (-not $sender.Enabled) {
-                                        $sender.ForeColor = $global:ThemeCustomDisabledText
-                                    }
-                                    else {
-                                        if ($sender.Name -eq "chkUiMode") {
-                                            $sender.ForeColor = $global:ThemeCustomDisabledText
-                                        }
-                                        else {
-                                            $sender.ForeColor = $global:ThemeCustomText
-                                        }
-                                    }
-                                }
-                            })
+                        $c.add_EnabledChanged({ Handle-ThemeCheckboxRadioEnabledChanged @args })
                     }
                     
                     # Add leading spaces for GDI+ flat style padding if not already present
@@ -986,13 +1031,7 @@ function global:Set-BrandTheme {
                     
                     if ($c.PSObject.Properties.Match('ThemeHooked').Count -eq 0) {
                         $c | Add-Member -MemberType NoteProperty -Name 'ThemeHooked' -Value $true
-                        $c.add_EnabledChanged({
-                                param($sender, $e)
-                                if ($global:ThemeCustomActive) {
-                                    $sender.BackColor = if ($sender.Enabled) { $global:ThemeCustomInput } else { $global:ThemeCustomDisabled }
-                                    $sender.ForeColor = if ($sender.Enabled) { $global:ThemeCustomPrimary } else { $global:ThemeCustomDisabledText }
-                                }
-                            })
+                        $c.add_EnabledChanged({ Handle-ThemeComboBoxEnabledChanged @args })
                     }
                 }
                 elseif ($c -is [System.Windows.Forms.ListBox]) {

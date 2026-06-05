@@ -3,6 +3,95 @@
 # Sleep & Hibernate Diagnostics - Event Wiring
 # ============================================================
 
+# ---- Extracted WinForms Event Handlers ---------------------
+# Named functions for handlers that use param($sender, $e).
+# Allows per-instance [SuppressMessage] for PSAvoidAssignmentToAutomaticVariable.
+
+function Handle-DiagFlashTimerTick {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for operating mode GroupBox flash timer')]
+    param($sender, $e)
+    $script:diagFlashTick++
+    $colors = $sender.Tag
+    if ($script:diagFlashTick % 2 -eq 0) {
+        $script:grpDiagOperatingMode.ForeColor = $colors.Color1
+    }
+    else {
+        $script:grpDiagOperatingMode.ForeColor = $colors.Color2
+    }
+    if ($script:diagFlashTick -ge 5) {
+        # Ensure we end on final color then clean up
+        $script:grpDiagOperatingMode.ForeColor = $colors.Color2
+        if ($script:diagFlashTimer) {
+            $script:diagFlashTimer.Stop()
+            $script:diagFlashTimer.Dispose()
+            $script:diagFlashTimer = $null
+        }
+    }
+}
+
+function Handle-DiagListBoxDrawItem {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for Page 2 ListBox OwnerDraw')]
+    param($sender, $e)
+    if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
+
+    $itemText = $sender.Items[$e.Index].ToString()
+    $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+
+    # Background color selection
+    if ($isHighlighted) {
+        $brushBack = New-Object System.Drawing.SolidBrush($script:BrandCyan) # SAMISH Cyan/Blue
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+    else {
+        $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+
+    # Foreground color selection
+    $foreColor = $sender.ForeColor
+    if ($isHighlighted) {
+        $foreColor = [System.Drawing.Color]::Black # Black text on Cyan highlight
+    }
+    else {
+        # Active blockers non-blocker styling
+        if ($sender -eq $script:listBlockers) {
+            if ($script:ActiveBlockersList -and $e.Index -lt $script:ActiveBlockersList.Count) {
+                $b = $script:ActiveBlockersList[$e.Index]
+                if ($b -and $b.IsNotBlocking) {
+                    $foreColor = $script:BrandPurple
+                }
+            }
+        }
+    }
+
+    $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
+    $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+
+    $textFormat = New-Object System.Drawing.StringFormat
+    $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+    $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
+
+    $brushFore.Dispose()
+    $textFormat.Dispose()
+
+    $e.DrawFocusRectangle()
+}
+
+function Handle-ListBoxDeselectEmptyClick {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for ListBox empty-area deselect')]
+    param($sender, $e)
+    $idx = $sender.IndexFromPoint($e.Location)
+    if ($idx -lt 0) {
+        $sender.ClearSelected()
+    }
+}
+
 # ---- Helpers ------------------------------------------------
 
 function Wait-UwpAsync {
@@ -620,26 +709,7 @@ function Set-OperatingModeBoxState {
             Color1 = $color1
             Color2 = $color2
         }
-        $script:diagFlashTimer.add_Tick({
-                param($sender, $e)
-                $script:diagFlashTick++
-                $colors = $sender.Tag
-                if ($script:diagFlashTick % 2 -eq 0) {
-                    $script:grpDiagOperatingMode.ForeColor = $colors.Color1
-                }
-                else {
-                    $script:grpDiagOperatingMode.ForeColor = $colors.Color2
-                }
-                if ($script:diagFlashTick -ge 5) {
-                    # Ensure we end on final color then clean up
-                    $script:grpDiagOperatingMode.ForeColor = $colors.Color2
-                    if ($script:diagFlashTimer) {
-                        $script:diagFlashTimer.Stop()
-                        $script:diagFlashTimer.Dispose()
-                        $script:diagFlashTimer = $null
-                    }
-                }
-            })
+        $script:diagFlashTimer.add_Tick({ Handle-DiagFlashTimerTick @args })
         $script:diagFlashTimer.Start()
     }
     else {
@@ -744,55 +814,7 @@ function Init-SleepDiagnosticsEventHandlers {
     Update-SleepDiagnosticsListsAsync
 
     # ---------- DrawItem event for Page 2 ListBoxes (OwnerDrawFixed) ----------
-    $lbDrawItem = {
-        param($sender, $e)
-        if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
-
-        $itemText = $sender.Items[$e.Index].ToString()
-        $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
-
-        # Background color selection
-        if ($isHighlighted) {
-            $brushBack = New-Object System.Drawing.SolidBrush($BrandCyan) # SAMISH Cyan/Blue
-            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-            $brushBack.Dispose()
-        }
-        else {
-            $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
-            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-            $brushBack.Dispose()
-        }
-
-        # Foreground color selection
-        $foreColor = $sender.ForeColor
-        if ($isHighlighted) {
-            $foreColor = [System.Drawing.Color]::Black # Black text on Cyan highlight
-        }
-        else {
-            # Active blockers non-blocker styling
-            if ($sender -eq $script:listBlockers) {
-                if ($script:ActiveBlockersList -and $e.Index -lt $script:ActiveBlockersList.Count) {
-                    $b = $script:ActiveBlockersList[$e.Index]
-                    if ($b -and $b.IsNotBlocking) {
-                        $foreColor = $BrandPurple
-                    }
-                }
-            }
-        }
-
-        $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
-        $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
-    
-        $textFormat = New-Object System.Drawing.StringFormat
-        $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
-
-        $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
-    
-        $brushFore.Dispose()
-        $textFormat.Dispose()
-
-        $e.DrawFocusRectangle()
-    }
+    $lbDrawItem = { Handle-DiagListBoxDrawItem @args }
 
     if ($script:listBlockers) { $script:listBlockers.add_DrawItem($lbDrawItem) }
     if ($script:listOverrides) { $script:listOverrides.add_DrawItem($lbDrawItem) }
@@ -1028,19 +1050,11 @@ function Init-SleepDiagnosticsEventHandlers {
                             
                             $svc = $null
                             if ($serviceHint) {
-                                $svc = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
-                                    Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $serviceHint -or $_.DisplayName -eq $serviceHint } | Select-Object -First 1
-                                } else {
-                                    Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $serviceHint -or $_.DisplayName -eq $serviceHint } | Select-Object -First 1
-                                }
+                                    $svc = Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $serviceHint -or $_.DisplayName -eq $serviceHint } | Select-Object -First 1
                             }
                             
                             if (-not $svc) {
-                                $svc = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
-                                    Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$fileName*" } | Select-Object -First 1
-                                } else {
-                                    Get-WmiObject Win32_Service | Where-Object { $_.PathName -like "*$fileName*" } | Select-Object -First 1
-                                }
+                                    $svc = Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$fileName*" } | Select-Object -First 1
                             }
 
                             if ($svc) {
@@ -1400,32 +1414,10 @@ function Init-SleepDiagnosticsEventHandlers {
             }
         })
 
-    # Deselect automated app when clicking empty space in the list
-    $script:listAutomated.add_MouseDown({
-            param($sender, $e)
-            $idx = $sender.IndexFromPoint($e.Location)
-            if ($idx -lt 0) {
-                $sender.ClearSelected()
-            }
-        })
-
-    # Deselect blocker when clicking empty space in the list
-    $script:listBlockers.add_MouseDown({
-            param($sender, $e)
-            $idx = $sender.IndexFromPoint($e.Location)
-            if ($idx -lt 0) {
-                $sender.ClearSelected()
-            }
-        })
-
-    # Deselect override when clicking empty space in the list
-    $script:listOverrides.add_MouseDown({
-            param($sender, $e)
-            $idx = $sender.IndexFromPoint($e.Location)
-            if ($idx -lt 0) {
-                $sender.ClearSelected()
-            }
-        })
+    # Deselect items when clicking empty space in the list
+    $script:listAutomated.add_MouseDown({ Handle-ListBoxDeselectEmptyClick @args })
+    $script:listBlockers.add_MouseDown({ Handle-ListBoxDeselectEmptyClick @args })
+    $script:listOverrides.add_MouseDown({ Handle-ListBoxDeselectEmptyClick @args })
 
     # ---------- Automate App ----------
     $script:btnDiagAutomate.add_Click({
@@ -2020,7 +2012,7 @@ $script:btnTelemetryRefresh.add_Click({
                     $usbLines = @()
                     $pciLines = @()
 
-                    $usbHubs = Get-WmiObject -Namespace "root\cimv2" -Class "Win32_USBHub" -ErrorAction SilentlyContinue
+                    $usbHubs = Get-CimInstance -Namespace "root\cimv2" -ClassName "Win32_USBHub" -ErrorAction SilentlyContinue
                     if ($usbHubs) {
                         foreach ($hub in $usbHubs) {
                             $label = if ($hub.Name) { $hub.Name } else { "USB Hub" }
@@ -2028,7 +2020,7 @@ $script:btnTelemetryRefresh.add_Click({
                         }
                     }
 
-                    $pciDevices = Get-WmiObject -Namespace "root\cimv2" -Class "Win32_PnPEntity" -Filter "ConfigManagerErrorCode=0" -ErrorAction SilentlyContinue |
+                    $pciDevices = Get-CimInstance -Namespace "root\cimv2" -ClassName "Win32_PnPEntity" -Filter "ConfigManagerErrorCode=0" -ErrorAction SilentlyContinue |
                     Where-Object { $_.PNPDeviceID -like "PCI\*" } |
                     Select-Object -First 10
                     if ($pciDevices) {

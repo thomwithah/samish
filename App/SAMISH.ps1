@@ -842,7 +842,7 @@ try {
     function Perform-AutoRecoveryCheck {
         # 1. Main Mixer Auto-Recovery
         if ($EnableAutoRecovery) {
-            $mixerRunning = (Get-Process -Name $script:TargetProcessName -ErrorAction SilentlyContinue) -ne $null
+            $mixerRunning = $null -ne (Get-Process -Name $script:TargetProcessName -ErrorAction SilentlyContinue)
             if (-not $mixerRunning) {
                 Log-Always "Main mixer process '$script:TargetProcessName' is not running. Starting recovery..."
                 Write-EventLogEntry -Message "Main mixer process '$script:TargetProcessName' was not running. Automatically recovering process." -EntryType "Warning" -EventId 302
@@ -872,9 +872,22 @@ try {
                     }
                     if ($onWake -eq "KeepClosed") { continue }
 
-                    $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue |
-                        Where-Object { $_.MainWindowHandle -ne 0 } |
-                        Select-Object -First 1)
+                    # UWP apps (Spotify, etc.) keep background workers alive after UI close;
+                    # filter by MainWindowHandle to detect actual UI presence.
+                    # Desktop/tray apps (BEACN, etc.) have no main window; check process only.
+                    $isUwp = ($app.ProcessName -eq "Spotify") -or
+                        ($app.PSObject.Properties.Match('ExecutablePath').Count -gt 0 -and
+                         $app.ExecutablePath -like "*\WindowsApps\*")
+
+                    if ($isUwp) {
+                        $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue |
+                            Where-Object { $_.MainWindowHandle -ne 0 } |
+                            Select-Object -First 1)
+                    }
+                    else {
+                        $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue |
+                            Select-Object -First 1)
+                    }
 
                     if ($isRunning) {
                         # Track that we've seen this app running during this engine session
@@ -968,7 +981,7 @@ try {
                 }
 
                 # Check if already running
-                $isRunning = (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue) -ne $null
+                $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue)
                 $startedNow = $false
 
                 if (-not $isRunning -and $appMode -ne "PauseMedia") {

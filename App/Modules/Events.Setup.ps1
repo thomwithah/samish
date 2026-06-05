@@ -7,6 +7,51 @@
 # Outputs: None (modifies form state and updates configuration).
 # Error Handling: Wraps all I/O and process execution in try/catch blocks.
 # ==============================================================================
+
+# ---- Extracted WinForms Event Handlers ---------------------
+
+function Handle-GameListDrawItem {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'sender',
+        Justification = 'Standard .NET WinForms event delegate signature for game list OwnerDraw')]
+    param($sender, $e)
+    if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
+
+    $itemText = $sender.Items[$e.Index].ToString()
+    $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
+
+    $highlightColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { $script:BrandCyan }
+    if ($null -eq $highlightColor) { $highlightColor = [System.Drawing.Color]::FromArgb(0, 215, 255) }
+
+    if ($isHighlighted) {
+        $brushBack = New-Object System.Drawing.SolidBrush($highlightColor)
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+    else {
+        $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
+        $e.Graphics.FillRectangle($brushBack, $e.Bounds)
+        $brushBack.Dispose()
+    }
+
+    $foreColor = if ($isHighlighted) {
+        [System.Drawing.Color]::Black
+    }
+    else {
+        $sender.ForeColor
+    }
+    $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
+    
+    $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+    $textFormat = New-Object System.Drawing.StringFormat
+    $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+    $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
+
+    $brushFore.Dispose()
+    $textFormat.Dispose()
+    $e.DrawFocusRectangle()
+}
+
 # --- Mode toggles ---
 $rbHidden.add_CheckedChanged({
         if ($script:IsApplyingConfig) { return }
@@ -973,45 +1018,7 @@ function Show-GameModeDialog {
     $dialog.Controls.Add($lstGames)
 
     # ListBox item custom draw handler (Cyan/SAMISH Blue highlight)
-    $lstGamesDrawItem = {
-        param($sender, $e)
-        if ($e.Index -lt 0 -or $e.Index -ge $sender.Items.Count) { return }
-
-        $itemText = $sender.Items[$e.Index].ToString()
-        $isHighlighted = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -eq [System.Windows.Forms.DrawItemState]::Selected
-
-        $highlightColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { $script:BrandCyan }
-        if ($null -eq $highlightColor) { $highlightColor = [System.Drawing.Color]::FromArgb(0, 215, 255) }
-
-        if ($isHighlighted) {
-            $brushBack = New-Object System.Drawing.SolidBrush($highlightColor)
-            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-            $brushBack.Dispose()
-        }
-        else {
-            $brushBack = New-Object System.Drawing.SolidBrush($sender.BackColor)
-            $e.Graphics.FillRectangle($brushBack, $e.Bounds)
-            $brushBack.Dispose()
-        }
-
-        $foreColor = if ($isHighlighted) {
-            [System.Drawing.Color]::Black
-        }
-        else {
-            $sender.ForeColor
-        }
-        $brushFore = New-Object System.Drawing.SolidBrush($foreColor)
-        
-        $rect = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
-        $textFormat = New-Object System.Drawing.StringFormat
-        $textFormat.LineAlignment = [System.Drawing.StringAlignment]::Center
-
-        $e.Graphics.DrawString($itemText, $e.Font, $brushFore, $rect, $textFormat)
-    
-        $brushFore.Dispose()
-        $textFormat.Dispose()
-        $e.DrawFocusRectangle()
-    }
+    $lstGamesDrawItem = { Handle-GameListDrawItem @args }
     $lstGames.add_DrawItem($lstGamesDrawItem)
 
     $lblAdd = New-Object System.Windows.Forms.Label
