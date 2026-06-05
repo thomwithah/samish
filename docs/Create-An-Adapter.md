@@ -47,7 +47,7 @@ Your script **must** implement two functions matching the names:
 
 ### Reference Implementation (`Adapter.MY_MIXER.ps1`):
 
-Every adapter script should follow our strict engineering rules (proper headers, ASCII comments, try/catch fail-forward blocks, and explicit time unit documentation):
+
 
 ```powershell
 #requires -Version 5.1

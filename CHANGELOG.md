@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
 
 ---
 
@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **State-Aware Media Control**: SAMISH now checks the current SMTC playback status before sending any Play or Pause command to a monitored application. If the app is already in the requested state (e.g., already paused before sleep, or already playing after wake), the command is skipped. This prevents accidental toggling on media applications that implement Play and Pause as a single toggle action. The improvement automatically applies to Smart Restore, Keep App Open (Media Control), and Monitor & Auto-Relaunch crash recovery.
 - **Independent Per-App Auto-Relaunch**: The Monitor & Auto-Relaunch feature for individual automated apps now works independently of the main mixer "Auto-restart mixer if it crashes" checkbox. Previously, disabling the global auto-restart also silently prevented all per-app crash recovery from functioning.
 - **Smart Restore Enforced Pause**: When an automated app's On Wake Action is set to Smart Restore and the app was paused before sleep, SAMISH now sends an explicit Pause command on wake. This prevents applications that auto-resume playback on launch (such as Spotify) from overriding the saved pre-sleep state.
-- **Engine Auto-Recovery Watchdog**: The SAMISH background engine now automatically restarts within 2 minutes if its process is killed externally (e.g., by Task Manager, antivirus, or system memory pressure). The engine also includes an internal self-healing wrapper that catches and recovers from unhandled exceptions with exponential backoff, without the process needing to restart.
+- **Engine Auto-Recovery Watchdog**: The SAMISH background engine now automatically restarts within 2 minutes if its process is killed externally (e.g., by Task Manager or system memory pressure). The engine also includes an internal self-healing wrapper that catches and recovers from unhandled exceptions with exponential backoff, without the process needing to restart.
 - **Engine Heartbeat PID Logging**: The periodic engine heartbeat log entry now includes the process ID (PID) for easier identification when multiple PowerShell instances are running.
 
 ### Fixed
