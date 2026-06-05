@@ -16,6 +16,7 @@ $PackageDir = $PSScriptRoot
 if (-not $PackageDir -and $PSCommandPath) { $PackageDir = Split-Path -Parent $PSCommandPath }
 if (-not $PackageDir) { $PackageDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
 if ($PackageDir -and $PackageDir.EndsWith("\")) { $PackageDir = $PackageDir.TrimEnd("\") }
+$global:PackageDir = $PackageDir
 
 #region Native Methods and Core Modules
 $NativeMethodsPath = Join-Path $PackageDir "Modules\NativeMethods.ps1"
@@ -31,19 +32,48 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.2"
+$ScriptVersion = "v1.3.3"
 $ReleaseDate   = "2026-06-03"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
 $ConfigPath = Join-Path $env:APPDATA "SAMISH\config.json"
 
+# Load modules needed for config validation and atomic saving
+$ConfigBackupModulePath = Join-Path $PackageDir "Modules\ConfigBackup.Module.ps1"
+if (Test-Path -LiteralPath $ConfigBackupModulePath) {
+    . $ConfigBackupModulePath
+}
+$CommonModulePath = Join-Path $PackageDir "Modules\App.Control.Common.ps1"
+if (Test-Path -LiteralPath $CommonModulePath) {
+    . $CommonModulePath
+}
+
 function Apply-ConfigFromFile {
     if (-not (Test-Path -LiteralPath $ConfigPath)) { return }
     try {
         $raw = Get-Content -LiteralPath $ConfigPath -Raw -ErrorAction Stop
         if ([string]::IsNullOrWhiteSpace($raw)) { return }
-        $cfg = $raw | ConvertFrom-Json -ErrorAction Stop
+
+        $cfg = $null
+        $jsonError = $false
+        try {
+            $cfg = $raw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            $jsonError = $true
+            $cfg = [pscustomobject]@{}
+        }
+        
+        if (Get-Command Test-ConfigSchema -ErrorAction SilentlyContinue) {
+            $cfg = Merge-ConfigDefaults -Config $cfg
+            $schemaRes = Test-ConfigSchema -Config $cfg -AutoFix
+            if ($jsonError -or $schemaRes.FixedKeys.Count -gt 0) {
+                if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {
+                    $json = $cfg | ConvertTo-Json -Depth 3
+                    Save-ContentAtomic -Path $ConfigPath -Content $json
+                }
+            }
+        }
 
         foreach ($p in $cfg.PSObject.Properties) {
             $name = $p.Name
@@ -62,7 +92,7 @@ function Apply-ConfigFromFile {
         }
 
     } catch {
-        # Best effort only. If config is malformed, continue with defaults.
+        # Best effort only.
     }
 }
 
@@ -153,6 +183,8 @@ $CustomHotkeyVirtualKey = 0x76
 $EnableAutoRecovery = $true
 $script:LastAutoRecoveryCheckTime = $null
 $script:MonitoredAppPlayStates = @{}
+$script:MonitoredAppLastRelaunchTime = @{}
+$script:MonitoredAppSeenRunning = @{}
 $script:LastConfigWriteTime = $null
 
 # Load optional config file overrides
@@ -594,17 +626,22 @@ try {
         # 1. Stop Main Mixer via active adapter
         $adapterStopCmd = "Stop-$($script:ActiveProfileId)Adapter"
         if (Get-Command $adapterStopCmd -ErrorAction SilentlyContinue) {
-            $r = & $adapterStopCmd `
-                -ProcessName $script:TargetProcessName `
-                -ConfiguredPath $script:TargetExePath `
-                -OperatingMode $script:OperatingMode `
-                -WindowWakeDelayMs $script:GracefulWindowWakeDelayMs `
-                -ShutdownWaitMs $script:GracefulShutdownWaitMs
-            
-            if ($r) {
-                $stoppedAny = $true
-            } else {
-                Write-EventLogEntry -Message "Adapter failed to stop main mixer: $script:TargetProcessName." -EntryType "Warning" -EventId 300
+            try {
+                $r = & $adapterStopCmd `
+                    -ProcessName $script:TargetProcessName `
+                    -ConfiguredPath $script:TargetExePath `
+                    -OperatingMode $script:OperatingMode `
+                    -WindowWakeDelayMs $script:GracefulWindowWakeDelayMs `
+                    -ShutdownWaitMs $script:GracefulShutdownWaitMs
+                
+                if ($r) {
+                    $stoppedAny = $true
+                } else {
+                    Write-EventLogEntry -Message "Adapter failed to stop main mixer: $script:TargetProcessName." -EntryType "Warning" -EventId 300
+                }
+            } catch {
+                Write-EventLogEntry -Message "Adapter threw an exception stopping main mixer: $_" -EntryType "Error" -EventId 400
+                Log-Always "Adapter Stop function failed: $_"
             }
         } else {
             # Fallback to generic force stop if adapter is missing or has no stop func
@@ -822,29 +859,79 @@ try {
         # 2. Monitored Apps Auto-Recovery
         if ($script:MonitoredApps) {
             foreach ($app in $script:MonitoredApps) {
-                $autoRecoverEnabled = $false
-                if ($app.PSObject.Properties.Match('AutoRecover').Count -gt 0) {
-                    $autoRecoverEnabled = [bool]$app.AutoRecover
-                }
+                try {
+                    $autoRecoverEnabled = $false
+                    if ($app.PSObject.Properties.Match('AutoRecover').Count -gt 0) {
+                        $autoRecoverEnabled = [bool]$app.AutoRecover
+                    }
 
-                $isRunning = (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue) -ne $null
+                    # Read OnWakeAction -- skip recovery entirely for KeepClosed
+                    $onWake = "Smart"
+                    if ($app.PSObject.Properties.Match('OnWakeAction').Count -gt 0) {
+                        $onWake = $app.OnWakeAction
+                    }
+                    if ($onWake -eq "KeepClosed") { continue }
 
-                if ($isRunning) {
-                    # Track play state dynamically
-                    $status = Get-SmtcPlaybackStatus -ProcessName $app.ProcessName
-                    if ($status -eq 4) {
-                        $script:MonitoredAppPlayStates[$app.ProcessName] = $true
+                    $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue |
+                        Where-Object { $_.MainWindowHandle -ne 0 } |
+                        Select-Object -First 1)
+
+                    if ($isRunning) {
+                        # Track that we've seen this app running during this engine session
+                        $script:MonitoredAppSeenRunning[$app.ProcessName] = $true
+                        # Track play state dynamically
+                        $status = Get-SmtcPlaybackStatus -ProcessName $app.ProcessName
+                        if ($status -eq 4) {
+                            $script:MonitoredAppPlayStates[$app.ProcessName] = $true
+                        } else {
+                            $script:MonitoredAppPlayStates[$app.ProcessName] = $false
+                        }
                     } else {
-                        $script:MonitoredAppPlayStates[$app.ProcessName] = $false
+                        # Not running. Relaunch if monitoring is enabled.
+                        if ($autoRecoverEnabled) {
+                            # Only recover apps the engine has actually seen running during this session.
+                            # This prevents auto-launching apps that weren't running when the engine started.
+                            if (-not $script:MonitoredAppSeenRunning[$app.ProcessName]) {
+                                continue
+                            }
+
+                            # Cooldown: skip if we already tried to relaunch this app within the last 30 seconds
+                            # This prevents rapid-fire launches while UWP apps are still starting (MainWindowHandle = 0)
+                            $lastRelaunch = $script:MonitoredAppLastRelaunchTime[$app.ProcessName]
+                            if ($lastRelaunch -and ((Get-Date) - $lastRelaunch).TotalSeconds -lt 30) {
+                                continue
+                            }
+
+                            # Determine media action based on OnWakeAction
+                            $restorePlay = $false
+                            switch ($onWake) {
+                                "Smart" {
+                                    $restorePlay = [bool]$script:MonitoredAppPlayStates[$app.ProcessName]
+                                }
+                                "Play" {
+                                    $restorePlay = $true
+                                }
+                                "Pause" {
+                                    $restorePlay = $false
+                                }
+                                "ReopenOnly" {
+                                    $restorePlay = $false
+                                }
+                                default {
+                                    $restorePlay = [bool]$script:MonitoredAppPlayStates[$app.ProcessName]
+                                }
+                            }
+
+                            $script:MonitoredAppLastRelaunchTime[$app.ProcessName] = Get-Date
+                            $recovered = Relaunch-MonitoredApp -App $app -RestorePlayState $restorePlay
+                            # Only clear tracking state after successful recovery
+                            if ($recovered) {
+                                $script:MonitoredAppPlayStates[$app.ProcessName] = $false
+                            }
+                        }
                     }
-                } else {
-                    # Not running. Relaunch if monitoring is enabled.
-                    if ($autoRecoverEnabled) {
-                        $wasPlaying = [bool]$script:MonitoredAppPlayStates[$app.ProcessName]
-                        $recovered = Relaunch-MonitoredApp -App $app -RestorePlayState $wasPlaying
-                        # Clear tracking state after recovery attempt
-                        $script:MonitoredAppPlayStates[$app.ProcessName] = $false
-                    }
+                } catch {
+                    Log-Always "Error in auto-recovery for $($app.ProcessName): $($_.Exception.Message)"
                 }
             }
         }
@@ -996,7 +1083,7 @@ try {
                             Write-EventLogEntry -Message "SMTC session not found for $($app.ProcessName) within 15 seconds on wake ($loops loops tried). Playback resumption skipped." -EntryType "Warning" -EventId 300
                         }
                     }
-                    elseif ($onWake -eq "Pause") {
+                    elseif ($onWake -eq "Pause" -or ($onWake -eq "Smart" -and -not $shouldPlay)) {
                         Log-Always "Ensuring $($app.ProcessName) media playback is paused."
                         $paused = Invoke-SmtcActionForProcess -ProcessName $app.ProcessName -Action "Pause"
                     }
@@ -1031,7 +1118,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.2"
+        $script:icon.Text = "SAMISH v1.3.3"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1121,8 +1208,14 @@ try {
 
                 Add-Content -LiteralPath $logPath -Value "Setup is not running. Launching new instance..." -ErrorAction SilentlyContinue
                 $setupPath = $null
-                if (Test-Path -LiteralPath $ConfigPath) {
-                    $cfgRaw = Get-Content -LiteralPath $ConfigPath -Raw
+                # Resolve config path: prefer captured $ConfigPath, then $global:PackageDir-based
+                $resolvedConfigPath = $ConfigPath
+                if ([string]::IsNullOrWhiteSpace($resolvedConfigPath)) {
+                    $resolvedConfigPath = Join-Path $env:APPDATA "SAMISH\config.json"
+                }
+                Add-Content -LiteralPath $logPath -Value "ConfigPath resolved to: $resolvedConfigPath" -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $resolvedConfigPath) {
+                    $cfgRaw = Get-Content -LiteralPath $resolvedConfigPath -Raw
                     if (-not [string]::IsNullOrWhiteSpace($cfgRaw)) {
                         $cfg = $cfgRaw | ConvertFrom-Json
                         if ($cfg -and $cfg.PSObject.Properties.Name -contains "SetupPath") {
@@ -1133,13 +1226,23 @@ try {
                 
                 # Robust fallback to parent directory if SetupPath is missing or invalid
                 if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
-                    $parentDir = Split-Path -Parent $PSScriptRoot
-                    $candidateExe = Join-Path $parentDir "Setup.exe"
-                    $candidatePs1 = Join-Path $parentDir "Setup.ps1"
-                    if (Test-Path -LiteralPath $candidateExe) {
-                        $setupPath = $candidateExe
-                    } elseif (Test-Path -LiteralPath $candidatePs1) {
-                        $setupPath = $candidatePs1
+                    # Use $PackageDir if available in this scope, otherwise fall back to $global:PackageDir
+                    $resolvedPackageDir = $PackageDir
+                    if ([string]::IsNullOrWhiteSpace($resolvedPackageDir)) { $resolvedPackageDir = $global:PackageDir }
+                    Add-Content -LiteralPath $logPath -Value "PackageDir resolved to: $resolvedPackageDir" -ErrorAction SilentlyContinue
+                    if (-not [string]::IsNullOrWhiteSpace($resolvedPackageDir)) {
+                        $parentDir = Split-Path -Parent $resolvedPackageDir
+                        $candidateExe = Join-Path $parentDir "Setup.exe"
+                        $candidateBat = Join-Path $parentDir "Setup.bat"
+                        $candidatePs1 = Join-Path $parentDir "Setup.ps1"
+                        Add-Content -LiteralPath $logPath -Value "Checking: $candidateExe, $candidateBat, $candidatePs1" -ErrorAction SilentlyContinue
+                        if (Test-Path -LiteralPath $candidateExe) {
+                            $setupPath = $candidateExe
+                        } elseif (Test-Path -LiteralPath $candidateBat) {
+                            $setupPath = $candidateBat
+                        } elseif (Test-Path -LiteralPath $candidatePs1) {
+                            $setupPath = $candidatePs1
+                        }
                     }
                 }
                 
@@ -1316,6 +1419,21 @@ try {
     $StartupMessage = "SAMISH engine starting.`nVersion: $ScriptVersion`nOperating Mode: $OperatingMode`nActive Profile: $script:ActiveProfileId`nHotkey Enabled: $EnableHotkey`nTray Enabled: $EnableTrayIcon`nGame Mode: $(if ($GameModeEnabled) { 'Enabled (' + ($GameModeList -join ', ') + ')' } else { 'Disabled' })"
     Write-EventLogEntry -Message $StartupMessage -EntryType "Information" -EventId 100
 
+    # Write PID file so diagnostics can find us (CIM can't read CommandLine of elevated Task Scheduler processes)
+    $script:PidFilePath = Join-Path $PSScriptRoot "samish.pid"
+    try { Set-Content -LiteralPath $script:PidFilePath -Value $PID -Encoding UTF8 -Force } catch {}
+
+    # SELF-HEALING ENGINE WRAPPER
+    # If the main loop throws an unhandled exception, catch it and retry with exponential backoff.
+    # Backoff caps at half the screen-off/idle threshold to ensure the engine is alive before idle fires.
+    $script:engineBackoffSeconds = 10  # measured in sec -- initial retry delay
+    $script:engineMaxBackoff = [Math]::Max(60, [Math]::Floor($killThresholdSeconds / 2))  # measured in sec
+    $script:engineStableStart = Get-Date
+
+    while ($true) {
+        if ($script:ExitRequested) { break }
+        try {
+
     # MAIN LOOP
     while ($true) {
         if ($script:ExitRequested) {
@@ -1342,7 +1460,17 @@ try {
         }
 
         # Auto-Recovery check (throttled to run every 10 seconds)
-        if ($EnableAutoRecovery -and $script:mixerStopped -eq $false) {
+        # Run if either global auto-recovery is enabled OR any monitored app has per-app AutoRecover
+        $hasAutoRecoverMonitoredApps = $false
+        if ($script:MonitoredApps) {
+            foreach ($monApp in $script:MonitoredApps) {
+                if ($monApp.PSObject.Properties.Match('AutoRecover').Count -gt 0 -and [bool]$monApp.AutoRecover) {
+                    $hasAutoRecoverMonitoredApps = $true
+                    break
+                }
+            }
+        }
+        if (($EnableAutoRecovery -or $hasAutoRecoverMonitoredApps) -and $script:mixerStopped -eq $false) {
             $nowTime = Get-Date
             if ($null -eq $script:LastAutoRecoveryCheckTime) {
                 $script:LastAutoRecoveryCheckTime = $nowTime.AddSeconds(-10)
@@ -1384,7 +1512,17 @@ try {
         $script:GameModeActive = Invoke-GameModeCheck -Enabled $script:GameModeEnabled -GameList $script:GameModeList
 
         $idle = Get-IdleSeconds
-        Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds gameMode=$($script:GameModeActive)"
+        Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds gameMode=$($script:GameModeActive) PID=$PID"
+
+        # Reset self-healing backoff after 5 minutes of stable operation
+        if ($script:engineBackoffSeconds -gt 10) {
+            $stableMinutes = ((Get-Date) - $script:engineStableStart).TotalMinutes
+            if ($stableMinutes -ge 5) {
+                $script:engineBackoffSeconds = 10  # measured in sec -- reset to initial
+            }
+        } else {
+            $script:engineStableStart = Get-Date
+        }
 
         if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
 
@@ -1498,6 +1636,21 @@ try {
             $sleptMs += 100
         }
     }
+    # End of inner main loop -- clean exit via $ExitRequested
+    break  # Exit the outer self-healing loop too
+
+        } catch {
+            # Self-healing: log the error and retry with exponential backoff
+            $errMsg = "Engine loop error (will retry in $($script:engineBackoffSeconds)s): $($_.Exception.Message)"
+            try { Log-Always $errMsg } catch {}
+            try {
+                Write-EventLogEntry -Message $errMsg -EntryType "Error" -EventId 500
+            } catch {}
+
+            Start-Sleep -Seconds $script:engineBackoffSeconds
+            $script:engineBackoffSeconds = [Math]::Min($script:engineBackoffSeconds * 2, $script:engineMaxBackoff)
+        }
+    }  # End of outer self-healing loop
 }
 finally {
     Write-EventLogEntry -Message "SAMISH engine shutdown." -EntryType "Information" -EventId 101
@@ -1521,5 +1674,9 @@ finally {
             $script:mutex.ReleaseMutex()
             $script:mutex.Dispose()
         } catch {}
+    }
+    # Clean up PID file
+    if ($script:PidFilePath -and (Test-Path -LiteralPath $script:PidFilePath)) {
+        try { Remove-Item -LiteralPath $script:PidFilePath -Force -ErrorAction SilentlyContinue } catch {}
     }
 }

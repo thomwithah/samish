@@ -98,11 +98,28 @@ function Invoke-SmtcActionForProcess {
     $session = Get-SmtcSessionForProcess -ProcessName $ProcessName
     if (-not $session) { return $false }
     try {
+        # Read current playback state before dispatching any async command.
+        # This prevents accidental toggling on apps that treat Play and Pause
+        # as a single toggle action rather than discrete commands.
+        # Status codes: 0=Unknown, 1=Closed, 2=Opened, 3=Stopped, 4=Playing, 5=Paused
+        $currentStatus = 0
+        try {
+            $playbackInfo = $session.GetPlaybackInfo()
+            if ($playbackInfo) {
+                $currentStatus = [int]$playbackInfo.PlaybackStatus
+            }
+        }
+        catch {}
+
         if ($Action -eq "Pause") {
+            # Already paused (5) or stopped (3) -- no command needed.
+            if ($currentStatus -eq 5 -or $currentStatus -eq 3) { return $true }
             $asyncOp = $session.TryPauseAsync()
             return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
         }
         elseif ($Action -eq "Play") {
+            # Already playing (4) -- no command needed.
+            if ($currentStatus -eq 4) { return $true }
             $asyncOp = $session.TryPlayAsync()
             return Wait-UwpAsync -AsyncOp $asyncOp -ResultType ([bool])
         }

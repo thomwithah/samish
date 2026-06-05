@@ -1,5 +1,5 @@
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
-Created by thomwithah | Version: 1.3.2
+Created by thomwithah | Version: 1.3.3
 
 **Are you having trouble getting Windows to sleep or turn off your screens while your virtual audio mixer (BEACN, Voicemeeter, GoXLR, or Wave Link) is open?**
 
@@ -31,7 +31,7 @@ By monitoring system idle states, it automatically closes your audio software wh
 > [!WARNING]
 > **Windows SmartScreen & Antivirus False Positives**
 >
-> Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the setup installer (`SAMISH_Setup_v1.3.2.exe` and `Setup.exe`) does not have a paid digital signature. Your web browser and Windows Defender/SmartScreen will likely flag it as an "unrecognized app" or "unsafe file" until it builds up a download reputation.
+> Because SAMISH is a free, open-source tool compiled from PowerShell scripts, the setup installer (`SAMISH_Setup_v1.3.3.exe` and `Setup.exe`) does not have a paid digital signature. Your web browser and Windows Defender/SmartScreen will likely flag it as an "unrecognized app" or "unsafe file" until it builds up a download reputation.
 >
 > **What to expect:**
 > * **Browser Warning:** Chrome or Edge may warn that the file "is not commonly downloaded." Click the options menu (three dots) and select **Keep**.

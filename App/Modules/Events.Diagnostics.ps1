@@ -1,4 +1,4 @@
-﻿# ---------- Events.Diagnostics.ps1 ----------
+# ---------- Events.Diagnostics.ps1 ----------
 # ============================================================
 # Sleep & Hibernate Diagnostics - Event Wiring
 # ============================================================
@@ -1761,6 +1761,11 @@ function Init-SleepDiagnosticsEventHandlers {
             default { $newOnWake }
         }
         Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
+
+        # Refresh test button tooltips and visual state to reflect the new mode
+        if (Get-Command Update-TestButtonsTooltips -ErrorAction SilentlyContinue) {
+            Update-TestButtonsTooltips
+        }
     }
 
     if ($script:rbDiagGraceful) { $script:rbDiagGraceful.add_CheckedChanged($saveRecoveryMode) }
@@ -1846,6 +1851,13 @@ function Init-SleepDiagnosticsEventHandlers {
                     default { $newOnWake }
                 }
                 Flash-DiagnosticsStatus "Saved: $($app.ProcessName) set to $displayChosen ($displayOnWake on wake)."
+
+                # Refresh test button styling and tooltip to reflect the new wake action
+                try {
+                    if (Get-Command Update-TestButtonsTooltips -ErrorAction SilentlyContinue) {
+                        Update-TestButtonsTooltips
+                    }
+                } catch {}
             })
     }
 }

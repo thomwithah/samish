@@ -5,15 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [1.3.3] - 2026-06-05
+
+### Added
+- **State-Aware Media Control**: SAMISH now checks the current SMTC playback status before sending any Play or Pause command to a monitored application. If the app is already in the requested state (e.g., already paused before sleep, or already playing after wake), the command is skipped. This prevents accidental toggling on media applications that implement Play and Pause as a single toggle action. The improvement automatically applies to Smart Restore, Keep App Open (Media Control), and Monitor & Auto-Relaunch crash recovery.
+- **Independent Per-App Auto-Relaunch**: The Monitor & Auto-Relaunch feature for individual automated apps now works independently of the main mixer "Auto-restart mixer if it crashes" checkbox. Previously, disabling the global auto-restart also silently prevented all per-app crash recovery from functioning.
+- **Smart Restore Enforced Pause**: When an automated app's On Wake Action is set to Smart Restore and the app was paused before sleep, SAMISH now sends an explicit Pause command on wake. This prevents applications that auto-resume playback on launch (such as Spotify) from overriding the saved pre-sleep state.
+- **Engine Auto-Recovery Watchdog**: The SAMISH background engine now automatically restarts within 2 minutes if its process is killed externally (e.g., by Task Manager, antivirus, or system memory pressure). The engine also includes an internal self-healing wrapper that catches and recovers from unhandled exceptions with exponential backoff, without the process needing to restart.
+- **Engine Heartbeat PID Logging**: The periodic engine heartbeat log entry now includes the process ID (PID) for easier identification when multiple PowerShell instances are running.
+
+### Fixed
+- **Engine Process Detection**: Fixed a bug where the Setup UI incorrectly reported "Installed but not currently running" even though the engine was running normally. Windows CIM cannot read the command line of processes launched by Task Scheduler with elevated privileges, causing the process detection to fail. SAMISH now writes a PID file on engine startup and falls back to it when CIM-based detection returns no results.
+- **UI Label**: Corrected the "Monitor & Auto-Relaunch" checkbox label, which was rendering with an underscore character ("Monitor _Auto-Relaunch") due to a Windows Forms mnemonic shortcut character being incorrectly parsed.
+- **Keep Closed Diagnostics Button**: The "Test Wake/Resume" button in the Diagnostics tab now respects the Keep Closed wake action. When an app is configured to Keep Closed, the button appears visually greyed out with a context-aware tooltip identifying the app by name and skips launching on click. The button styling now updates immediately when the On Wake Action dropdown is changed.
+- **UWP App Background Process Detection**: Improved process detection for Spotify and other UWP/Store applications that keep background worker processes alive after the user closes the main window. SAMISH now checks for a visible window handle rather than just a matching process name. This fixes two issues: the Diagnostics tooltip incorrectly reporting the app as "running" when only background workers are present, and the Monitor & Auto-Relaunch feature failing to detect that the app's UI has been closed.
+- **Operating Mode Test Accuracy**: The "Test Wake/Resume" and "Test Sleep/Hibernate" buttons now accurately mirror SAMISH's real automated behavior. The Test Sleep button captures the app's current playback state before pausing or closing, and the Test Wake button uses that captured state to dispatch the correct media action based on the configured On Wake Action (Smart Restore, Always Play, Always Pause, or Reopen Only). Previously, the test always assumed playback should resume regardless of settings.
+
+---
+
 ## [1.3.2] - 2026-06-03
 
 ### Added
 - **Logger Module**: Unified logging operations (`Rotate-LogFileIfNeeded`, `Resolve-SamishLogPath`, `Write-EventLogEntry`) into a shared `Logger.psm1` module, eliminating duplicate implementations across the Setup UI and background engine.
 - **Theme-Aware Live Log Console**: The live log view now respects the active UI theme, using the correct palette colors instead of a fixed dark background regardless of theme state.
 - **`Apply-SamishTheme` API**: New convenience function for applying the active theme to dynamically spawned modal dialogs (Audio Device picker, Game Mode settings) with a single call.
-- **Pester Test Coverage Expansion**: Added `Logger.Tests.ps1` (7 tests) covering log path resolution, file rotation, and event log resilience. Total test suite now at 40 tests, all passing.
+- **Pester Test Coverage Expansion**: Added `Logger.Tests.ps1` (7 tests) and `FailStates.Tests.ps1` (4 tests) covering log path resolution, file rotation, event log resilience, config corruption, and mixer stop failure states. Total test suite now at 48 tests, all passing.
+- **Developer Documentation**: Relocated technical reference materials from the GUI to `USER_GUIDE.md` and added `docs/Create-An-Adapter.md` and `docs/Community_Response_Template.md` to support community contributions.
+- **Configuration Auto-Repair**: Upgraded the background engine to detect and automatically repair corrupted `config.json` files (e.g. malformed JSON syntax, invalid data types). Repairs are written atomically to prevent mid-write power-loss corruption.
 
 ### Changed
+- **Mixer Stop Resilience**: Strengthened the `Invoke-MixerStop` background routine with fail-forward error handling. If a third-party mixer adapter throws an exception or fails, the engine now logs the error and gracefully continues, guaranteeing the system sleep routine is never blocked.
 - **Boot Trace Logger Reorder**: Moved the `Write-SamishSetupTrace` function definition to execute before its first call site, ensuring early boot errors (such as AppUserModelID registration failures) are properly logged instead of silently discarded.
 
 ## [1.3.1] - 2026-06-03

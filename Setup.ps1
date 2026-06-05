@@ -1,7 +1,7 @@
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.3.2
+# Version: 1.3.3
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -387,7 +387,7 @@ try {
     # ---------- Constants ----------
     $ProductName = "SAMISH"
     $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-    $ProductVersion = "v1.3.2"
+    $ProductVersion = "v1.3.3"
     $AuthorLine = "Created by thomwithah"
 
     $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -1390,6 +1390,23 @@ A backup will be created before any changes are applied.
             catch { }
         }
 
+        # Fallback: PID file (CIM returns null CommandLine for elevated Task Scheduler processes)
+        if ($pids.Count -eq 0) {
+            $pidFile = Join-Path $InstallDir "samish.pid"
+            if (Test-Path -LiteralPath $pidFile) {
+                try {
+                    $savedPid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+                    if ($savedPid -ne $selfPid) {
+                        $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
+                        if ($proc -and ($proc.ProcessName -eq "powershell" -or $proc.ProcessName -eq "pwsh")) {
+                            Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
+                            $pids += $savedPid
+                        }
+                    }
+                } catch {}
+            }
+        }
+
         # Wait (briefly) for termination so Task Scheduler (/Run) can actually restart under IgnoreNew.
         if ($pids.Count -gt 0) {
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -1513,12 +1530,28 @@ A backup will be created before any changes are applied.
     }
 
     function Get-SamishProcessInfo {
+        # Primary: match by CommandLine (works when CIM can read it)
         $procs = Get-CimInstance Win32_Process | Where-Object {
             $_.Name -eq "powershell.exe" -and $_.CommandLine -and (
                 $_.CommandLine -match "SAMISH\\.ps1" -or
                 ($InstalledEnginePath -and ($_.CommandLine -like "*$InstalledEnginePath*"))
             )
         }
+
+        # Fallback: PID file (CIM returns null CommandLine for elevated Task Scheduler processes)
+        if (-not $procs) {
+            $pidFile = Join-Path $InstallDir "samish.pid"
+            if (Test-Path -LiteralPath $pidFile) {
+                try {
+                    $savedPid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+                    $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
+                    if ($proc -and $proc.ProcessName -eq "powershell") {
+                        return @{ Running = $true; Count = 1; Pids = @($savedPid) }
+                    }
+                } catch {}
+            }
+        }
+
         if (-not $procs) { return @{ Running = $false; Count = 0; Pids = @() } }
         $pids = @($procs | ForEach-Object { $_.ProcessId })
         return @{ Running = $true; Count = $pids.Count; Pids = $pids }

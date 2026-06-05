@@ -8,7 +8,19 @@
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT120S</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
     </LogonTrigger>
+
+    <RegistrationTrigger>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT120S</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </RegistrationTrigger>
   </Triggers>
 
   <Principals>
@@ -23,6 +35,10 @@
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT60S</Interval>
+      <Count>9999</Count>
+    </RestartOnFailure>
   </Settings>
 
   <Actions Context="Author">

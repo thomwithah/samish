@@ -446,7 +446,7 @@ $script:rbDiagPauseMedia = $rbPauseMedia
 $tooltip.SetToolTip($rbPauseMedia, "Keep App Open: Pauses the application's media playback (via Windows SMTC) before sleep or hibernation instead of closing the application. This is ideal for web browsers to prevent losing open tabs.")
 
 $cbDiagAutoRecover = New-Object System.Windows.Forms.CheckBox
-$cbDiagAutoRecover.Text = "Monitor & Auto-Relaunch"
+$cbDiagAutoRecover.Text = "Monitor && Auto-Relaunch"
 $cbDiagAutoRecover.AutoSize = $true
 $cbDiagAutoRecover.Location = New-Object System.Drawing.Point(185, 66)
 $grpOperatingMode.Controls.Add($cbDiagAutoRecover)

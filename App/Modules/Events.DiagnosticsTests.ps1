@@ -250,20 +250,22 @@ function Update-TestButtonsTooltips {
             $tipForce = "$reason`r`n`r`n$baseForce"
         }
         else {
-            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue |
+                Where-Object { $_.MainWindowHandle -ne 0 } |
+                Select-Object -First 1
             $running = $null -ne $proc
 
             if ($running) {
-                $statusSleep = "[Available - Target is running]"
-                $statusGraceful = "[Available - Target is running]"
-                $statusForce = "[Available - Target is running]"
+                $statusSleep = "[Available - $($target.DisplayName) is running]"
+                $statusGraceful = "[Available - $($target.DisplayName) is running]"
+                $statusForce = "[Available - $($target.DisplayName) is running]"
 
                 if ($target.BeforeSleepMode -eq "PauseMedia") {
-                    $statusWake = "[Available - Target is running (testing playback resumption)]"
+                    $statusWake = "[Available - $($target.DisplayName) is running (testing media state restoration)]"
                     $guidanceWake = "This will test media playback resumption on the running application."
                 }
                 else {
-                    $statusWake = "[Unavailable - Target is running. Click 'Test Sleep/Hibernate' first.]"
+                    $statusWake = "[Unavailable - $($target.DisplayName) is running. Click 'Test Sleep/Hibernate' first.]"
                     $guidanceWake = "The application must be stopped before testing the launch action."
                 }
 
@@ -277,11 +279,11 @@ function Update-TestButtonsTooltips {
                 $tipForce = "$statusForce`r`n`r`n$baseForce`r`n`r`n$guidanceForce"
             }
             else {
-                $statusSleep = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
-                $statusGraceful = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
-                $statusForce = "[Unavailable - Target is not running. Click 'Test Wake/Resume' first.]"
+                $statusSleep = "[Unavailable - $($target.DisplayName) is not running. Click 'Test Wake/Resume' first.]"
+                $statusGraceful = "[Unavailable - $($target.DisplayName) is not running. Click 'Test Wake/Resume' first.]"
+                $statusForce = "[Unavailable - $($target.DisplayName) is not running. Click 'Test Wake/Resume' first.]"
                 
-                $statusWake = "[Available - Target is not running]"
+                $statusWake = "[Available - $($target.DisplayName) is not running]"
 
                 $guidanceSleep = "The application must be running to test sleep actions."
                 $guidanceGraceful = "The application must be running to test graceful close."
@@ -296,6 +298,47 @@ function Update-TestButtonsTooltips {
                 $tipForce = "$statusForce`r`n`r`n$baseForce`r`n`r`n$guidanceForce"
             }
         }
+    }
+
+    # Determine if wake button should be visually unavailable
+    $isWakeUnavailable = $false
+    try {
+        if ($target -and $target.Valid) {
+            if ($target.PSObject.Properties['OnWakeAction'] -and $target.OnWakeAction -eq "KeepClosed") {
+                $isWakeUnavailable = $true
+                $tipWake = "[Unavailable - $($target.DisplayName) is configured to 'Keep Closed' on wake. Change the On Wake Action to test.]`r`n`r`n$baseWake"
+            }
+            elseif ($running -and $target.BeforeSleepMode -ne "PauseMedia") {
+                $isWakeUnavailable = $true
+            }
+        }
+    } catch {}
+
+    # Apply visual styling to the wake button based on unavailable state
+    if ($script:btnTestStart) {
+        try {
+            if ($isWakeUnavailable) {
+                if ($global:ThemeCustomActive) {
+                    $script:btnTestStart.BackColor = $global:ThemeCustomDisabled
+                    $script:btnTestStart.ForeColor = $global:ThemeCustomDisabledText
+                } else {
+                    $script:btnTestStart.BackColor = [System.Drawing.SystemColors]::Control
+                    $script:btnTestStart.ForeColor = [System.Drawing.SystemColors]::GrayText
+                }
+                $script:btnTestStart.Tag = 'VisuallyDisabled'
+            } else {
+                if ($global:ThemeCustomActive) {
+                    $script:btnTestStart.BackColor = $global:ThemeCustomButton
+                    $script:btnTestStart.ForeColor = $global:ThemeCustomPrimary
+                } else {
+                    $script:btnTestStart.BackColor = [System.Drawing.SystemColors]::Control
+                    $script:btnTestStart.ForeColor = [System.Drawing.SystemColors]::ControlText
+                }
+                if ($script:btnTestStart.Tag -eq 'VisuallyDisabled') {
+                    $script:btnTestStart.Tag = $null
+                }
+            }
+        } catch {}
     }
 
     # Set tooltips dynamically
@@ -446,17 +489,50 @@ $script:btnTestStart.add_Click({
                 return
             }
 
-            # If configured for PauseMedia and already running, test playback resumption directly
+            # Skip launch when wake action is Keep Closed
+            if ($target.PSObject.Properties['OnWakeAction'] -and $target.OnWakeAction -eq "KeepClosed") {
+                $msg = "Start Test skipped: $($target.DisplayName) is configured to 'Keep Closed' on wake."
+                Set-StatusText $msg
+                Write-SetupLog "Operating Mode Test (Start): $msg"
+                return
+            }
+
+            # If configured for PauseMedia and already running, test wake media action directly
             $proc = Get-Process -Name $target.ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($proc) {
                 if ($target.BeforeSleepMode -eq "PauseMedia") {
-                    Set-StatusText "Relaunch not required ($($target.DisplayName) is running). Testing Media Play action..."
-                    $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
-                    if ($resumed) {
-                        $msg = "Start Test PASSED for $($target.DisplayName) (Media Play command succeeded)."
+                    # Determine the correct wake action to mirror engine behavior
+                    $wakeAction = switch ($target.OnWakeAction) {
+                        "Play"  { "Play" }
+                        "Pause" { "Pause" }
+                        "Smart" {
+                            if ($null -ne $script:TestPreSleepPlayState -and -not $script:TestPreSleepPlayState) {
+                                "Pause"
+                            } else {
+                                "Play"
+                            }
+                        }
+                        default { "Play" }
+                    }
+
+                    $actionLabel = if ($wakeAction -eq "Play") { "Play" } else { "Pause" }
+                    $smartContext = ""
+                    if ($target.OnWakeAction -eq "Smart") {
+                        if ($null -ne $script:TestPreSleepPlayState) {
+                            $stateLabel = if ($script:TestPreSleepPlayState) { "Playing" } else { "Paused" }
+                            $smartContext = " Smart Restore: restoring to $stateLabel (captured from Test Sleep)."
+                        } else {
+                            $smartContext = " Smart Restore: no prior Test Sleep detected -- defaulting to Play. Run Test Sleep/Hibernate first for accurate Smart Restore testing."
+                        }
+                    }
+
+                    Set-StatusText "Relaunch not required ($($target.DisplayName) is running). Testing Media $actionLabel action...$smartContext"
+                    $result = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action $wakeAction
+                    if ($result) {
+                        $msg = "Start Test PASSED for $($target.DisplayName) (Media $actionLabel command succeeded).$smartContext"
                     }
                     else {
-                        $msg = "Start Test did not confirm playback for $($target.DisplayName) (SMTC play command failed or no session found)."
+                        $msg = "Start Test did not confirm media $actionLabel for $($target.DisplayName) (SMTC $actionLabel command failed or no session found).$smartContext"
                     }
                     Set-StatusText $msg
                     Write-SetupLog "Operating Mode Test (Start): $msg"
@@ -487,11 +563,37 @@ $script:btnTestStart.add_Click({
                 return
             }
 
-            $infoMsg = "Running Start Test for $($target.DisplayName)..."
+            # Determine the wake media action based on OnWakeAction setting
+            $wakeAction = switch ($target.OnWakeAction) {
+                "Play"  { "Play" }
+                "Pause" { "Pause" }
+                "ReopenOnly" { $null }
+                "Smart" {
+                    if ($null -ne $script:TestPreSleepPlayState -and -not $script:TestPreSleepPlayState) {
+                        "Pause"
+                    } else {
+                        "Play"
+                    }
+                }
+                default { "Play" }
+            }
+
+            # Build Smart Restore context message
+            $smartContext = ""
             if ($target.OnWakeAction -eq "Smart") {
-                $smartNote = "Since the Start Test button runs in an ad-hoc test context (outside of actual system sleep/wake transitions), it does not have a real pre-sleep state. For the test, if the wake action is configured as Smart Restore, the test will assume the app was playing and attempt playback restoration."
-                $infoMsg = "$smartNote`r`n`r`nRunning Start Test (Smart Restore: assuming pre-sleep playback state was playing) for $($target.DisplayName)..."
-                Write-SetupLog "Operating Mode Test (Start): $smartNote"
+                if ($null -ne $script:TestPreSleepPlayState) {
+                    $stateLabel = if ($script:TestPreSleepPlayState) { "Playing" } else { "Paused" }
+                    $smartContext = "Smart Restore: restoring to $stateLabel (captured from Test Sleep)."
+                } else {
+                    $smartContext = "Smart Restore: no prior Test Sleep detected -- defaulting to Play. Run Test Sleep/Hibernate first for accurate Smart Restore testing."
+                }
+            }
+
+            $actionLabel = if ($wakeAction) { $wakeAction } else { "Reopen Only" }
+            $infoMsg = "Running Start Test ($actionLabel) for $($target.DisplayName)..."
+            if ($smartContext) {
+                $infoMsg = "$smartContext`r`n`r`n$infoMsg"
+                Write-SetupLog "Operating Mode Test (Start): $smartContext"
             }
             Set-StatusText $infoMsg
             Write-SetupLog "Operating Mode Test (Start): starting test for $($target.DisplayName) (process: $($target.ProcessName), path: $($target.ConfiguredPath))"
@@ -515,13 +617,15 @@ $script:btnTestStart.add_Click({
                 if ($method) { $msg += " (Method: $method)" }
                 $msg += "."
 
-                # If the app has Media Control, try to send the Play command to complete the wake test
-                $shouldPlay = ($target.OnWakeAction -eq "Play" -or $target.OnWakeAction -eq "Smart")
-                if ($shouldPlay) {
-                    Write-SetupLog "Operating Mode Test (Start): polling SMTC session to send Play command (up to 15 seconds, retrying every 250 ms)."
+                # Send the wake media action (Play, Pause, or skip for ReopenOnly)
+                if ($null -ne $wakeAction) {
+                    Write-SetupLog "Operating Mode Test (Start): polling SMTC session to send $wakeAction command (up to 15 seconds, retrying every 250 ms)."
                     $sessionFound = $false
-                    $playConfirmed = $false
+                    $actionConfirmed = $false
                     $processCrashed = $false
+
+                    # Target SMTC status: 4 = Playing, anything else = not playing
+                    $targetStatus = if ($wakeAction -eq "Play") { 4 } else { -1 }
 
                     for ($i = 0; $i -lt 60; $i++) {
                         # Early Exit: Check if process is still running
@@ -534,49 +638,53 @@ $script:btnTestStart.add_Click({
                         $session = Get-SmtcSessionForProcess -ProcessName $target.ProcessName
                         if ($session) {
                             $sessionFound = $true
-                            
-                            # Send Play command
-                            $resumed = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action "Play"
-                            
-                            # Sleep for 250 ms to allow playback state to transition
+
+                            # Send the configured wake action command
+                            $cmdResult = Invoke-SmtcActionForProcess -ProcessName $target.ProcessName -Action $wakeAction
+
+                            # Wait 250 ms to allow playback state to transition
                             for ($s = 0; $s -lt 5; $s++) {
-                                Start-Sleep -Milliseconds 50
+                                Start-Sleep -Milliseconds 50  # measured in ms
                                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
                             }
-                            
-                            # Verify playback state
+
+                            # Verify playback state matches the desired wake action
                             $statusVal = Get-SmtcPlaybackStatus -ProcessName $target.ProcessName
-                            if ($statusVal -eq 4) {
-                                $playConfirmed = $true
+                            if ($wakeAction -eq "Play" -and $statusVal -eq 4) {
+                                $actionConfirmed = $true
+                                break
+                            }
+                            elseif ($wakeAction -eq "Pause" -and $statusVal -ne 4) {
+                                $actionConfirmed = $true
                                 break
                             }
                         }
                         else {
                             # Wait 250 ms before checking again
                             for ($s = 0; $s -lt 5; $s++) {
-                                Start-Sleep -Milliseconds 50
+                                Start-Sleep -Milliseconds 50  # measured in ms
                                 try { [System.Windows.Forms.Application]::DoEvents() } catch {}
                             }
                         }
                     }
 
                     $loops = if ($i -ge 60) { 60 } else { $i + 1 }
-                    $elapsedMs = $loops * 250
+                    $elapsedMs = $loops * 250  # measured in ms
                     $timeString = if ($elapsedMs -lt 1000) { "$elapsedMs ms" } else { "$([math]::Round($elapsedMs / 1000, 2)) seconds" }
 
                     if ($processCrashed) {
-                        $msg += " Media play failed because the application process exited or crashed during startup."
+                        $msg += " Media $wakeAction failed because the application process exited or crashed during startup."
                     }
-                    elseif ($playConfirmed) {
-                        $logMsg = "Media Control Confirmed via SMTC after $loops loops ($timeString)."
+                    elseif ($actionConfirmed) {
+                        $logMsg = "Media $wakeAction Confirmed via SMTC after $loops loops ($timeString)."
                         Write-SetupLog "Operating Mode Test (Start): $logMsg"
                         $msg += " $logMsg"
                     }
                     elseif ($sessionFound) {
-                        $msg += " Media play command sent but playback state could not be confirmed within 15 seconds ($loops loops tried)."
+                        $msg += " Media $wakeAction command sent but state could not be confirmed within 15 seconds ($loops loops tried)."
                     }
                     else {
-                        $msg += " Warning: SMTC session not found within 15 seconds to resume playback ($loops loops tried)."
+                        $msg += " Warning: SMTC session not found within 15 seconds to send $wakeAction ($loops loops tried)."
                     }
                 }
 
@@ -605,9 +713,9 @@ $script:btnTestStart.add_Click({
                 }
             }
 
-            # Retain the Smart Restore note in the final status bar message if applicable (prepended for logical/chronological flow)
-            if ($target.OnWakeAction -eq "Smart") {
-                $msg = "Note: Since the Start Test button runs in an ad-hoc test context (outside of actual system sleep/wake transitions), it does not have a real pre-sleep state. For the test, if the wake action is configured as Smart Restore, the test will assume the app was playing and attempt playback restoration.`r`n`r`n$msg"
+            # Append Smart Restore context to the final status message
+            if ($smartContext) {
+                $msg = "$smartContext`r`n`r`n$msg"
             }
 
             # Informational note when the SAMISH engine is installed (no blocking).
@@ -647,6 +755,18 @@ $script:btnTestStop.add_Click({
                 Set-StatusText $msg
                 Write-SetupLog "Operating Mode Test (Stop): $msg"
                 return
+            }
+
+            # Capture pre-sleep playback state for Smart Restore test
+            $script:TestPreSleepPlayState = $null
+            try {
+                $smtcStatus = Get-SmtcPlaybackStatus -ProcessName $target.ProcessName
+                # SMTC status 4 = Playing
+                $script:TestPreSleepPlayState = ($smtcStatus -eq 4)
+                Write-SetupLog "Operating Mode Test (Stop): Captured pre-sleep play state for $($target.DisplayName): $(if ($script:TestPreSleepPlayState) { 'Playing' } else { 'Paused/Stopped' })"
+            } catch {
+                Write-SetupLog "Operating Mode Test (Stop): Could not capture pre-sleep play state: $($_.Exception.Message)"
+                $script:TestPreSleepPlayState = $null
             }
 
             # Run the configured before-sleep stop/pause action
