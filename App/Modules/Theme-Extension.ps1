@@ -312,8 +312,12 @@ function global:Handle-ThemeGroupBoxPaint {
         # Mask and draw text
         if ($sender.PSObject.Properties.Match('OriginalText').Count -gt 0 -and $sender.OriginalText) {
             $origText = $sender.OriginalText
+            $drawText = $origText
+            if ($null -ne $origText) {
+                $drawText = $origText.Replace("&&", "&")
+            }
             $font = $sender.Font
-            $textSize = $g.MeasureString($origText, $font)
+            $textSize = $g.MeasureString($drawText, $font)
             $textW = [int]($textSize.Width)
             
             $bg = Get-ParentSolidBackColor -c $sender
@@ -322,7 +326,7 @@ function global:Handle-ThemeGroupBoxPaint {
             $bgBrush.Dispose()
             
             $textBrush = New-Object System.Drawing.SolidBrush($sender.ForeColor)
-            $g.DrawString($origText, $font, $textBrush, 8, 0)
+            $g.DrawString($drawText, $font, $textBrush, 8, 0)
             $textBrush.Dispose()
         }
     }

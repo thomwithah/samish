@@ -32,8 +32,8 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.4"
-$ReleaseDate   = "2026-06-05"
+$ScriptVersion = "v1.3.5"
+$ReleaseDate   = "2026-06-06"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -1168,7 +1168,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.4"
+        $script:icon.Text = "SAMISH v1.3.5"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1190,11 +1190,33 @@ try {
 
         $script:MenuToggleItem = $toggleItem
 
+        # Fix: Grab foreground focus before the menu renders so Windows routes
+        # click and dismiss events correctly across the UIPI privilege boundary.
+        $menu.add_Opening({
+            Log-Always "Tray: Context menu opening. Attempting SetForegroundWindow."
+            try {
+                if ($script:PowerForm -and $script:PowerForm.Handle -ne [IntPtr]::Zero) {
+                    $result = [SamishWin32]::SetForegroundWindow($script:PowerForm.Handle)
+                    Log-Always "Tray: SetForegroundWindow returned: $result"
+                } else {
+                    Log-Always "Tray: PowerForm handle is unavailable."
+                }
+            } catch {
+                Log-Always "Tray: SetForegroundWindow failed: $_"
+            }
+        })
+
+        $menu.add_Closed({
+            param($menuSender, $menuEventArgs)
+            Log-Always "Tray: Context menu closed. Reason: $($menuEventArgs.CloseReason)"
+        })
+
         $script:icon.add_DoubleClick({
             $settingsItem.PerformClick()
         })
 
         $settingsItem.add_Click({
+            Log-Always "Tray: 'Open Settings' clicked."
             $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
             try {
                 Add-Content -LiteralPath $logPath -Value "=== Clicked Open Settings at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ErrorAction SilentlyContinue
@@ -1325,10 +1347,12 @@ try {
         })
 
         $toggleItem.add_Click({
+            Log-Always "Tray: 'Disable/Enable helper' clicked (was enabled: $script:TrayEnabled)."
             Set-HelperEnabled (-not $script:TrayEnabled) "TRAY MENU"
         })
 
         $exitItem.add_Click({
+            Log-Always "Tray: 'Exit' clicked. Requesting engine shutdown."
             $script:ExitRequested = $true
         })
     }

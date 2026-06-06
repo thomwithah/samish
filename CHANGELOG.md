@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-06-06
+
+### Fixed
+- **Tray Icon Context Menu**: Fixed an issue where right-clicking the system tray icon could produce a context menu that ignored clicks and remained floating on the desktop. This was caused by Windows not transferring input focus to the menu when SAMISH runs with elevated privileges. The menu now explicitly requests foreground focus before opening, ensuring that clicks register correctly and the menu dismisses when clicking elsewhere.
+
+### Improved
+- **Tray Diagnostics Logging**: Added detailed logging for tray icon interactions (menu open, menu close, and all menu item clicks). These events are recorded in the standard SAMISH log file and included automatically in diagnostic reports, making it easier to troubleshoot tray-related issues remotely.
+
 ## [1.3.4] - 2026-06-05
 
 ### Added
