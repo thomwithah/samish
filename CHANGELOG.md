@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+
+## [1.3.4] - 2026-06-05
 
 ### Added
 - **Install Pre-Flight Validation**: The Install and Uninstall buttons now run a comprehensive set of pre-flight checks before starting any operation. Checks include verifying that the install folder is writable, required XML task templates exist in the package, the background engine script is present, and the selected install mode has a valid template. If any check fails, a clear warning is displayed in the Status panel with actionable guidance, and the operation is halted before any files are modified.

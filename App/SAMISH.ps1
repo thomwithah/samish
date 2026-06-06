@@ -1,4 +1,4 @@
-# Suggested filename: SAMISH.ps1
+﻿# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -32,8 +32,8 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.3"
-$ReleaseDate   = "2026-06-03"
+$ScriptVersion = "v1.3.4"
+$ReleaseDate   = "2026-06-05"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -1168,7 +1168,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.3"
+        $script:icon.Text = "SAMISH v1.3.4"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
