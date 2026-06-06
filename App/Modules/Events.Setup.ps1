@@ -354,6 +354,23 @@ $btnCleanReset.add_Click({
 # ---------- INSTALL / UPDATE ----------
 $btnInstall.add_Click({
         try {
+            # Pre-flight validation: check prerequisites before starting
+            if (Get-Command Test-InstallPreFlight -ErrorAction SilentlyContinue) {
+                $installMode = if ($rbHidden.Checked) { "Hidden" } else { "Interactive" }
+                $preflight = Test-InstallPreFlight -PackageDir $PackageDir -InstallDir $InstallDir -Mode $installMode
+                if (-not $preflight.IsValid) {
+                    $msg = Format-PreFlightResult -Result $preflight -Operation "Install"
+                    Set-StatusText($msg)
+                    Show-ErrorDialog -Message $msg -Title "Install Pre-Check Failed"
+                    return
+                }
+                if ($preflight.Warnings.Count -gt 0) {
+                    $warnMsg = Format-PreFlightResult -Result $preflight -Operation "Install"
+                    Set-StatusText($warnMsg)
+                    Write-SetupLog "Install pre-flight warnings: $($preflight.Warnings -join '; ')"
+                }
+            }
+
             Set-StatusText("Preparing runtime files...")
 
             $mode = if ($rbHidden.Checked) { "Hidden" } else { "Interactive" }
@@ -431,6 +448,22 @@ $btnInstall.add_Click({
 # ---------- UNINSTALL ----------
 $btnUninstall.add_Click({
         try {
+            # Pre-flight validation: check prerequisites before starting
+            if (Get-Command Test-UninstallPreFlight -ErrorAction SilentlyContinue) {
+                $preflight = Test-UninstallPreFlight -InstallDir $InstallDir
+                if (-not $preflight.IsValid) {
+                    $msg = Format-PreFlightResult -Result $preflight -Operation "Uninstall"
+                    Set-StatusText($msg)
+                    Show-ErrorDialog -Message $msg -Title "Uninstall Pre-Check Failed"
+                    return
+                }
+                if ($preflight.Warnings.Count -gt 0) {
+                    $warnMsg = Format-PreFlightResult -Result $preflight -Operation "Uninstall"
+                    Set-StatusText($warnMsg)
+                    Write-SetupLog "Uninstall pre-flight warnings: $($preflight.Warnings -join '; ')"
+                }
+            }
+
             $hiddenExists = Task-Exists -TaskNameWithSlash $TaskHidden
             $interactiveExists = Task-Exists -TaskNameWithSlash $TaskInteractive
             $shortcutExists = Test-Path -LiteralPath (Get-StartupShortcutPath)

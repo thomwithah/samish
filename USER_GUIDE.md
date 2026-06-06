@@ -70,6 +70,8 @@ The codebase is split into modular components to ensure portability and high tes
 c:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\
 ├── Setup.ps1 (UI Main Launcher & Entry Point)
 ├── USER_GUIDE.md (User & Developer Documentation)
+├── ARCHITECTURE.md (Architecture & Engineering Conventions)
+├── CHANGELOG.md (Release History)
 └── App/
     ├── SAMISH.ps1 (Background service loop)
     └── Modules/
@@ -78,14 +80,23 @@ c:\Scripts\GOOGLE-ANTI-GRAVITY\SAMISH\
         ├── UI.DiagTab.ps1 (Second-tab controls & diagnostics layout)
         ├── Logger.psm1 (Shared logging API)
         ├── Install.Engine.ps1 (Task scheduler & setup actions)
-        └── Theme-Extension.ps1 (Color palette & custom theme manager)
+        ├── Theme-Extension.ps1 (Color palette & custom theme manager)
+        ├── ConfigBackup.Module.ps1 (Config schema validation & auto-fix)
+        ├── Validation.Module.ps1 (Pre-flight install/uninstall checks)
+        ├── Setup.Helpers.ps1 (Core helpers extracted from Setup.ps1)
+        ├── Task.Helpers.ps1 (Shortcuts, schtasks, process control)
+        ├── Diagnostics.Display.ps1 (Diagnostics header & display)
+        ├── Config.Helpers.ps1 (Config write, log selection, profiles)
+        ├── LiveLog.Module.ps1 (Live log streaming to Status box)
+        └── Adapters/
+            └── Adapter.*.ps1 (Per-device profile adapters)
 ```
 
 #### Core Components
 * **[Setup.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/Setup.ps1):** The primary entry point. Initializes the WinForms thread, loads configuration variables, and displays the installation dashboard.
 * **[SAMISH.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/App/SAMISH.ps1):** The background service loop. It uses a low-overhead timer to monitor system power broadcasts, parses idle states, and runs the custom adapter triggers.
 * **[Logger.psm1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/App/Modules/Logger.psm1):** Unified logging utility shared between the frontend installer and background runner. Handles daily log file rotation and writes to the Windows Application Event Log.
-* **[ConfigBackup.Module.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/App/Modules/ConfigBackup.Module.ps1):** Contains `Test-ConfigSchema` which provides automatic schema checking, type coercion, and auto-fix capabilities.
+* **[ConfigBackup.Module.ps1](file:///c:/Scripts/GOOGLE-ANTI-GRAVITY/SAMISH/App/Modules/ConfigBackup.Module.ps1):** Contains `Test-ConfigSchema` which provides automatic schema checking, type coercion, and auto-fix capabilities. Creates timestamped backups before applying repairs.
 
 ---
 

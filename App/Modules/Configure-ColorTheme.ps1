@@ -1,12 +1,42 @@
-# Configure-ColorTheme.ps1
-# Interactive wizard to generate custom_theme.json
+#requires -Version 5.1
+<#
+    Configure-ColorTheme.ps1
+    Interactive wizard to generate custom_theme.json for the SAMISH color theme system.
+
+    Purpose:  Guides users through color selection and saves a custom_theme.json file.
+    Inputs:   User color choices via interactive prompts.
+    Outputs:  custom_theme.json in the App/ directory.
+    Called by: Launch-ColorThemeConfigurator.bat
+#>
 
 $AppDir = Split-Path -Parent $PSScriptRoot
 $TemplateFile = Join-Path $AppDir "custom_theme_template.json"
 $TargetFile = Join-Path $AppDir "custom_theme.json"
 $BackupFile = Join-Path $AppDir "custom_theme.json.bak"
 $ProjectRoot = Split-Path -Parent $AppDir
-$Executable = Join-Path $ProjectRoot "dist\v1.3.0\SAMISH_Setup_v1.3.0.exe"
+
+# Dynamically read the current version from Setup.ps1 (the single source of truth)
+$Executable = $null
+try {
+    $setupPath = Join-Path $ProjectRoot "Setup.ps1"
+    if (Test-Path -LiteralPath $setupPath) {
+        $setupContent = Get-Content -LiteralPath $setupPath -Raw
+        $verMatch = $setupContent | Select-String -Pattern '\$ProductVersion\s*=\s*"(.*?)"'
+        if ($verMatch) {
+            $currentVersion = $verMatch.Matches.Groups[1].Value
+            $Executable = Join-Path $ProjectRoot "dist\$currentVersion\SAMISH_Setup_$currentVersion.exe"
+        }
+    }
+} catch {
+    # Fail-forward: if version detection fails, Executable stays $null
+}
+# Fallback to Setup.exe at root if dist version not found
+if (-not $Executable -or -not (Test-Path -LiteralPath $Executable)) {
+    $rootExe = Join-Path $ProjectRoot "Setup.exe"
+    if (Test-Path -LiteralPath $rootExe) {
+        $Executable = $rootExe
+    }
+}
 
 if (-not (Test-Path $TemplateFile)) {
     Write-Host "Error: custom_theme_template.json not found in $AppDir" -ForegroundColor Red
@@ -29,7 +59,13 @@ function Set-ConfigThemeValue {
         if ($null -eq $cfg) { $cfg = @{} }
         $cfg | Add-Member -MemberType NoteProperty -Name "Theme" -Value $ThemeValue -Force
         $json = $cfg | ConvertTo-Json -Depth 6
-        Set-Content -LiteralPath $cfgPath -Value $json -Encoding UTF8
+        # Atomic write: write to .tmp then rename to prevent corruption
+        $tmpPath = $cfgPath + ".tmp"
+        Set-Content -LiteralPath $tmpPath -Value $json -Encoding UTF8
+        if (Test-Path -LiteralPath $cfgPath) {
+            Remove-Item -LiteralPath $cfgPath -Force
+        }
+        Rename-Item -LiteralPath $tmpPath -NewName (Split-Path -Leaf $cfgPath) -Force
     } catch {
         Write-Host "Warning: Failed to update Theme in config.json: $_" -ForegroundColor Yellow
     }
@@ -148,7 +184,7 @@ function Run-Wizard {
     Set-ConfigThemeValue -ThemeValue "Custom"
     Write-Host "Custom theme set as active in config.json!" -ForegroundColor Green
     
-    if (Test-Path $Executable) {
+    if ($Executable -and (Test-Path -LiteralPath $Executable)) {
         Write-Host ""
         $launch = Read-Host "Would you like to launch SAMISH now to preview your new colors? (Y/N)"
         if ($launch -match "^y" -or $launch -match "^Y") {

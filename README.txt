@@ -1,6 +1,6 @@
 SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 Created by thomwithah
-Version: 1.2.5
+Version: 1.3.3
 
 A lightweight helper that helps restore normal Windows sleep behavior for streaming audio hardware.
 
@@ -50,21 +50,19 @@ fakerjs+license@gmail.com
 ## Included files ##
 
 Keep these files and folders together in the same directory:
-- Assets/
-- Modules/
-- Profiles/
-- Configure-CustomProfile.bat
-- Configure-CustomProfile.ps1
+- App/ (Background engine, modules, adapters, profiles, and assets)
 - Install-SAMISH-Hidden.bat
 - Install-SAMISH-Interactive.bat
 - Uninstall-SAMISH.bat
+- Launch-ColorThemeConfigurator.bat
 - Setup.bat
 - Setup.ps1
-- SAMISH.ps1
-- SAMISH-HiddenTask.xml
-- SAMISH-InteractiveTask.xml
+- Setup.exe
 - README.txt
 - README.md
-- Setup.exe
+- USER_GUIDE.md
+- ARCHITECTURE.md
+- CHANGELOG.md
+- README_Config.md
 - LICENSE
 - COMMERCIAL-LICENSE.md

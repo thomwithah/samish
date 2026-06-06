@@ -68,9 +68,41 @@ function Apply-ConfigFromFile {
             $cfg = Merge-ConfigDefaults -Config $cfg
             $schemaRes = Test-ConfigSchema -Config $cfg -AutoFix
             if ($jsonError -or $schemaRes.FixedKeys.Count -gt 0) {
+                # Create a timestamped backup before overwriting the config
+                try {
+                    $ts = (Get-Date).ToString("yyyyMMdd-HHmmss")
+                    $backupPath = $ConfigPath + ".backup-$ts"
+                    Copy-Item -LiteralPath $ConfigPath -Destination $backupPath -Force -ErrorAction Stop
+
+                    # Prune old backups: keep only the 5 most recent
+                    $configDir = Split-Path -Parent $ConfigPath
+                    $backups = Get-ChildItem -LiteralPath $configDir -Filter "config.json.backup-*" -File -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending |
+                        Select-Object -Skip 5
+                    foreach ($old in $backups) {
+                        Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue
+                    }
+                } catch {
+                    # Fail-forward: if backup fails, still proceed with the fix
+                }
+
                 if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {
                     $json = $cfg | ConvertTo-Json -Depth 3
                     Save-ContentAtomic -Path $ConfigPath -Content $json
+                }
+
+                # Log the auto-fix details (Log-Always may not be available this early)
+                try {
+                    if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
+                        if ($jsonError) {
+                            Log-Always "Config: JSON parse error detected. Original backed up to $backupPath. Config rebuilt from defaults."
+                        }
+                        if ($schemaRes.FixedKeys.Count -gt 0) {
+                            Log-Always "Config: Auto-fixed $($schemaRes.FixedKeys.Count) key(s): $($schemaRes.FixedKeys -join ', '). Original backed up to $backupPath."
+                        }
+                    }
+                } catch {
+                    # Fail-forward: logging is best-effort
                 }
             }
         }

@@ -195,3 +195,81 @@ Describe "Phase 3: Mixer Stop & Sleep Resiliency" {
         $script:LogEntries -match "Error: Adapter threw an exception: Simulated adapter crash" | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe "Stage 4: Config Backup Before Auto-Fix" {
+    BeforeEach {
+        $testDir = Join-Path $env:TEMP "SAMISH_BackupTests_$(New-Guid)"
+        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+        $script:ConfigPath = Join-Path $testDir "config.json"
+    }
+
+    AfterEach {
+        if (Test-Path (Split-Path $script:ConfigPath)) {
+            Remove-Item (Split-Path $script:ConfigPath) -Force -Recurse -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "creates a timestamped backup before auto-fixing config" {
+        # Create valid JSON with a schema violation
+        $badCfg = @{ OperatingMode = "InvalidMode" } | ConvertTo-Json
+        Set-Content -Path $script:ConfigPath -Value $badCfg -Encoding UTF8
+
+        # Replicate the Apply-ConfigFromFile logic with backup
+        $raw = Get-Content -LiteralPath $script:ConfigPath -Raw
+        $cfg = $raw | ConvertFrom-Json
+        $cfg = Merge-ConfigDefaults -Config $cfg
+        $schemaRes = Test-ConfigSchema -Config $cfg -AutoFix
+
+        $schemaRes.FixedKeys.Count | Should -BeGreaterThan 0
+
+        # Create backup (mirrors SAMISH.ps1 logic)
+        $ts = (Get-Date).ToString("yyyyMMdd-HHmmss")
+        $backupPath = $script:ConfigPath + ".backup-$ts"
+        Copy-Item -LiteralPath $script:ConfigPath -Destination $backupPath -Force
+
+        # Save fixed config
+        $json = $cfg | ConvertTo-Json -Depth 3
+        Save-ContentAtomic -Path $script:ConfigPath -Content $json
+
+        # Verify backup exists and contains original content
+        Test-Path -LiteralPath $backupPath | Should -Be $true
+        $backupContent = Get-Content -LiteralPath $backupPath -Raw
+        $backupCfg = $backupContent | ConvertFrom-Json
+        $backupCfg.OperatingMode | Should -Be "InvalidMode"  # Original bad value preserved
+
+        # Verify fixed config has the corrected value
+        $fixedContent = Get-Content -LiteralPath $script:ConfigPath -Raw
+        $fixedCfg = $fixedContent | ConvertFrom-Json
+        $fixedCfg.OperatingMode | Should -Be "Graceful"  # Reset to default
+    }
+
+    It "prunes old backups to keep only 5 most recent" {
+        # Create a config file and 7 old backups
+        Set-Content -Path $script:ConfigPath -Value '{}' -Encoding UTF8
+        $configDir = Split-Path -Parent $script:ConfigPath
+
+        for ($i = 1; $i -le 7; $i++) {
+            $fakeName = "config.json.backup-20260601-00000$i"
+            $fakePath = Join-Path $configDir $fakeName
+            Set-Content -Path $fakePath -Value "{}" -Encoding UTF8
+            # Stagger LastWriteTime so sort order is deterministic
+            (Get-Item $fakePath).LastWriteTime = (Get-Date).AddMinutes(-60 + $i)
+        }
+
+        # Verify 7 backups exist
+        $before = @(Get-ChildItem -LiteralPath $configDir -Filter "config.json.backup-*")
+        $before.Count | Should -Be 7
+
+        # Prune (mirrors SAMISH.ps1 logic)
+        $backups = Get-ChildItem -LiteralPath $configDir -Filter "config.json.backup-*" -File |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -Skip 5
+        foreach ($old in $backups) {
+            Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue
+        }
+
+        # Verify only 5 remain (the 5 newest)
+        $after = @(Get-ChildItem -LiteralPath $configDir -Filter "config.json.backup-*")
+        $after.Count | Should -Be 5
+    }
+}

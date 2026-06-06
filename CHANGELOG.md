@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Install Pre-Flight Validation**: The Install and Uninstall buttons now run a comprehensive set of pre-flight checks before starting any operation. Checks include verifying that the install folder is writable, required XML task templates exist in the package, the background engine script is present, and the selected install mode has a valid template. If any check fails, a clear warning is displayed in the Status panel with actionable guidance, and the operation is halted before any files are modified.
+- **Automatic Configuration Backup**: The background engine now creates a timestamped backup copy of `config.json` (e.g., `config.json.backup-20260605-143022`) before applying any automatic schema repairs or default migrations on startup. This provides a rollback safety net in case an auto-fix produces unexpected results.
+- **Developer Architecture Guide**: Added `ARCHITECTURE.md` documenting the project layout, module loading order, path resolution strategies across different execution contexts (CLI, EXE, Scheduled Task), and scope boundaries for contributors.
+
+### Improved
+- **Forward Compatibility**: Replaced all deprecated `Get-WmiObject` calls with `Get-CimInstance` across the engine and setup modules. `Get-WmiObject` was removed in PowerShell 7 and flagged as deprecated in Windows PowerShell 5.1. This ensures SAMISH remains compatible with future Windows PowerShell updates.
+- **CI Automation**: Added GitHub Actions workflows for automated linting (PSScriptAnalyzer) and Pester test execution on every push and pull request. Regressions in code quality are now caught before merge.
+- **Startup Resilience**: The configuration schema validator now merges missing default keys (e.g., newly added settings from updates) into the existing config on every engine boot, preventing crashes when upgrading from older versions that lack newer configuration fields.
+
+---
+
 ## [1.3.3] - 2026-06-05
 
 ### Added
