@@ -148,45 +148,69 @@ function Invoke-AppStopGraceful {
         return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "No window handle after restore attempt and Classic fallback not available.")
     }
 
-    # 4) Send graceful shutdown messages
-    try {
-        # WM_QUERYENDSESSION = 0x0011
-        # WM_ENDSESSION     = 0x0016
-        [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0011, [IntPtr]::Zero, [IntPtr]::new(1)) | Out-Null
-        [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0016, [IntPtr]::new(1), [IntPtr]::new(1)) | Out-Null
-    } catch {
-        # Messaging failed; fallback
-        if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
-            $r = Invoke-AppStop -ProcessName $ProcessName
-            return [AppStopResult]::new(
-                [bool]$r.Stopped,
-                $r.Status,
-                "ClassicFallback",
-                $windowRestored,
-                $true,
-                "Failed to send shutdown messages. Fell back to Classic."
-            )
+    # 4) Send graceful shutdown messages (with one retry before Classic fallback)
+    $messageAttempts = 2  # Total attempts: first try + one retry
+    for ($msgAttempt = 1; $msgAttempt -le $messageAttempts; $msgAttempt++) {
+        if ($msgAttempt -gt 1) {
+            if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
+                Log-Always "Graceful stop: message retry $msgAttempt/$messageAttempts for $ProcessName"
+            }
         }
-        return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Failed to send shutdown messages and Classic fallback not available.")
-    }
 
-    # 5) Poll briefly for the process to exit (so we don't wait longer than necessary if it exits instantly)
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $exited = $false
-    while ($sw.ElapsedMilliseconds -lt $ShutdownWaitMs) {
-        if (-not (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
-            $exited = $true
-            break
+        try {
+            # WM_QUERYENDSESSION = 0x0011
+            # WM_ENDSESSION     = 0x0016
+            [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0011, [IntPtr]::Zero, [IntPtr]::new(1)) | Out-Null
+            [SamishWin32]::SendMessage($p.MainWindowHandle, 0x0016, [IntPtr]::new(1), [IntPtr]::new(1)) | Out-Null
+        } catch {
+            if ($msgAttempt -lt $messageAttempts) {
+                # Retry after brief pause
+                Start-Sleep -Milliseconds 500  # measured in ms -- wait before message retry
+                continue
+            }
+            # Final attempt failed; fallback to Classic
+            if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
+                $r = Invoke-AppStop -ProcessName $ProcessName
+                return [AppStopResult]::new(
+                    [bool]$r.Stopped,
+                    $r.Status,
+                    "ClassicFallback",
+                    $windowRestored,
+                    $true,
+                    "Failed to send shutdown messages after $messageAttempts attempts. Fell back to Classic."
+                )
+            }
+            return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Failed to send shutdown messages after $messageAttempts attempts and Classic fallback not available.")
         }
-        Start-Sleep -Milliseconds 50
-    }
-    $sw.Stop()
 
-    if ($exited) {
-        return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
+        # 5) Poll briefly for the process to exit (so we don't wait longer than necessary if it exits instantly)
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $exited = $false
+        while ($sw.ElapsedMilliseconds -lt $ShutdownWaitMs) {
+            if (-not (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
+                $exited = $true
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        $sw.Stop()
+
+        if ($exited) {
+            return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
+        }
+
+        # If not exited and we have retries left, refresh handle and try again
+        if ($msgAttempt -lt $messageAttempts) {
+            try {
+                $p = Get-Process -Id $procId -ErrorAction Stop
+            } catch {
+                # Process exited between polls
+                return [AppStopResult]::new($true, "Stopped", "Graceful", $windowRestored, $false, "")
+            }
+        }
     }
 
-    # 6) Fallback to Classic
+    # 6) Fallback to Classic after all message attempts exhausted
     if (Get-Command Invoke-AppStop -ErrorAction SilentlyContinue) {
         $r = Invoke-AppStop -ProcessName $ProcessName
         return [AppStopResult]::new(
@@ -195,9 +219,9 @@ function Invoke-AppStopGraceful {
             "ClassicFallback",
             $windowRestored,
             $true,
-            "Graceful shutdown did not exit in time. Fell back to Classic."
+            "Graceful shutdown did not exit in time after $messageAttempts message attempts. Fell back to Classic."
         )
     }
 
-    return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Graceful shutdown did not exit in time and Classic fallback not available.")
+    return [AppStopResult]::new($false, "Error", "Error", $windowRestored, $false, "Graceful shutdown did not exit in time after $messageAttempts message attempts and Classic fallback not available.")
 }

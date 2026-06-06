@@ -63,6 +63,9 @@ function Merge-ConfigDefaults {
         ,@("PreferredPlaybackDeviceName", "",     "Display name of preferred default playback device")
         ,@("PreferredCommDeviceGuid",     "",     "GUID of preferred default communications device")
         ,@("PreferredCommDeviceName",     "",     "Display name of preferred default communications device")
+
+        # ---- Schema Versioning ----
+        ,@("SchemaVersion",           1,           "Config schema version for future migrations")
     )
 
     $changed = $false
@@ -156,6 +159,9 @@ function Test-ConfigSchema {
         @{ Key = "PreferredPlaybackDeviceName"; Type = "string"; Default = "";        Validator = $null }
         @{ Key = "PreferredCommDeviceGuid";     Type = "string"; Default = "";        Validator = $null }
         @{ Key = "PreferredCommDeviceName";     Type = "string"; Default = "";        Validator = $null }
+
+        # ---- Schema Versioning ----
+        @{ Key = "SchemaVersion";                Type = "int";    Default = 1;         Validator = { param($v) $v -ge 1 -and $v -le 1000 } }
     )
 
     # Known keys for unknown-key detection

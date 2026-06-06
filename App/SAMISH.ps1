@@ -124,7 +124,8 @@ function Apply-ConfigFromFile {
         }
 
     } catch {
-        # Best effort only.
+        # Best effort only -- but log to event log for troubleshooting
+        try { Write-EventLogEntry -Message "Apply-ConfigFromFile failed: $($_.Exception.Message)" -EntryType "Warning" -EventId 300 } catch {}
     }
 }
 
@@ -230,7 +231,9 @@ $script:HotkeySuffix = Get-HotkeySuffix
 # ---------- POWER PLAN COMMON (shared read utilities) ----------
 $PowerPlanCommonPath = Join-Path $PackageDir "Modules\PowerPlan.Read.Common.ps1"
 if (Test-Path -LiteralPath $PowerPlanCommonPath) {
-    try { . $PowerPlanCommonPath } catch { }
+    try { . $PowerPlanCommonPath } catch {
+        try { Write-EventLogEntry -Message "PowerPlan.Read.Common.ps1 dot-source failed: $($_.Exception.Message)" -EntryType "Warning" -EventId 300 } catch {}
+    }
 }
 
 $CommonModulePath = Join-Path $PackageDir "Modules\App.Control.Common.ps1"
@@ -1157,7 +1160,9 @@ try {
 
             if (Test-Path -LiteralPath $activePath) { $script:IconActive = New-Object System.Drawing.Icon($activePath) }
             if (Test-Path -LiteralPath $disabledPath) { $script:IconDisabled = New-Object System.Drawing.Icon($disabledPath) }
-        } catch {}
+        } catch {
+            try { Write-EventLogEntry -Message "Tray icon asset load failed: $($_.Exception.Message)" -EntryType "Warning" -EventId 300 } catch {}
+        }
 
         $script:icon.Icon = if ($script:IconActive) { $script:IconActive } else { [System.Drawing.SystemIcons]::Application }
         $script:icon.Visible = $true
@@ -1466,7 +1471,9 @@ try {
 
     # Write PID file so diagnostics can find us (CIM can't read CommandLine of elevated Task Scheduler processes)
     $script:PidFilePath = Join-Path $PSScriptRoot "samish.pid"
-    try { Set-Content -LiteralPath $script:PidFilePath -Value $PID -Encoding UTF8 -Force } catch {}
+    try { Set-Content -LiteralPath $script:PidFilePath -Value $PID -Encoding UTF8 -Force } catch {
+        try { Log-Always "PID file write failed: $($_.Exception.Message)" } catch {}
+    }
 
     # SELF-HEALING ENGINE WRAPPER
     # If the main loop throws an unhandled exception, catch it and retry with exponential backoff.

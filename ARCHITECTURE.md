@@ -136,12 +136,14 @@ The 21 remaining warnings are:
 ## Test Suite
 
 Tests live in `Tests/` and use [Pester v5](https://pester.dev/).
+See `docs/Testing.md` for prerequisites, execution commands, and mock guidelines.
 
 | Test File | Purpose |
 |---|---|
 | CodeQuality.Tests.ps1 | Handler resolution, lint regression guard |
 | Config.Tests.ps1 | Config merge, schema validation |
 | Diagnostics.Tests.ps1 | Blocker detection, scan logic |
+| Engine.Tests.ps1 | Engine main loop state machine |
 | FailStates.Tests.ps1 | Error handling, fail-forward |
 | Integration.Tests.ps1 | Cross-module integration, module loading |
 | Logger.Tests.ps1 | Logging module |

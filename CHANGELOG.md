@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Forward Compatibility**: Replaced all deprecated `Get-WmiObject` calls with `Get-CimInstance` across the engine and setup modules. `Get-WmiObject` was removed in PowerShell 7 and flagged as deprecated in Windows PowerShell 5.1. This ensures SAMISH remains compatible with future Windows PowerShell updates.
 - **CI Automation**: Added GitHub Actions workflows for automated linting (PSScriptAnalyzer) and Pester test execution on every push and pull request. Regressions in code quality are now caught before merge.
 - **Startup Resilience**: The configuration schema validator now merges missing default keys (e.g., newly added settings from updates) into the existing config on every engine boot, preventing crashes when upgrading from older versions that lack newer configuration fields.
+- **Event Log Diagnostics**: Added Windows Event Log entries for previously silent failure points including configuration load errors, power plan module initialization, tray icon asset loading, and PID file writes. These entries appear in Windows Event Viewer under the SAMISH source, improving troubleshooting when users share diagnostic reports.
+- **App Start Reliability**: The application launch sequence (Direct, UWP Alias, Shell, Protocol Handler) now automatically retries once if the first full pass fails to detect a running process, with a brief delay between attempts. This reduces false failures caused by slow-starting applications or system load during wake.
+- **Graceful Shutdown Reliability**: The graceful shutdown message sequence (WM_QUERYENDSESSION + WM_ENDSESSION) now retries once before falling back to a Classic force-close, reducing unnecessary force-kills on applications that are slow to respond to window messages.
 
 ---
 
