@@ -1,4 +1,4 @@
-﻿# Suggested filename: SAMISH.ps1
+# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -32,7 +32,7 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.5"
+$ScriptVersion = "v1.3.6"
 $ReleaseDate   = "2026-06-06"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
@@ -487,8 +487,21 @@ try {
             }
         }
 
-        # Local fallback parsing (legacy, still supported)
+        # Local fallback: Language-independent registry lookup
+        try {
+            $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\$schemeGuid\$subGuid\$setGuid"
+            $regItem = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+            if ($null -ne $regItem -and $null -ne $regItem.ACSettingIndex) {
+                return [int]$regItem.ACSettingIndex
+            }
+        } catch {
+            # Registry read failed -- fall through to powercfg parsing
+        }
+
+        # Fallback: Parse powercfg output with localized-safe regex
         $out = powercfg /query $schemeGuid $subGuid $setGuid 2>$null
+
+        # Try the English pattern first (fastest path on English systems)
         $m = ($out |
             Select-String -Pattern 'Current AC Power Setting Index:\s+0x([0-9a-fA-F]+)' |
             Select-Object -First 1)
@@ -496,6 +509,17 @@ try {
         if ($m -and $m.Matches.Count -gt 0) {
             try { return [Convert]::ToInt32($m.Matches[0].Groups[1].Value, 16) } catch { return $null }
         }
+
+        # Localized fallback: match the last 0x hex value on the AC settings line
+        # Works for German (Wechselstrom), French (secteur/CA), and other locales
+        $m2 = ($out |
+            Select-String -Pattern '0x([0-9a-fA-F]+)\s*$' |
+            Select-Object -First 1)
+
+        if ($m2 -and $m2.Matches.Count -gt 0) {
+            try { return [Convert]::ToInt32($m2.Matches[0].Groups[1].Value, 16) } catch { return $null }
+        }
+
         return $null
     }
 
@@ -1168,7 +1192,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.5"
+        $script:icon.Text = "SAMISH v1.3.6"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1603,6 +1627,10 @@ try {
         if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
 
         if (-not $killThresholdSeconds) {
+            # Keep tray icon responsive even when power setting lookup fails
+            if ($EnableTrayIcon) {
+                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+            }
             Start-Sleep -Milliseconds 100
             continue
         }

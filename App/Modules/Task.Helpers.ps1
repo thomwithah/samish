@@ -22,7 +22,7 @@ function Create-StartupShortcut {
     $shortcut = $shell.CreateShortcut($shortcutPath)
 
     $shortcut.TargetPath = "powershell.exe"
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`""
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -File `"$ScriptPath`""
     $shortcut.WorkingDirectory = Split-Path $ScriptPath
     $shortcut.IconLocation = "powershell.exe,0"
     $shortcut.Save()

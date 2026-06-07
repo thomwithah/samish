@@ -1,7 +1,7 @@
-﻿# ==========================================
+# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.3.5
+# Version: 1.3.6
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -232,7 +232,7 @@ function Ensure-AdminAtStartup {
     
     if ($currentFile -and $currentFile.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
         $psi.FileName = "powershell.exe"
-        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$currentFile`""
+        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -STA -File `"$currentFile`""
     }
     else {
         # It's an EXE!
@@ -421,7 +421,7 @@ try {
     # ---------- Constants ----------
     $ProductName = "SAMISH"
     $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-    $ProductVersion = "v1.3.5"
+    $ProductVersion = "v1.3.6"
     $AuthorLine = "Created by thomwithah"
 
     $TaskHiddenNoSlash = "SAMISH (Hidden)"

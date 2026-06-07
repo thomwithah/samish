@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+
+## [1.3.6] - 2026-06-06
+
+### Fixed
+- **Tray Icon Context Menu (Non-English Windows)**: Fixed a critical issue where the tray icon context menu was completely unresponsive on non-English Windows systems (e.g., German). The root cause was twofold: (1) the power plan settings parser expected English output from `powercfg`, which fails on localized systems, causing the engine to enter a tight loop that starved the menu's event processing, and (2) the engine process was starting in multi-threaded (MTA) mode, which caused COM marshaling deadlocks when hovering over menu items. The engine now reads power settings directly from the Windows Registry (language-independent) with localized regex fallbacks, runs in single-threaded apartment (STA) mode across all launch methods, and ensures menu event processing is never starved even if power settings cannot be determined.
 
 ## [1.3.5] - 2026-06-06
 
