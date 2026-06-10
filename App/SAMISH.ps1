@@ -1,4 +1,4 @@
-# Suggested filename: SAMISH.ps1
+﻿# Suggested filename: SAMISH.ps1
 # ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper)
 # Engine (current device profile: BEACN)
@@ -32,8 +32,8 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.6"
-$ReleaseDate   = "2026-06-06"
+$ScriptVersion = "v1.3.7"
+$ReleaseDate   = "2026-06-10"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -1192,7 +1192,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.6"
+        $script:icon.Text = "SAMISH v1.3.7"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1239,9 +1239,49 @@ try {
             $settingsItem.PerformClick()
         })
 
+        # Debounce state: prevents rapid repeated launches before the mutex is registered
+        $script:LastSetupLaunchTime = [DateTime]::MinValue
+
         $settingsItem.add_Click({
             Log-Always "Tray: 'Open Settings' clicked."
             $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
+
+            # Rolling rotation: if the log exceeds 969 KB, shift history files # measured in KB
+            try {
+                if (Test-Path -LiteralPath $logPath) {
+                    $fileInfo = [System.IO.FileInfo]::new($logPath)
+                    if ($fileInfo.Length -gt 992256) { # 969 * 1024 = 992256 bytes
+                        $dir = $fileInfo.DirectoryName
+                        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($logPath)
+                        $ext = [System.IO.Path]::GetExtension($logPath)
+                        # Delete the oldest (slot 5) if it exists
+                        $oldest = Join-Path $dir "$baseName.5$ext"
+                        if (Test-Path -LiteralPath $oldest) {
+                            Remove-Item -LiteralPath $oldest -Force -ErrorAction SilentlyContinue
+                        }
+                        # Shift .4 -> .5, .3 -> .4, .2 -> .3, .1 -> .2
+                        for ($i = 4; $i -ge 1; $i--) {
+                            $src = Join-Path $dir "$baseName.$i$ext"
+                            $dst = Join-Path $dir "$baseName.$($i + 1)$ext"
+                            if (Test-Path -LiteralPath $src) {
+                                [System.IO.File]::Move($src, $dst)
+                            }
+                        }
+                        # Move current log to .1
+                        $slot1 = Join-Path $dir "$baseName.1$ext"
+                        [System.IO.File]::Move($logPath, $slot1)
+                    }
+                }
+            } catch {
+                # Fail-forward: rotation failure should not block settings launch
+            }
+            # Debounce guard: ignore clicks within 5000 ms of a previous launch # measured in ms
+            $elapsedMs = ([DateTime]::UtcNow - $script:LastSetupLaunchTime).TotalMilliseconds
+            if ($elapsedMs -lt 5000) {
+                Add-Content -LiteralPath $logPath -Value "Debounced: ignoring click ($([int]$elapsedMs) ms since last launch)" -ErrorAction SilentlyContinue
+                Log-Always "Tray: Debounced settings launch ($([int]$elapsedMs) ms since last)."
+                return
+            }
             try {
                 Add-Content -LiteralPath $logPath -Value "=== Clicked Open Settings at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ErrorAction SilentlyContinue
                 
@@ -1320,9 +1360,26 @@ try {
                     }
                 }
                 
-                # Robust fallback to parent directory if SetupPath is missing or invalid
+                # Robust fallback: check install dir first, then parent directory
                 if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
-                    # Use $PackageDir if available in this scope, otherwise fall back to $global:PackageDir
+                    # Check install directory (%APPDATA%\SAMISH) where Sync copies Setup
+                    $installDir = Join-Path $env:APPDATA "SAMISH"
+                    Add-Content -LiteralPath $logPath -Value "Checking install dir: $installDir" -ErrorAction SilentlyContinue
+                    $candidateExe = Join-Path $installDir "Setup.exe"
+                    $candidateBat = Join-Path $installDir "Setup.bat"
+                    $candidatePs1 = Join-Path $installDir "Setup.ps1"
+                    if (Test-Path -LiteralPath $candidateExe) {
+                        $setupPath = $candidateExe
+                    } elseif (Test-Path -LiteralPath $candidateBat) {
+                        $setupPath = $candidateBat
+                    } elseif (Test-Path -LiteralPath $candidatePs1) {
+                        $setupPath = $candidatePs1
+                    }
+                    Add-Content -LiteralPath $logPath -Value "Install dir result: $setupPath" -ErrorAction SilentlyContinue
+                }
+
+                # Fallback: check source package parent directory
+                if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
                     $resolvedPackageDir = $PackageDir
                     if ([string]::IsNullOrWhiteSpace($resolvedPackageDir)) { $resolvedPackageDir = $global:PackageDir }
                     Add-Content -LiteralPath $logPath -Value "PackageDir resolved to: $resolvedPackageDir" -ErrorAction SilentlyContinue
@@ -1331,7 +1388,7 @@ try {
                         $candidateExe = Join-Path $parentDir "Setup.exe"
                         $candidateBat = Join-Path $parentDir "Setup.bat"
                         $candidatePs1 = Join-Path $parentDir "Setup.ps1"
-                        Add-Content -LiteralPath $logPath -Value "Checking: $candidateExe, $candidateBat, $candidatePs1" -ErrorAction SilentlyContinue
+                        Add-Content -LiteralPath $logPath -Value "Checking parent: $candidateExe, $candidateBat, $candidatePs1" -ErrorAction SilentlyContinue
                         if (Test-Path -LiteralPath $candidateExe) {
                             $setupPath = $candidateExe
                         } elseif (Test-Path -LiteralPath $candidateBat) {
@@ -1353,6 +1410,7 @@ try {
                     }
                     $psi.UseShellExecute = $true
                     [System.Diagnostics.Process]::Start($psi) | Out-Null
+                    $script:LastSetupLaunchTime = [DateTime]::UtcNow
                     Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
                     return
                 }

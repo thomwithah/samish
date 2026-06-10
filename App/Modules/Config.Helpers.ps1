@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 # ==============================================================================
 # Module: Config.Helpers.ps1
 # Purpose: Configuration read/write (Write-ConfigJson), log file selection
@@ -238,6 +238,19 @@ function Sync-SamishRuntimeFiles {
             Remove-Item -LiteralPath $dstAssets -Recurse -Force -ErrorAction SilentlyContinue
         }
         Copy-Item -LiteralPath $srcAssets -Destination $dstAssets -Recurse -Force
+    }
+
+    # Copy the setup executable to the persistent install directory so that
+    # the tray icon "Open Settings" click survives reboots and source deletions.
+    if (-not [string]::IsNullOrWhiteSpace($script:SetupExecutablePath) -and (Test-Path -LiteralPath $script:SetupExecutablePath)) {
+        try {
+            $setupFileName = [System.IO.Path]::GetFileName($script:SetupExecutablePath)
+            $dstSetup = Join-Path $InstallDir $setupFileName
+            Copy-Item -LiteralPath $script:SetupExecutablePath -Destination $dstSetup -Force
+        }
+        catch {
+            # Fail-forward: setup copy failure should not block installation
+        }
     }
 
     if (-not (Test-Path -LiteralPath $InstalledEnginePath)) {

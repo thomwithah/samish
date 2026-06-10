@@ -79,7 +79,7 @@ function Set-ButtonVisualState {
     $Button.Enabled = $true
     if ($Active) {
         $Button.Tag = $ActiveTag
-        if ($global:ThemeCustomActive) {
+        if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) {
             $Button.ForeColor = $global:ThemeCustomPrimary
         } else {
             $Button.ForeColor = [System.Drawing.SystemColors]::ControlText
@@ -87,7 +87,7 @@ function Set-ButtonVisualState {
     }
     else {
         $Button.Tag = "VisuallyDisabled"
-        if ($global:ThemeCustomActive) {
+        if ($global:ThemeCustomActive -and $global:ThemeCustomDisabledText) {
             $Button.ForeColor = $global:ThemeCustomDisabledText
         }
         else {
@@ -507,12 +507,12 @@ function Set-UiModeVisibility {
                 $btnToolsAdvanced.Enabled = $true
                 if ($hasBackup) {
                     $btnToolsAdvanced.Tag = "SimpleRestore"
-                    $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                    $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
                     $tooltip.SetToolTip($btnToolsAdvanced, "Restore your system power plan and wake settings to their original state from SAMISH backups.")
                 }
                 else {
                     $btnToolsAdvanced.Tag = "SimpleRestoreDisabled"
-                    if ($global:ThemeCustomActive) {
+                    if ($global:ThemeCustomActive -and $global:ThemeCustomDisabledText) {
                         $btnToolsAdvanced.ForeColor = $global:ThemeCustomDisabledText
                     }
                     else {
@@ -657,7 +657,7 @@ function Set-UiModeVisibility {
                 $btnToolsAdvanced.Text = "Advanced Tools >>"
                 $btnToolsAdvanced.Enabled = $true
                 $btnToolsAdvanced.Tag = $null
-                $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
                 $tooltip.SetToolTip($btnToolsAdvanced, "Open or close the advanced utility and log monitoring tools drawer.")
             }
 

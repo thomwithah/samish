@@ -744,12 +744,16 @@ function Apply-UIFromConfigIfPresent {
         $tbCustomKey.Enabled = $isCustomHotkey
 
         # --- Theme ---
-        if ($null -ne $cfg -and $null -ne $cfg.Theme) {
-            $isNeon = ($cfg.Theme -eq "Neon")
-            if ($global:ThemeCustomActive -ne $isNeon -or $null -eq $global:ThemeCustomPrimary) {
-                $global:ThemeCustomActive = $isNeon
-                if (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue) {
-                    try { Set-BrandTheme -Form $form -IsCustom $isNeon } catch {}
+        # Skip theme reloading entirely in screenshot mode to prevent
+        # null color variable crashes during automated capture.
+        if (-not $global:SamishScreenshotMode) {
+            if ($null -ne $cfg -and $null -ne $cfg.Theme) {
+                $isNeon = ($cfg.Theme -eq "Neon")
+                if ($global:ThemeCustomActive -ne $isNeon -or $null -eq $global:ThemeCustomPrimary) {
+                    $global:ThemeCustomActive = $isNeon
+                    if (Get-Command Set-BrandTheme -ErrorAction SilentlyContinue) {
+                        try { Set-BrandTheme -Form $form -IsCustom $isNeon } catch {}
+                    }
                 }
             }
         }

@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+
+## [1.3.7] - 2026-06-10
+
+### Fixed
+- **Tray Icon "Open Settings" After Reboot**: Fixed an issue where double-clicking the tray icon or selecting "Open Settings" after a reboot displayed a "Settings application not found" error. The root cause was that the setup executable path stored in `config.json` pointed to a temporary extraction directory that was cleaned up during reboot. The installer now copies the setup binary to the persistent `%APPDATA%\SAMISH` directory and writes this stable path to configuration.
+- **Rapid Double-Click Launching Multiple Instances**: Fixed a race condition where rapidly double-clicking the tray icon could spawn multiple Setup windows before the single-instance mutex was registered, sometimes causing a "ShowDialog already visible" error. A 5-second debounce guard now prevents subsequent launches until the first instance has time to fully initialize.
+
+### Improved
+- **Temporary Log File Rotation**: The `SAMISH_Setup_trace.log` and `SAMISH_tray_click.log` debug logs in `%TEMP%` now roll over automatically when they exceed 969 KB, keeping up to 5 history files and preventing unbounded growth.
 
 ## [1.3.6] - 2026-06-06
 

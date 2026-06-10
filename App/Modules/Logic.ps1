@@ -62,6 +62,18 @@ function Invoke-SamishInstall {
     try {
         Sync-SamishRuntimeFiles
 
+        # Compute the persistent setup path inside the install directory.
+        # Sync-SamishRuntimeFiles copies the setup file there; we write this
+        # persistent path to config.json so it survives reboots.
+        $persistentSetupPath = $script:SetupExecutablePath
+        if (-not [string]::IsNullOrWhiteSpace($script:SetupExecutablePath)) {
+            $setupFileName = [System.IO.Path]::GetFileName($script:SetupExecutablePath)
+            $candidateInstalled = Join-Path $InstallDir $setupFileName
+            if (Test-Path -LiteralPath $candidateInstalled) {
+                $persistentSetupPath = $candidateInstalled
+            }
+        }
+
         Write-ConfigJson `
             -EnableLogging:$EnableLogging `
             -LogEverySeconds:$LogEverySeconds `
@@ -70,7 +82,7 @@ function Invoke-SamishInstall {
             -HotkeyMode:$HotkeyMode `
             -CustomHotkeyVirtualKey:$CustomHotkeyVk `
             -OperatingMode:$OperatingMode `
-            -SetupPath:$script:SetupExecutablePath `
+            -SetupPath:$persistentSetupPath `
             -ActiveProfileId $ActiveProfileId `
             -ProfilesEnabled $ProfilesEnabled `
             -EnableAutoRecovery:$EnableAutoRecovery

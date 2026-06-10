@@ -265,11 +265,13 @@ function Hide-All-Drawers {
     # Reset drawer button labels so they never show stale "Close X" state
     if ($btnToolsAdvanced) {
         $btnToolsAdvanced.Text = "Advanced Tools >>"
-        $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+        $safeToolsColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+        $btnToolsAdvanced.ForeColor = $safeToolsColor
     }
     if ($btnDiagAdvanced) {
         $btnDiagAdvanced.Text = "Diagnostics >>"
-        $btnDiagAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+        $safeDiagColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+        $btnDiagAdvanced.ForeColor = $safeDiagColor
     }
 
     if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $false }
@@ -410,7 +412,7 @@ $btnToolsAdvanced.add_Click({
                 }
                 if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
                 $btnToolsAdvanced.Text = "<< Close Tools"
-                $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                $btnToolsAdvanced.ForeColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
                 if ($script:toolsDrawerSep) { $script:toolsDrawerSep.Visible = $true }
                 if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
                 if ($script:bottomMetadata) {
@@ -479,7 +481,7 @@ $btnDiagAdvanced.add_Click({
                 }
                 if ($script:logo) { $script:logo.Location = New-Object System.Drawing.Point([int](1098 * $script:DpiScale), [int](12 * $script:DpiScale)) }
                 $btnDiagAdvanced.Text = "<< Close Diagnostics"
-                $btnDiagAdvanced.ForeColor = if ($global:ThemeCustomActive) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
+                $btnDiagAdvanced.ForeColor = if ($global:ThemeCustomActive -and $global:ThemeCustomPrimary) { $global:ThemeCustomPrimary } else { [System.Drawing.SystemColors]::ControlText }
                 if ($script:diagDrawerSep) { $script:diagDrawerSep.Visible = $true }
                 if ($script:mainSep) { $script:mainSep.Width = [int](1144 * $script:DpiScale) }
                 if ($script:bottomMetadata) {
@@ -756,6 +758,8 @@ if ($form) {
     # Reload theme dynamically when form gains focus if theme changed on disk (e.g., via standalone configurator)
     $form.add_Activated({
             if ($global:IsThemeAnimating) { return }
+            # Skip theme hot-reload in screenshot mode to prevent null color crashes
+            if ($global:SamishScreenshotMode) { return }
             
             $diskTheme = "Normal"
             $cfgPath = Join-Path $env:APPDATA "SAMISH\config.json"

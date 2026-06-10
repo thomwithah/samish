@@ -1,7 +1,7 @@
-# ==========================================
+﻿# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.3.6
+# Version: 1.3.7
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -132,6 +132,33 @@ function Write-SamishSetupTrace {
     # Compiled EXE (or any non-console host) path: write to %TEMP%
     try {
         $path = Join-Path $env:TEMP "SAMISH_Setup_trace.log"
+
+        # Rolling rotation: if the log exceeds 969 KB, shift history files # measured in KB
+        if (Test-Path -LiteralPath $path) {
+            $fileInfo = [System.IO.FileInfo]::new($path)
+            if ($fileInfo.Length -gt 992256) { # 969 * 1024 = 992256 bytes
+                $dir = $fileInfo.DirectoryName
+                $baseName = [System.IO.Path]::GetFileNameWithoutExtension($path)
+                $ext = [System.IO.Path]::GetExtension($path)
+                # Delete the oldest (slot 5) if it exists
+                $oldest = Join-Path $dir "$baseName.5$ext"
+                if (Test-Path -LiteralPath $oldest) {
+                    Remove-Item -LiteralPath $oldest -Force -ErrorAction SilentlyContinue
+                }
+                # Shift .4 -> .5, .3 -> .4, .2 -> .3, .1 -> .2
+                for ($i = 4; $i -ge 1; $i--) {
+                    $src = Join-Path $dir "$baseName.$i$ext"
+                    $dst = Join-Path $dir "$baseName.$($i + 1)$ext"
+                    if (Test-Path -LiteralPath $src) {
+                        [System.IO.File]::Move($src, $dst)
+                    }
+                }
+                # Move current log to .1
+                $slot1 = Join-Path $dir "$baseName.1$ext"
+                [System.IO.File]::Move($path, $slot1)
+            }
+        }
+
         Add-Content -LiteralPath $path -Value $line
     }
     catch { }
@@ -253,7 +280,28 @@ function Ensure-AdminAtStartup {
 }
 Ensure-AdminAtStartup
 
-$script:SetupExecutablePath = $PSCommandPath
+# Resolve the setup executable path for config.json persistence.
+# When compiled via PS2EXE, $PSCommandPath points to a temporary extracted .ps1
+# inside %TEMP% that is deleted on reboot. Detect compiled mode by checking
+# whether the host process is powershell.exe/pwsh.exe; if not, the process
+# itself IS the compiled Setup.exe and we use its module path directly.
+$script:SetupExecutablePath = $null
+try {
+    $hostProc = [System.Diagnostics.Process]::GetCurrentProcess()
+    $hostName = $hostProc.ProcessName.ToLower()
+    if ($hostName -eq "powershell" -or $hostName -eq "pwsh") {
+        # Running as a script under PowerShell -- use the script path
+        $script:SetupExecutablePath = $PSCommandPath
+    } else {
+        # Running as a compiled EXE -- use the binary path
+        $script:SetupExecutablePath = $hostProc.MainModule.FileName
+    }
+} catch {
+    # Fail-forward: fall back to $PSCommandPath
+}
+if (-not $script:SetupExecutablePath) {
+    $script:SetupExecutablePath = $PSCommandPath
+}
 if (-not $script:SetupExecutablePath) {
     $script:SetupExecutablePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 }
@@ -421,7 +469,7 @@ try {
     # ---------- Constants ----------
     $ProductName = "SAMISH"
     $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-    $ProductVersion = "v1.3.6"
+    $ProductVersion = "v1.3.7"
     $AuthorLine = "Created by thomwithah"
 
     $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -622,7 +670,7 @@ try {
 
     # Pre-initialize Theme active state from config before form render
     $global:ThemeActiveType = "Normal"
-    if (Test-Path -LiteralPath $ConfigPath) {
+    if (-not $global:SamishScreenshotMode -and (Test-Path -LiteralPath $ConfigPath)) {
         try {
             $cfgBoot = (Get-Content -LiteralPath $ConfigPath -Raw) | ConvertFrom-Json
             if ($cfgBoot -and $cfgBoot.PSObject.Properties.Name -contains "Theme" -and $cfgBoot.Theme) {
