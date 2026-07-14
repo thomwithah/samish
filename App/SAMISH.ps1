@@ -32,8 +32,8 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 
 # ---------- VERSION ----------
 $ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.7"
-$ReleaseDate   = "2026-06-10"
+$ScriptVersion = "v1.3.8"
+$ReleaseDate   = "2026-07-14"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -334,9 +334,43 @@ function Apply-ActiveProfile {
             return $false
         }
 
-        # NOTE: Current engine is single-target. We take the first target for now.
-        # Future multi-device support: iterate p.targets and maintain per-target state.
-        $t = $p.targets[0]
+        # Resolve the best matching target from the profile targets list.
+        # Priority 1: a target whose process is currently running.
+        # Priority 2: a target whose executable path can be resolved on this system.
+        # Priority 3: fall back to the first target in the list.
+        $t = $null
+
+        try {
+            foreach ($candidate in $p.targets) {
+                if (-not $candidate.processName) { continue }
+                $running = Get-Process -Name ([string]$candidate.processName) -ErrorAction SilentlyContinue
+                if ($running) {
+                    $t = $candidate
+                    Log-Always ("Target resolved by running process: " + $candidate.processName)
+                    break
+                }
+            }
+        } catch {}
+
+        if (-not $t) {
+            try {
+                foreach ($candidate in $p.targets) {
+                    if (-not $candidate.processName) { continue }
+                    $exePath = [string]$candidate.defaultExePath
+                    $lookup = Get-AppExecutablePath -ProcessName ([string]$candidate.processName) -ConfiguredPath $exePath -RegistrySearchString ([string]$candidate.processName)
+                    if ($lookup.IsValid) {
+                        $t = $candidate
+                        Log-Always ("Target resolved by installed executable: " + $candidate.processName + " (" + $lookup.Source + ")")
+                        break
+                    }
+                }
+            } catch {}
+        }
+
+        if (-not $t) {
+            $t = $p.targets[0]
+            Log-Always ("Target defaulted to first entry: " + ([string]$t.processName))
+        }
 
         if ($t.processName)     { $script:TargetProcessName = [string]$t.processName }
         if ($t.defaultExePath)  { $script:TargetExePath = [string]$t.defaultExePath }
@@ -365,6 +399,8 @@ function Apply-ActiveProfile {
         return $false
     }
 }
+
+
 
 # ---------- PROFILE SELECTION (after logging is available) ----------
 try {
@@ -1192,7 +1228,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.7"
+        $script:icon.Text = "SAMISH v1.3.8"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         

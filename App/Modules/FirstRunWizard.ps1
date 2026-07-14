@@ -53,11 +53,13 @@ function Show-FirstRunWizard {
     catch {}
 
     # ---- Detect mixers and browsers ----
+    # Each mixer entry uses a 'Processes' array to support multiple known process names
+    # (e.g. classic installer vs. Microsoft Store edition of the same application).
     $knownMixers = @(
-        @{ Name = "BEACN";       Process = "BEACN" }
-        @{ Name = "Voicemeeter"; Process = "voicemeeter" }
-        @{ Name = "GoXLR";      Process = "GoXLR" }
-        @{ Name = "Wave Link";   Process = "WaveLink" }
+        @{ Name = "BEACN";       Processes = @("BEACN") }
+        @{ Name = "Voicemeeter"; Processes = @("voicemeeter") }
+        @{ Name = "GoXLR";      Processes = @("GoXLR") }
+        @{ Name = "Wave Link";   Processes = @("WaveLink", "Elgato.WaveLink") }
     )
 
     $knownBrowsers = @(
@@ -71,9 +73,14 @@ function Show-FirstRunWizard {
 
     $detectedMixers = @()
     foreach ($m in $knownMixers) {
-        if (Get-Process -Name $m.Process -ErrorAction SilentlyContinue) {
-            $detectedMixers += $m.Name
+        $found = $false
+        foreach ($procName in $m.Processes) {
+            if (Get-Process -Name $procName -ErrorAction SilentlyContinue) {
+                $found = $true
+                break
+            }
         }
+        if ($found) { $detectedMixers += $m.Name }
     }
 
     $detectedBrowsers = @()

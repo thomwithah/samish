@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-07-14
+
+### Fixed
+- **Elgato Wave Link Not Detected (Microsoft Store Edition)**: Fixed an issue where the First-Run Setup Wizard displayed "No supported audio mixer detected" for users who installed Wave Link via the Microsoft Store. The Microsoft Store edition runs under the process name `Elgato.WaveLink` rather than the classic installer's `WaveLink`. The wizard now checks both process names, and the background engine dynamically selects the active target by checking which process is running at startup rather than always defaulting to the first profile entry.
+
 ## [1.3.7] - 2026-06-10
 
 ### Fixed

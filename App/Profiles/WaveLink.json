@@ -7,6 +7,12 @@
       "defaultExePath": "C:\\Program Files\\Elgato\\WaveLink\\WaveLink.exe",
       "supportsGraceful": true,
       "supportsClassic": true
+    },
+    {
+      "processName": "Elgato.WaveLink",
+      "defaultExePath": "",
+      "supportsGraceful": true,
+      "supportsClassic": true
     }
   ],
   "defaults": {
