@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # ==============================================================================
 # Module: Config.Helpers.ps1
 # Purpose: Configuration read/write (Write-ConfigJson), log file selection
@@ -94,6 +94,12 @@ function Write-ConfigJson {
         if ($existing.PSObject.Properties.Name -contains "PreferredPlaybackDeviceName") { $prefPlaybackName = [string]$existing.PreferredPlaybackDeviceName }
         if ($existing.PSObject.Properties.Name -contains "PreferredCommDeviceGuid") { $prefCommGuid = [string]$existing.PreferredCommDeviceGuid }
         if ($existing.PSObject.Properties.Name -contains "PreferredCommDeviceName") { $prefCommName = [string]$existing.PreferredCommDeviceName }
+        if ($existing.PSObject.Properties.Name -contains "UwpPathCache") { $uwpPathCache = $existing.UwpPathCache }
+    }
+
+    $uwpPathCache = $null
+    if ($existing -and $existing.PSObject.Properties.Name -contains "UwpPathCache") {
+        $uwpPathCache = $existing.UwpPathCache
     }
 
     $cfg = [ordered]@{
@@ -119,7 +125,9 @@ function Write-ConfigJson {
         PreferredPlaybackDeviceName = $prefPlaybackName
         PreferredCommDeviceGuid     = $prefCommGuid
         PreferredCommDeviceName     = $prefCommName
+        UwpPathCache                = $uwpPathCache
     }
+
 
     $json = $cfg | ConvertTo-Json -Depth 6
     if (Get-Command Save-ContentAtomic -ErrorAction SilentlyContinue) {

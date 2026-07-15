@@ -17,22 +17,15 @@ function Handle-ProfileRadioCheckedChanged {
     if (-not $sender.Checked) { return }
 
     $selectedId = [string]$sender.Tag
+    # Radio selection only controls which profile's detail settings are shown.
+    # It does NOT change which profiles are actively managed (that is controlled by checkboxes).
     $script:ActiveProfileId = $selectedId
-    $script:ProfilesEnabled = @($selectedId)
 
     if ($script:ProfileMetaById.ContainsKey($selectedId)) {
         Set-ProfileDetails $script:ProfileMetaById[$selectedId]
     }
     else {
         Set-ProfileDetails $null
-    }
-
-    # Sync all checkbox indicators in the parent profiles panel
-    foreach ($ctl in $sender.Parent.Controls) {
-        if ($ctl -is [System.Windows.Forms.CheckBox]) {
-            $tagId = [string]$ctl.Tag
-            $ctl.Checked = ($tagId -eq $script:ActiveProfileId)
-        }
     }
 
     # Keep the test group dropdown and enabled state in sync
@@ -382,25 +375,36 @@ function Build-ProfilesUI {
         [int]$y = 0
         foreach ($p in $profiles) {
 
-            # Enabled checkbox (future multi-device): interactive for tooltip/click, but not toggleable
+            # Enabled checkbox: toggles whether this device profile is actively managed.
+            # Multiple profiles can be checked simultaneously for multi-device support.
             $cbEnabled = New-Object System.Windows.Forms.CheckBox
             $cbEnabled.Location = [System.Drawing.Point]::new(0, [int]($y + 6))
             $cbEnabled.Size = New-Object System.Drawing.Size(15, 15)
             $cbEnabled.Tag = $p.Id
-            $cbEnabled.Checked = ($p.Id -eq $script:ActiveProfileId)
+            $cbEnabled.Checked = ($script:ProfilesEnabled -contains $p.Id)
             $cbEnabled.Enabled = $true
-            $cbEnabled.AutoCheck = $false
+            $cbEnabled.AutoCheck = $true
             $profilesPanel.Controls.Add($cbEnabled)
 
-            $tooltip.SetToolTip($cbEnabled, "Multi-device simultaneous support coming later.")
+            $tooltip.SetToolTip($cbEnabled, "Check to include this device in SAMISH sleep/wake management. Multiple devices can be enabled simultaneously.")
 
-            $cbEnabled.add_Click({
-                    [System.Windows.Forms.MessageBox]::Show(
-                        "Multi-device simultaneous support is coming later. For now, SAMISH uses one active device profile at a time.",
-                        "Coming Later",
-                        [System.Windows.Forms.MessageBoxButtons]::OK,
-                        [System.Windows.Forms.MessageBoxIcon]::Information
-                    ) | Out-Null
+            $cbEnabled.add_CheckedChanged({
+                    $toggled = [string]$this.Tag
+                    if ($this.Checked) {
+                        # Add to enabled list if not already present
+                        if ($script:ProfilesEnabled -notcontains $toggled) {
+                            $script:ProfilesEnabled = @($script:ProfilesEnabled) + $toggled
+                        }
+                    } else {
+                        # Remove from enabled list; ensure at least one profile remains enabled
+                        $remaining = @($script:ProfilesEnabled | Where-Object { $_ -ne $toggled })
+                        if ($remaining.Count -eq 0) {
+                            # Prevent unchecking the last enabled device
+                            $this.Checked = $true
+                        } else {
+                            $script:ProfilesEnabled = $remaining
+                        }
+                    }
                 })
 
             # Active radio (single-target today) -- all radios share same parent ($profilesPanel)

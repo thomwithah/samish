@@ -1,7 +1,7 @@
 ﻿# ==========================================
 # SAMISH (Streaming Audio Mixer Interface Sleep Helper) - Setup UI (PS 5.1 compatible)
 # Created by thomwithah
-# Version: 1.3.8
+# Version: 2.0.0
 # ==========================================
 # Place this Setup.ps1 in the same folder as:
 #   - SAMISH.ps1
@@ -89,10 +89,28 @@ catch {
 }
 
 #region Native Methods
-$NativeMethodsPath = $PSScriptRoot
-if (-not $NativeMethodsPath -and $PSCommandPath) { $NativeMethodsPath = Split-Path -Parent $PSCommandPath }
-if (-not $NativeMethodsPath) { $NativeMethodsPath = [System.AppDomain]::CurrentDomain.BaseDirectory }
-$NativeMethodsPath = Join-Path $NativeMethodsPath "App\Modules\NativeMethods.ps1"
+# Detect if running as a compiled PS2EXE executable.
+# When compiled, $PSScriptRoot resolves to a temp extraction dir, not the install dir.
+# Reading the current process's own MainModule.FileName gives the true install path.
+# NOTE: The install dir layout is flat (%APPDATA%\SAMISH\Modules\...) while the
+# source tree nests under App (%APPDATA%\SAMISH\App\Modules\...). Try both.
+$NativeMethodsBaseDir = $PSScriptRoot
+try {
+    $hostProc = [System.Diagnostics.Process]::GetCurrentProcess()
+    $hostProcName = $hostProc.ProcessName.ToLower()
+    if ($hostProcName -ne 'powershell' -and $hostProcName -ne 'pwsh') {
+        # Running as compiled EXE - use the EXE's own directory
+        $NativeMethodsBaseDir = Split-Path -Parent $hostProc.MainModule.FileName
+    }
+} catch {}
+if (-not $NativeMethodsBaseDir -and $PSCommandPath) { $NativeMethodsBaseDir = Split-Path -Parent $PSCommandPath }
+if (-not $NativeMethodsBaseDir) { $NativeMethodsBaseDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
+# Source tree path: <dir>\App\Modules\NativeMethods.ps1
+$NativeMethodsPath = Join-Path $NativeMethodsBaseDir "App\Modules\NativeMethods.ps1"
+# Install dir path: <dir>\Modules\NativeMethods.ps1 (no App subdir)
+if (-not (Test-Path -LiteralPath $NativeMethodsPath)) {
+    $NativeMethodsPath = Join-Path $NativeMethodsBaseDir "Modules\NativeMethods.ps1"
+}
 if (Test-Path -LiteralPath $NativeMethodsPath) {
     . $NativeMethodsPath
 }
@@ -469,7 +487,7 @@ try {
     # ---------- Constants ----------
     $ProductName = "SAMISH"
     $ProductLong = "SAMISH (Streaming Audio Mixer Interface Sleep Helper)"
-    $ProductVersion = "v1.3.8"
+    $ProductVersion = "v2.0.0"
     $AuthorLine = "Created by thomwithah"
 
     $TaskHiddenNoSlash = "SAMISH (Hidden)"
@@ -483,11 +501,29 @@ try {
     $StandardLogFileTemplate = Join-Path $env:APPDATA "SAMISH\samish_{DATE}.log"
 
     # ---------- Paths ----------
+    # Detect if running as a compiled PS2EXE executable.
+    # When compiled, $PSScriptRoot resolves to a temp extraction dir, not the install dir.
+    # Reading the current process's own MainModule.FileName gives the true install path.
+    # NOTE: The install dir layout is flat (%APPDATA%\SAMISH\Modules\...) while the
+    # source tree nests under App (%APPDATA%\SAMISH\App\Modules\...). Try both.
     $ScriptDir = $PSScriptRoot
+    try {
+        $hostProc = [System.Diagnostics.Process]::GetCurrentProcess()
+        $hostProcName = $hostProc.ProcessName.ToLower()
+        if ($hostProcName -ne 'powershell' -and $hostProcName -ne 'pwsh') {
+            # Running as compiled EXE - use the EXE's own directory
+            $ScriptDir = Split-Path -Parent $hostProc.MainModule.FileName
+        }
+    } catch {}
     if (-not $ScriptDir -and $PSCommandPath) { $ScriptDir = Split-Path -Parent $PSCommandPath }
     if (-not $ScriptDir) { $ScriptDir = [System.AppDomain]::CurrentDomain.BaseDirectory }
     if ($ScriptDir -and $ScriptDir.EndsWith("\")) { $ScriptDir = $ScriptDir.TrimEnd("\") }
+    # Source tree: modules live under App\Modules. Install dir: modules live directly under Modules.
+    # Use App subdir if it exists (source tree); otherwise treat ScriptDir itself as the package root.
     $PackageDir = Join-Path $ScriptDir "App"
+    if (-not (Test-Path -LiteralPath $PackageDir)) {
+        $PackageDir = $ScriptDir
+    }
 
 
     # ----- LOAD MODULES -----

@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -9,9 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [2.0.0] - 2026-07-15
+
+### Added
+- **Simultaneous Multi-Device Support**: Upgraded SAMISH from a single-mixer utility to support concurrent multi-device management. Users can now enable and control multiple audio mixers in parallel (e.g., BEACN, Wave Link, GoXLR) by checking their respective checkboxes in the Setup tab. The background engine dynamically manages sleep/wake cycles, automatic recovery, and graceful shutdown sequences for all enabled devices simultaneously.
+
+### Fixed
+- **"Open Settings" Crashes When Launched from System Tray (Setup.exe)**: Fixed a critical issue where clicking "Open Settings" from the SAMISH system tray icon produced a "New-SamishToolTip is not recognized" error and the settings window failed to open. The root cause was a two-part path resolution failure: (1) `config.json` stored `SetupPath` pointing to `Setup.ps1` instead of `Setup.exe` because the install was performed via `Setup.bat` (a PowerShell host), causing the compiled EXE to never be consulted. (2) When `Setup.exe` was eventually launched, it resolved module paths using the `App\Modules\` source-tree subdirectory, which does not exist in the flat install layout at `%APPDATA%\SAMISH\Modules\`. Fixed by: updating `Logic.ps1` to prefer the `.exe` sibling over `.ps1` when both exist in the install directory; fixing `Setup.ps1` path resolution to probe both `App\Modules\` (source tree) and `Modules\` (install dir) with a fallback, and treating `$ScriptDir` itself as the package root when no `App` subdirectory is present.
+- **Elgato Wave Link (Microsoft Store) Fails to Restart After Sleep**: Fixed an issue where Wave Link stopped playing audio after the PC woke from sleep and SAMISH could not relaunch it. The Microsoft Store (MSIX/UWP) edition installs to a dynamically versioned path under `C:\Program Files\WindowsApps` that cannot be hardcoded. The engine now (1) captures the running process's exact executable path at startup before sleep, and (2) falls back to querying `Get-AppxPackage` to locate the installation directory if the cached path is unavailable, ensuring reliable relaunch across Windows updates and app reinstalls.
+- **Tray Icon Disappears After Reinstall (SAMISH Engine Fails to Start)**: Fixed a critical regression where the SAMISH background engine (scheduled task) exited immediately with error code 1 after reinstall, causing the tray icon not to appear. The root cause was a corrupted `SAMISH.ps1` in the install directory containing a duplicated 14-line cleanup block appended to the end of the script, creating unmatched braces that caused a PowerShell parse error at startup. The orphaned duplicate code has been removed and the file validated clean before deployment.
+- **"Open Settings" via .ps1 Fallback Crashes (Missing -STA Flag)**: Added `-STA` (Single Threaded Apartment) to the `powershell.exe` launch arguments when the tray handler falls back to launching `Setup.ps1` directly. WinForms requires STA threading; without it the GUI exits immediately on load.
+
+### Improved
+- **Faster Engine Startup and Settings Launch (UWP Path Cache)**: Eliminated a 1-3 second blocking `Get-AppxPackage` scan that ran synchronously on every engine startup for every active device profile, delaying the appearance of the Settings window. The UWP app path resolver (`Get-AppExecutablePath`) now uses a three-tier strategy: (1) read from an in-memory cache pre-loaded from `config.json` at startup - zero cost for previously-resolved devices; (2) fall back to all fast synchronous lookups (configured path, execution alias, running process, registry); (3) if all fast lookups miss, enqueue a `Get-AppxPackage` scan on a background thread and return immediately - the result is cached to `config.json` automatically so future startups pay zero cost. For users not running Microsoft Store apps (e.g. BEACN), the engine startup cost of the UWP scan is now permanently zero.
 
 ## [1.3.8] - 2026-07-14
+
 
 ### Fixed
 - **Elgato Wave Link Not Detected (Microsoft Store Edition)**: Fixed an issue where the First-Run Setup Wizard displayed "No supported audio mixer detected" for users who installed Wave Link via the Microsoft Store. The Microsoft Store edition runs under the process name `Elgato.WaveLink` rather than the classic installer's `WaveLink`. The wizard now checks both process names, and the background engine dynamically selects the active target by checking which process is running at startup rather than always defaulting to the first profile entry.

@@ -72,6 +72,16 @@ function Invoke-SamishInstall {
             if (Test-Path -LiteralPath $candidateInstalled) {
                 $persistentSetupPath = $candidateInstalled
             }
+
+            # Prefer a compiled .exe over a .ps1 script if both exist side-by-side
+            # in the install directory. Running Setup.ps1 under PowerShell requires STA
+            # threading and module resolution that is not guaranteed from the tray.
+            if ($persistentSetupPath -and $persistentSetupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $exeSibling = [System.IO.Path]::ChangeExtension($persistentSetupPath, ".exe")
+                if (Test-Path -LiteralPath $exeSibling) {
+                    $persistentSetupPath = $exeSibling
+                }
+            }
         }
 
         Write-ConfigJson `

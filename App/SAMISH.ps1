@@ -31,9 +31,9 @@ if (Test-Path -LiteralPath $UwpMediaPath) {
 #endregion
 
 # ---------- VERSION ----------
-$ScriptName    = "SAMISH"
-$ScriptVersion = "v1.3.8"
-$ReleaseDate   = "2026-07-14"
+$ScriptName = "SAMISH"
+$ScriptVersion = "v2.0.0"
+$ReleaseDate   = "2026-07-15"
 
 # ---------- OPTIONAL CONFIG FILE (best practice) ----------
 # The GUI will later write settings here. If the file is missing, defaults below are used.
@@ -59,7 +59,8 @@ function Apply-ConfigFromFile {
         $jsonError = $false
         try {
             $cfg = $raw | ConvertFrom-Json -ErrorAction Stop
-        } catch {
+        }
+        catch {
             $jsonError = $true
             $cfg = [pscustomobject]@{}
         }
@@ -77,12 +78,13 @@ function Apply-ConfigFromFile {
                     # Prune old backups: keep only the 5 most recent
                     $configDir = Split-Path -Parent $ConfigPath
                     $backups = Get-ChildItem -LiteralPath $configDir -Filter "config.json.backup-*" -File -ErrorAction SilentlyContinue |
-                        Sort-Object LastWriteTime -Descending |
-                        Select-Object -Skip 5
+                    Sort-Object LastWriteTime -Descending |
+                    Select-Object -Skip 5
                     foreach ($old in $backups) {
                         Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue
                     }
-                } catch {
+                }
+                catch {
                     # Fail-forward: if backup fails, still proceed with the fix
                 }
 
@@ -101,7 +103,8 @@ function Apply-ConfigFromFile {
                             Log-Always "Config: Auto-fixed $($schemaRes.FixedKeys.Count) key(s): $($schemaRes.FixedKeys -join ', '). Original backed up to $backupPath."
                         }
                     }
-                } catch {
+                }
+                catch {
                     # Fail-forward: logging is best-effort
                 }
             }
@@ -109,7 +112,7 @@ function Apply-ConfigFromFile {
 
         foreach ($p in $cfg.PSObject.Properties) {
             $name = $p.Name
-            $val  = $p.Value
+            $val = $p.Value
 
             if (Get-Variable -Name $name -Scope Script -ErrorAction SilentlyContinue) {
                 Set-Variable -Name $name -Value $val -Scope Script -Force
@@ -123,7 +126,8 @@ function Apply-ConfigFromFile {
             }
         }
 
-    } catch {
+    }
+    catch {
         # Best effort only -- but log to event log for troubleshooting
         try { Write-EventLogEntry -Message "Apply-ConfigFromFile failed: $($_.Exception.Message)" -EntryType "Warning" -EventId 300 } catch {}
     }
@@ -158,8 +162,26 @@ function Get-ProfileSelectionFromConfig {
         if (-not $enabled -or $enabled.Count -eq 0) { $enabled = @("BEACN") }
         if ([string]::IsNullOrWhiteSpace($active)) { $active = $enabled[0] }
 
+        # Pre-populate the UWP path cache from persisted config so Get-AppxPackage
+        # is never needed on startup for previously-resolved UWP devices.
+        if ($cfg.PSObject.Properties.Name -contains "UwpPathCache" -and $cfg.UwpPathCache) {
+            try {
+                foreach ($entry in $cfg.UwpPathCache.PSObject.Properties) {
+                    $cachedPath = [string]$entry.Value
+                    if (-not [string]::IsNullOrWhiteSpace($cachedPath)) {
+                        $script:UwpPathCache[$entry.Name.ToLower()] = $cachedPath
+                    }
+                }
+            }
+            catch {
+                # Fail-forward: cache load errors must not prevent engine startup
+            }
+        }
+
         return @{ Active = $active; Enabled = $enabled }
-    } catch {
+
+    }
+    catch {
         return @{ Active = "BEACN"; Enabled = @("BEACN") }
     }
 }
@@ -171,7 +193,8 @@ function Get-HotkeySuffix {
         try {
             Add-Type -AssemblyName System.Windows.Forms
             $keyName = [string][System.Windows.Forms.Keys]$CustomHotkeyVirtualKey
-        } catch {
+        }
+        catch {
             $keyName = "Custom"
         }
     }
@@ -180,7 +203,7 @@ function Get-HotkeySuffix {
 
 # ---------- CONFIG DEFAULTS (legacy, still supported) ----------
 # These will be overridden by config.json (if present) and later by Setup UI.
-$TargetExePath     = "C:\Program Files\BEACN\BEACN App\BEACN.exe"
+$TargetExePath = "C:\Program Files\BEACN\BEACN App\BEACN.exe"
 $TargetProcessName = "BEACN"
 $OperatingMode = "Graceful"          # Classic | Graceful
 $GracefulWindowWakeDelayMs = 800        # Delay after restoring UI window
@@ -252,7 +275,7 @@ if (Test-Path -LiteralPath $GracefulModulePath) {
 }
 
 $GameModeGuardPsm1 = Join-Path $PackageDir "Modules\GameModeGuard.psm1"
-$GameModeGuardPs1  = Join-Path $PackageDir "Modules\GameModeGuard.ps1"
+$GameModeGuardPs1 = Join-Path $PackageDir "Modules\GameModeGuard.ps1"
 if (Test-Path -LiteralPath $GameModeGuardPsm1) {
     Import-Module $GameModeGuardPsm1 -Force -ErrorAction SilentlyContinue
 }
@@ -261,7 +284,7 @@ elseif (Test-Path -LiteralPath $GameModeGuardPs1) {
 }
 
 $AudioEndpointPsm1 = Join-Path $PackageDir "Modules\AudioEndpoint.psm1"
-$AudioEndpointPs1  = Join-Path $PackageDir "Modules\AudioEndpoint.ps1"
+$AudioEndpointPs1 = Join-Path $PackageDir "Modules\AudioEndpoint.ps1"
 if (Test-Path -LiteralPath $AudioEndpointPsm1) {
     Import-Module $AudioEndpointPsm1 -Force -ErrorAction SilentlyContinue
 }
@@ -291,7 +314,8 @@ function Log-Always([string]$msg) {
     try {
         Rotate-LogFileIfNeeded -Path $path
         Add-Content -Path $path -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $msg"
-    } catch {
+    }
+    catch {
         # Best effort logging only
     }
 }
@@ -350,7 +374,8 @@ function Apply-ActiveProfile {
                     break
                 }
             }
-        } catch {}
+        }
+        catch {}
 
         if (-not $t) {
             try {
@@ -364,7 +389,8 @@ function Apply-ActiveProfile {
                         break
                     }
                 }
-            } catch {}
+            }
+            catch {}
         }
 
         if (-not $t) {
@@ -372,12 +398,12 @@ function Apply-ActiveProfile {
             Log-Always ("Target defaulted to first entry: " + ([string]$t.processName))
         }
 
-        if ($t.processName)     { $script:TargetProcessName = [string]$t.processName }
-        if ($t.defaultExePath)  { $script:TargetExePath = [string]$t.defaultExePath }
+        if ($t.processName) { $script:TargetProcessName = [string]$t.processName }
+        if ($t.defaultExePath) { $script:TargetExePath = [string]$t.defaultExePath }
 
         if ($p.defaults) {
             if ($p.defaults.GracefulWindowWakeDelayMs) { $script:GracefulWindowWakeDelayMs = [int]$p.defaults.GracefulWindowWakeDelayMs }
-            if ($p.defaults.GracefulShutdownWaitMs)    { $script:GracefulShutdownWaitMs = [int]$p.defaults.GracefulShutdownWaitMs }
+            if ($p.defaults.GracefulShutdownWaitMs) { $script:GracefulShutdownWaitMs = [int]$p.defaults.GracefulShutdownWaitMs }
         }
 
         # Load active adapter script dynamically
@@ -386,14 +412,16 @@ function Apply-ActiveProfile {
         if (Test-Path -LiteralPath $adapterPath) {
             . $adapterPath
             Log-Always ("Active profile loaded: " + $ProfileId + " (target=" + $script:TargetProcessName + ") with adapter.")
-        } else {
+        }
+        else {
             Log-Always ("WARNING: No adapter found for " + $ProfileId + " at " + $adapterPath)
             Write-EventLogEntry -Message ("No adapter found for " + $ProfileId + " at " + $adapterPath) -EntryType "Warning" -EventId 300
             Log-Always ("Active profile loaded: " + $ProfileId + " (target=" + $script:TargetProcessName + ") WITHOUT adapter.")
         }
 
         return $true
-    } catch {
+    }
+    catch {
         Log-Always ("Failed to load profile " + $ProfileId + ": " + $_.Exception.Message)
         Write-EventLogEntry -Message ("Failed to load profile " + $ProfileId + ": " + $_.Exception.Message) -EntryType "Error" -EventId 400
         return $false
@@ -403,13 +431,52 @@ function Apply-ActiveProfile {
 
 
 # ---------- PROFILE SELECTION (after logging is available) ----------
+# All enabled profiles are loaded and stored in $script:ActiveDevices.
+# Each entry retains the profile-specific process name, exe path, and timing values
+# that were resolved by Apply-ActiveProfile, allowing the engine to manage multiple
+# devices simultaneously during sleep and wake events.
+$script:ActiveDevices = @()
 try {
     $sel = Get-ProfileSelectionFromConfig
-    if ($sel.Enabled.Count -gt 1) {
-        Log-Always ("Multiple profiles enabled in config, but engine is currently single-target. Active=" + $sel.Active)
+    if ($sel.Enabled.Count -gt 0) {
+        Log-Always ("Loading " + $sel.Enabled.Count + " enabled profile(s): " + ($sel.Enabled -join ", "))
     }
-    $null = Apply-ActiveProfile -ProfileId $sel.Active
-} catch {
+    foreach ($profileId in $sel.Enabled) {
+        try {
+            $loaded = Apply-ActiveProfile -ProfileId $profileId
+            if ($loaded) {
+                # Snapshot per-device state after Apply-ActiveProfile configures the script-level variables
+                $script:ActiveDevices += [PSCustomObject]@{
+                    ProfileId      = $script:ActiveProfileId
+                    ProcessName    = $script:TargetProcessName
+                    ExePath        = $script:TargetExePath
+                    WakeDelayMs    = $script:GracefulWindowWakeDelayMs
+                    ShutdownWaitMs = $script:GracefulShutdownWaitMs
+                }
+                Log-Always ("Device registered: " + $profileId + " (process=" + $script:TargetProcessName + ")")
+            }
+            else {
+                Log-Always ("WARNING: Profile did not load cleanly and will not be managed: " + $profileId)
+            }
+        }
+        catch {
+            try { Log-Always ("Profile load failed for " + $profileId + ": " + $_.Exception.Message) } catch {}
+        }
+    }
+    if ($script:ActiveDevices.Count -eq 0) {
+        # Last-resort default if all profiles failed
+        $null = Apply-ActiveProfile -ProfileId $sel.Active
+        $script:ActiveDevices += [PSCustomObject]@{
+            ProfileId      = $script:ActiveProfileId
+            ProcessName    = $script:TargetProcessName
+            ExePath        = $script:TargetExePath
+            WakeDelayMs    = $script:GracefulWindowWakeDelayMs
+            ShutdownWaitMs = $script:GracefulShutdownWaitMs
+        }
+        Log-Always ("Fallback to default profile: " + $script:ActiveProfileId)
+    }
+}
+catch {
     # Best effort only; engine can continue with defaults if profiles fail
     try { Log-Always ("Profile load failed: " + $_.Exception.Message) } catch {}
 }
@@ -439,7 +506,8 @@ function _SamishTryLog([string]$Message) {
         if (Get-Command Log-Always -ErrorAction SilentlyContinue) {
             Log-Always $Message
         }
-    } catch { }
+    }
+    catch { }
 }
 
 try {
@@ -447,7 +515,7 @@ try {
     $MutexSecurity = New-Object System.Security.AccessControl.MutexSecurity
 
     # Allow all users to fully control the mutex (so Standard + Admin share the same lock)
-    $AllUsersSid  = [System.Security.Principal.SecurityIdentifier]::new(
+    $AllUsersSid = [System.Security.Principal.SecurityIdentifier]::new(
         [System.Security.Principal.WellKnownSidType]::WorldSid, $null
     )
 
@@ -512,13 +580,14 @@ try {
         }
     }
 
-    function Get-ACSettingSeconds([string]$schemeGuid,[string]$subGuid,[string]$setGuid) {
+    function Get-ACSettingSeconds([string]$schemeGuid, [string]$subGuid, [string]$setGuid) {
         # Prefer shared common implementation if available:
         # Common provides Get-PowerSettingSecondsAC(SchemeGuid, SubGuid, SettingGuid)
         if (Get-Command Get-PowerSettingSecondsAC -ErrorAction SilentlyContinue) {
             try {
                 return Get-PowerSettingSecondsAC -SchemeGuid $schemeGuid -SubGuid $subGuid -SettingGuid $setGuid
-            } catch {
+            }
+            catch {
                 # fall through to local parsing
             }
         }
@@ -530,7 +599,8 @@ try {
             if ($null -ne $regItem -and $null -ne $regItem.ACSettingIndex) {
                 return [int]$regItem.ACSettingIndex
             }
-        } catch {
+        }
+        catch {
             # Registry read failed -- fall through to powercfg parsing
         }
 
@@ -585,7 +655,8 @@ try {
                         if ($knownCats -contains $tokenUpper) {
                             $cats += $tokenUpper
                             $i--
-                        } else {
+                        }
+                        else {
                             break
                         }
                     }
@@ -598,7 +669,8 @@ try {
                         $cleanName = $rawName
                         if ($cleanName -match '([^\\]+)\.exe$') {
                             $cleanName = $Matches[1]
-                        } else {
+                        }
+                        else {
                             if ($cleanName -match '[^\\]+$') {
                                 $cleanName = $Matches[0]
                             }
@@ -614,7 +686,8 @@ try {
                     }
                 }
             }
-        } catch {
+        }
+        catch {
             # Best effort
         }
         
@@ -660,7 +733,8 @@ try {
                     $cleanName = $rawPathOrName
                     if ($cleanName -match '([^\\]+)\.exe$') {
                         $cleanName = $Matches[1]
-                    } else {
+                    }
+                    else {
                         if ($cleanName -match '[^\\]+$') {
                             $cleanName = $Matches[0]
                         }
@@ -706,7 +780,8 @@ try {
             if ($blockers.Count -gt 0) {
                 return $blockers
             }
-        } catch {
+        }
+        catch {
             # Best effort
         }
         
@@ -718,37 +793,50 @@ try {
     function Invoke-MixerStop {
         $stoppedAny = $false
 
-        # 1. Stop Main Mixer via active adapter
-        $adapterStopCmd = "Stop-$($script:ActiveProfileId)Adapter"
-        if (Get-Command $adapterStopCmd -ErrorAction SilentlyContinue) {
-            try {
-                $r = & $adapterStopCmd `
-                    -ProcessName $script:TargetProcessName `
-                    -ConfiguredPath $script:TargetExePath `
-                    -OperatingMode $script:OperatingMode `
-                    -WindowWakeDelayMs $script:GracefulWindowWakeDelayMs `
-                    -ShutdownWaitMs $script:GracefulShutdownWaitMs
-                
-                if ($r) {
-                    $stoppedAny = $true
-                } else {
-                    Write-EventLogEntry -Message "Adapter failed to stop main mixer: $script:TargetProcessName." -EntryType "Warning" -EventId 300
+        # 1. Stop all active mixer devices
+        # Each device in $script:ActiveDevices is stopped via its own namespaced adapter function.
+        foreach ($device in $script:ActiveDevices) {
+            $profileId = $device.ProfileId
+            $procName = $device.ProcessName
+            $exePath = $device.ExePath
+            $wakeDelay = $device.WakeDelayMs
+            $shutWait = $device.ShutdownWaitMs
+
+            $adapterStopCmd = "Stop-" + $profileId + "Adapter"
+            if (Get-Command $adapterStopCmd -ErrorAction SilentlyContinue) {
+                try {
+                    $r = & $adapterStopCmd `
+                        -ProcessName $procName `
+                        -ConfiguredPath $exePath `
+                        -OperatingMode $script:OperatingMode `
+                        -WindowWakeDelayMs $wakeDelay `
+                        -ShutdownWaitMs $shutWait
+
+                    if ($r) {
+                        $stoppedAny = $true
+                    }
+                    else {
+                        Write-EventLogEntry -Message ("Adapter failed to stop mixer: " + $procName + ".") -EntryType "Warning" -EventId 300
+                    }
                 }
-            } catch {
-                Write-EventLogEntry -Message "Adapter threw an exception stopping main mixer: $_" -EntryType "Error" -EventId 400
-                Log-Always "Adapter Stop function failed: $_"
+                catch {
+                    Write-EventLogEntry -Message ("Adapter threw an exception stopping mixer: " + $_ ) -EntryType "Error" -EventId 400
+                    Log-Always ("Adapter Stop function failed for " + $procName + ": " + $_)
+                }
             }
-        } else {
-            # Fallback to generic force stop if adapter is missing or has no stop func
-            if (Get-Process -Name $script:TargetProcessName -ErrorAction SilentlyContinue) {
-                 Log-Always "No adapter stop function ($adapterStopCmd) found for $script:TargetProcessName. Falling back to generic classic stop."
-                 Write-EventLogEntry -Message "No adapter stop function ($adapterStopCmd) found for $script:TargetProcessName. Falling back to generic classic stop." -EntryType "Warning" -EventId 300
-                 $r2 = Invoke-AppStop -ProcessName $script:TargetProcessName
-                 if ($r2 -and $r2.Stopped) {
-                     $stoppedAny = $true
-                 } else {
-                     Write-EventLogEntry -Message "Failed to stop main mixer process $script:TargetProcessName via classic stop fallback." -EntryType "Error" -EventId 400
-                 }
+            else {
+                # Fallback to generic force stop if adapter is missing or has no stop function
+                if (Get-Process -Name $procName -ErrorAction SilentlyContinue) {
+                    Log-Always ("No adapter stop function (" + $adapterStopCmd + ") found for " + $procName + ". Falling back to generic classic stop.")
+                    Write-EventLogEntry -Message ("No adapter stop function (" + $adapterStopCmd + ") found for " + $procName + ". Falling back to generic classic stop.") -EntryType "Warning" -EventId 300
+                    $r2 = Invoke-AppStop -ProcessName $procName
+                    if ($r2 -and $r2.Stopped) {
+                        $stoppedAny = $true
+                    }
+                    else {
+                        Write-EventLogEntry -Message ("Failed to stop mixer process " + $procName + " via classic stop fallback.") -EntryType "Error" -EventId 400
+                    }
+                }
             }
         }
         
@@ -774,7 +862,8 @@ try {
                         if ($paused) {
                             Log-Always "Paused $($app.ProcessName) media playback."
                             $stoppedAny = $true
-                        } else {
+                        }
+                        else {
                             Log-Always "Failed to pause $($app.ProcessName) media playback."
                         }
                     }
@@ -789,7 +878,8 @@ try {
                         if ($r -and $r.Stopped) {
                             Log-Always "Stopped $($app.ProcessName) (Graceful)"
                             $stoppedAny = $true
-                        } else {
+                        }
+                        else {
                             # Graceful failed, fall back to Classic
                             Log-Always "Graceful stop failed for $($app.ProcessName), falling back to Classic"
                             Write-EventLogEntry -Message "Graceful stop failed for $($app.ProcessName), falling back to Classic." -EntryType "Warning" -EventId 300
@@ -797,17 +887,20 @@ try {
                             if ($r2 -and $r2.Stopped) {
                                 Log-Always "Stopped $($app.ProcessName) (Classic fallback)"
                                 $stoppedAny = $true
-                            } else {
+                            }
+                            else {
                                 Write-EventLogEntry -Message "Failed to stop $($app.ProcessName) using both graceful and classic methods." -EntryType "Error" -EventId 400
                             }
                         }
-                    } else {
+                    }
+                    else {
                         Log-Always "Stopping $($app.ProcessName) (Classic mode)"
                         $r2 = Invoke-AppStop -ProcessName $app.ProcessName
                         if ($r2 -and $r2.Stopped) {
                             Log-Always "Stopped $($app.ProcessName) (Classic)"
                             $stoppedAny = $true
-                        } else {
+                        }
+                        else {
                             Write-EventLogEntry -Message "Failed to stop $($app.ProcessName) using classic method." -EntryType "Error" -EventId 400
                         }
                     }
@@ -819,30 +912,43 @@ try {
     }
 
     function Start-MainMixer {
-        $adapterStartCmd = "Start-$($script:ActiveProfileId)Adapter"
-        if (Get-Command $adapterStartCmd -ErrorAction SilentlyContinue) {
-            $r = & $adapterStartCmd -ProcessName $script:TargetProcessName -ConfiguredPath $script:TargetExePath
-            if ($r) {
-                return $true
-            } else {
-                Write-EventLogEntry -Message "Adapter failed to start main mixer: $script:TargetProcessName." -EntryType "Error" -EventId 400
-            }
-        } else {
-            Log-Always "No adapter start function ($adapterStartCmd) found for $script:TargetProcessName. Falling back to generic start."
-            Write-EventLogEntry -Message "No adapter start function ($adapterStartCmd) found for $script:TargetProcessName. Falling back to generic start." -EntryType "Warning" -EventId 300
-            $lookup = Get-AppExecutablePath -ProcessName $script:TargetProcessName -ConfiguredPath $script:TargetExePath
-            if ($lookup.IsValid) {
-                $result = Invoke-AppStart -ProcessName $script:TargetProcessName -ExePath $lookup.Path
-                if ($result.Started) {
-                    return $true
-                } else {
-                    Write-EventLogEntry -Message "Failed to start main mixer process $script:TargetProcessName via generic start fallback." -EntryType "Error" -EventId 400
+        # Loop over all active devices and start each via its own namespaced adapter function.
+        # Returns true if at least one device started successfully.
+        $startedAny = $false
+        foreach ($device in $script:ActiveDevices) {
+            $profileId = $device.ProfileId
+            $procName = $device.ProcessName
+            $exePath = $device.ExePath
+
+            $adapterStartCmd = "Start-" + $profileId + "Adapter"
+            if (Get-Command $adapterStartCmd -ErrorAction SilentlyContinue) {
+                $r = & $adapterStartCmd -ProcessName $procName -ConfiguredPath $exePath
+                if ($r) {
+                    $startedAny = $true
                 }
-            } else {
-                Write-EventLogEntry -Message "Failed to locate executable path for main mixer process $script:TargetProcessName." -EntryType "Error" -EventId 400
+                else {
+                    Write-EventLogEntry -Message ("Adapter failed to start mixer: " + $procName + ".") -EntryType "Error" -EventId 400
+                }
+            }
+            else {
+                Log-Always ("No adapter start function (" + $adapterStartCmd + ") found for " + $procName + ". Falling back to generic start.")
+                Write-EventLogEntry -Message ("No adapter start function (" + $adapterStartCmd + ") found for " + $procName + ". Falling back to generic start.") -EntryType "Warning" -EventId 300
+                $lookup = Get-AppExecutablePath -ProcessName $procName -ConfiguredPath $exePath
+                if ($lookup.IsValid) {
+                    $result = Invoke-AppStart -ProcessName $procName -ExePath $lookup.Path
+                    if ($result.Started) {
+                        $startedAny = $true
+                    }
+                    else {
+                        Write-EventLogEntry -Message ("Failed to start mixer process " + $procName + " via generic start fallback.") -EntryType "Error" -EventId 400
+                    }
+                }
+                else {
+                    Write-EventLogEntry -Message ("Failed to locate executable path for mixer process " + $procName + ".") -EntryType "Error" -EventId 400
+                }
             }
         }
-        return $false
+        return $startedAny
     }
 
     function Relaunch-MonitoredApp {
@@ -924,10 +1030,12 @@ try {
                     }
                 }
                 return $true
-            } else {
+            }
+            else {
                 Write-EventLogEntry -Message "Failed to start monitored app $($App.ProcessName) at $resolvedPath during recovery." -EntryType "Error" -EventId 400
             }
-        } else {
+        }
+        else {
             Log-Always "Executable for $($App.ProcessName) not found at $($App.ExecutablePath) during recovery."
             Write-EventLogEntry -Message "Executable for custom monitored app $($App.ProcessName) not found at $($App.ExecutablePath) during recovery." -EntryType "Warning" -EventId 300
         }
@@ -935,19 +1043,39 @@ try {
     }
 
     function Perform-AutoRecoveryCheck {
-        # 1. Main Mixer Auto-Recovery
+        # 1. Main Mixer Auto-Recovery -- check all active devices
         if ($EnableAutoRecovery) {
-            $mixerRunning = $null -ne (Get-Process -Name $script:TargetProcessName -ErrorAction SilentlyContinue)
-            if (-not $mixerRunning) {
-                Log-Always "Main mixer process '$script:TargetProcessName' is not running. Starting recovery..."
-                Write-EventLogEntry -Message "Main mixer process '$script:TargetProcessName' was not running. Automatically recovering process." -EntryType "Warning" -EventId 302
-                
-                $started = Start-MainMixer
-                if ($started) {
-                    Log-Always "Main mixer process '$script:TargetProcessName' recovered successfully."
-                } else {
-                    Log-Always "Failed to recover main mixer process '$script:TargetProcessName'."
+            foreach ($device in $script:ActiveDevices) {
+                $procName = $device.ProcessName
+                $profileId = $device.ProfileId
+                try {
+                    $mixerRunning = $null -ne (Get-Process -Name $procName -ErrorAction SilentlyContinue)
+                    if (-not $mixerRunning) {
+                        Log-Always ("Mixer process '" + $procName + "' (" + $profileId + ") is not running. Starting recovery...")
+                        Write-EventLogEntry -Message ("Mixer process '" + $procName + "' (" + $profileId + ") was not running. Automatically recovering process.") -EntryType "Warning" -EventId 302
+
+                        $adapterStartCmd = "Start-" + $profileId + "Adapter"
+                        $started = $false
+                        if (Get-Command $adapterStartCmd -ErrorAction SilentlyContinue) {
+                            try { $started = & $adapterStartCmd -ProcessName $procName -ConfiguredPath $device.ExePath } catch {}
+                        }
+                        else {
+                            $lookup = Get-AppExecutablePath -ProcessName $procName -ConfiguredPath $device.ExePath
+                            if ($lookup.IsValid) {
+                                $result = Invoke-AppStart -ProcessName $procName -ExePath $lookup.Path
+                                $started = $result.Started
+                            }
+                        }
+
+                        if ($started) {
+                            Log-Always ("Mixer process '" + $procName + "' recovered successfully.")
+                        }
+                        else {
+                            Log-Always ("Failed to recover mixer process '" + $procName + "'.")
+                        }
+                    }
                 }
+                catch {}
             }
         }
 
@@ -971,8 +1099,8 @@ try {
                     # filter by MainWindowHandle to detect actual UI presence.
                     # Desktop/tray apps (BEACN, etc.) have no main window; check process only.
                     $isUwp = ($app.ProcessName -eq "Spotify") -or
-                        ($app.PSObject.Properties.Match('ExecutablePath').Count -gt 0 -and
-                         $app.ExecutablePath -like "*\WindowsApps\*")
+                    ($app.PSObject.Properties.Match('ExecutablePath').Count -gt 0 -and
+                    $app.ExecutablePath -like "*\WindowsApps\*")
 
                     if ($isUwp) {
                         $isRunning = $null -ne (Get-Process -Name $app.ProcessName -ErrorAction SilentlyContinue |
@@ -991,10 +1119,12 @@ try {
                         $status = Get-SmtcPlaybackStatus -ProcessName $app.ProcessName
                         if ($status -eq 4) {
                             $script:MonitoredAppPlayStates[$app.ProcessName] = $true
-                        } else {
+                        }
+                        else {
                             $script:MonitoredAppPlayStates[$app.ProcessName] = $false
                         }
-                    } else {
+                    }
+                    else {
                         # Not running. Relaunch if monitoring is enabled.
                         if ($autoRecoverEnabled) {
                             # Only recover apps the engine has actually seen running during this session.
@@ -1038,7 +1168,8 @@ try {
                             }
                         }
                     }
-                } catch {
+                }
+                catch {
                     Log-Always "Error in auto-recovery for $($app.ProcessName): $($_.Exception.Message)"
                 }
             }
@@ -1108,14 +1239,17 @@ try {
                             $startedAny = $true
                             $isRunning = $true
                             $startedNow = $true
-                        } else {
+                        }
+                        else {
                             Write-EventLogEntry -Message "Failed to start custom monitored app $($app.ProcessName) at $resolvedPath." -EntryType "Error" -EventId 400
                         }
-                    } else {
+                    }
+                    else {
                         Log-Always "Executable for $($app.ProcessName) not found at $($app.ExecutablePath)."
                         Write-EventLogEntry -Message "Executable for custom monitored app $($app.ProcessName) not found at $($app.ExecutablePath)." -EntryType "Warning" -EventId 300
                     }
-                } else {
+                }
+                else {
                     if ($isRunning) {
                         Log-Always "Custom app $($app.ProcessName) is already running."
                         $startedAny = $true
@@ -1220,7 +1354,8 @@ try {
 
             if (Test-Path -LiteralPath $activePath) { $script:IconActive = New-Object System.Drawing.Icon($activePath) }
             if (Test-Path -LiteralPath $disabledPath) { $script:IconDisabled = New-Object System.Drawing.Icon($disabledPath) }
-        } catch {
+        }
+        catch {
             try { Write-EventLogEntry -Message "Tray icon asset load failed: $($_.Exception.Message)" -EntryType "Warning" -EventId 300 } catch {}
         }
 
@@ -1228,7 +1363,7 @@ try {
         $script:icon.Visible = $true
 
         # Note: NotifyIcon.Text has a short length limit
-        $script:icon.Text = "SAMISH v1.3.8"
+        $script:icon.Text = "SAMISH v2.0.0"
 
         $menu = New-Object System.Windows.Forms.ContextMenuStrip
         
@@ -1253,231 +1388,243 @@ try {
         # Fix: Grab foreground focus before the menu renders so Windows routes
         # click and dismiss events correctly across the UIPI privilege boundary.
         $menu.add_Opening({
-            Log-Always "Tray: Context menu opening. Attempting SetForegroundWindow."
-            try {
-                if ($script:PowerForm -and $script:PowerForm.Handle -ne [IntPtr]::Zero) {
-                    $result = [SamishWin32]::SetForegroundWindow($script:PowerForm.Handle)
-                    Log-Always "Tray: SetForegroundWindow returned: $result"
-                } else {
-                    Log-Always "Tray: PowerForm handle is unavailable."
+                Log-Always "Tray: Context menu opening. Attempting SetForegroundWindow."
+                try {
+                    if ($script:PowerForm -and $script:PowerForm.Handle -ne [IntPtr]::Zero) {
+                        $result = [SamishWin32]::SetForegroundWindow($script:PowerForm.Handle)
+                        Log-Always "Tray: SetForegroundWindow returned: $result"
+                    }
+                    else {
+                        Log-Always "Tray: PowerForm handle is unavailable."
+                    }
                 }
-            } catch {
-                Log-Always "Tray: SetForegroundWindow failed: $_"
-            }
-        })
+                catch {
+                    Log-Always "Tray: SetForegroundWindow failed: $_"
+                }
+            })
 
         $menu.add_Closed({
-            param($menuSender, $menuEventArgs)
-            Log-Always "Tray: Context menu closed. Reason: $($menuEventArgs.CloseReason)"
-        })
+                param($menuSender, $menuEventArgs)
+                Log-Always "Tray: Context menu closed. Reason: $($menuEventArgs.CloseReason)"
+            })
 
         $script:icon.add_DoubleClick({
-            $settingsItem.PerformClick()
-        })
+                $settingsItem.PerformClick()
+            })
 
         # Debounce state: prevents rapid repeated launches before the mutex is registered
         $script:LastSetupLaunchTime = [DateTime]::MinValue
 
         $settingsItem.add_Click({
-            Log-Always "Tray: 'Open Settings' clicked."
-            $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
+                Log-Always "Tray: 'Open Settings' clicked."
+                $logPath = Join-Path $env:TEMP "SAMISH_tray_click.log"
 
-            # Rolling rotation: if the log exceeds 969 KB, shift history files # measured in KB
-            try {
-                if (Test-Path -LiteralPath $logPath) {
-                    $fileInfo = [System.IO.FileInfo]::new($logPath)
-                    if ($fileInfo.Length -gt 992256) { # 969 * 1024 = 992256 bytes
-                        $dir = $fileInfo.DirectoryName
-                        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($logPath)
-                        $ext = [System.IO.Path]::GetExtension($logPath)
-                        # Delete the oldest (slot 5) if it exists
-                        $oldest = Join-Path $dir "$baseName.5$ext"
-                        if (Test-Path -LiteralPath $oldest) {
-                            Remove-Item -LiteralPath $oldest -Force -ErrorAction SilentlyContinue
+                # Rolling rotation: if the log exceeds 969 KB, shift history files # measured in KB
+                try {
+                    if (Test-Path -LiteralPath $logPath) {
+                        $fileInfo = [System.IO.FileInfo]::new($logPath)
+                        if ($fileInfo.Length -gt 992256) {
+                            # 969 * 1024 = 992256 bytes
+                            $dir = $fileInfo.DirectoryName
+                            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($logPath)
+                            $ext = [System.IO.Path]::GetExtension($logPath)
+                            # Delete the oldest (slot 5) if it exists
+                            $oldest = Join-Path $dir "$baseName.5$ext"
+                            if (Test-Path -LiteralPath $oldest) {
+                                Remove-Item -LiteralPath $oldest -Force -ErrorAction SilentlyContinue
+                            }
+                            # Shift .4 -> .5, .3 -> .4, .2 -> .3, .1 -> .2
+                            for ($i = 4; $i -ge 1; $i--) {
+                                $src = Join-Path $dir "$baseName.$i$ext"
+                                $dst = Join-Path $dir "$baseName.$($i + 1)$ext"
+                                if (Test-Path -LiteralPath $src) {
+                                    [System.IO.File]::Move($src, $dst)
+                                }
+                            }
+                            # Move current log to .1
+                            $slot1 = Join-Path $dir "$baseName.1$ext"
+                            [System.IO.File]::Move($logPath, $slot1)
                         }
-                        # Shift .4 -> .5, .3 -> .4, .2 -> .3, .1 -> .2
-                        for ($i = 4; $i -ge 1; $i--) {
-                            $src = Join-Path $dir "$baseName.$i$ext"
-                            $dst = Join-Path $dir "$baseName.$($i + 1)$ext"
-                            if (Test-Path -LiteralPath $src) {
-                                [System.IO.File]::Move($src, $dst)
+                    }
+                }
+                catch {
+                    # Fail-forward: rotation failure should not block settings launch
+                }
+                # Debounce guard: ignore clicks within 5000 ms of a previous launch # measured in ms
+                $elapsedMs = ([DateTime]::UtcNow - $script:LastSetupLaunchTime).TotalMilliseconds
+                if ($elapsedMs -lt 5000) {
+                    Add-Content -LiteralPath $logPath -Value "Debounced: ignoring click ($([int]$elapsedMs) ms since last launch)" -ErrorAction SilentlyContinue
+                    Log-Always "Tray: Debounced settings launch ($([int]$elapsedMs) ms since last)."
+                    return
+                }
+                try {
+                    Add-Content -LiteralPath $logPath -Value "=== Clicked Open Settings at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ErrorAction SilentlyContinue
+                
+                    $isSetupRunning = $false
+                    try {
+                        $mutex = [System.Threading.Mutex]::OpenExisting("Global\SAMISH_Setup_UI")
+                        if ($mutex) {
+                            $isSetupRunning = $true
+                            $mutex.Dispose()
+                            Add-Content -LiteralPath $logPath -Value "Mutex Global\SAMISH_Setup_UI exists." -ErrorAction SilentlyContinue
+                        }
+                    }
+                    catch [System.Threading.WaitHandleCannotBeOpenedException] {
+                        Add-Content -LiteralPath $logPath -Value "Mutex does not exist." -ErrorAction SilentlyContinue
+                    }
+                    catch {
+                        Add-Content -LiteralPath $logPath -Value "Mutex exception: $($_.Exception.GetType().FullName) - $($_.Exception.Message)" -ErrorAction SilentlyContinue
+                    }
+
+                    if (-not ("SamishWin32" -as [type])) {
+                        # Already compiled in NativeMethods.ps1
+                    }
+
+                    # Direct window check fallback
+                    $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH - Setup")
+                    Add-Content -LiteralPath $logPath -Value "FindWindow('SAMISH - Setup') returned: $hwnd" -ErrorAction SilentlyContinue
+                    if ($hwnd -eq [IntPtr]::Zero) {
+                        $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH Setup")
+                        Add-Content -LiteralPath $logPath -Value "Fallback FindWindow('SAMISH Setup') returned: $hwnd" -ErrorAction SilentlyContinue
+                    }
+
+                    if ($hwnd -ne [IntPtr]::Zero) {
+                        $isSetupRunning = $true
+                    }
+
+                    Add-Content -LiteralPath $logPath -Value "Effective isSetupRunning: $isSetupRunning" -ErrorAction SilentlyContinue
+
+                    if ($isSetupRunning) {
+                        if ($hwnd -ne [IntPtr]::Zero) {
+                            Add-Content -LiteralPath $logPath -Value "Attempting window restore & focus (SW_RESTORE=9)..." -ErrorAction SilentlyContinue
+                            $showRes = [SamishWin32]::ShowWindow($hwnd, 9)
+                            $foreRes = [SamishWin32]::SetForegroundWindow($hwnd)
+                            Add-Content -LiteralPath $logPath -Value "ShowWindow result: $showRes, SetForegroundWindow result: $foreRes" -ErrorAction SilentlyContinue
+                        
+                            # Fallback for OS foreground lock: toggle topmost to force focus
+                            if (-not $foreRes) {
+                                Add-Content -LiteralPath $logPath -Value "SetForegroundWindow returned false. Triggering SetWindowPos topmost bypass..." -ErrorAction SilentlyContinue
+                                [void][SamishWin32]::ShowWindow($hwnd, 5) # SW_SHOW
+                                [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-1, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_TOPMOST, SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
+                                [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-2, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_NOTOPMOST
+                                $foreRes2 = [SamishWin32]::SetForegroundWindow($hwnd)
+                                Add-Content -LiteralPath $logPath -Value "Bypass completed. SetForegroundWindow retry result: $foreRes2" -ErrorAction SilentlyContinue
                             }
                         }
-                        # Move current log to .1
-                        $slot1 = Join-Path $dir "$baseName.1$ext"
-                        [System.IO.File]::Move($logPath, $slot1)
+                        else {
+                            Add-Content -LiteralPath $logPath -Value "isSetupRunning is true, but Hwnd is Zero. Showing balloon tip." -ErrorAction SilentlyContinue
+                            if ($null -ne $script:icon) {
+                                $script:icon.ShowBalloonTip(3000, "SAMISH Settings", "The SAMISH settings window is already open.", [System.Windows.Forms.ToolTipIcon]::Info)
+                            }
+                        }
+                        return
                     }
-                }
-            } catch {
-                # Fail-forward: rotation failure should not block settings launch
-            }
-            # Debounce guard: ignore clicks within 5000 ms of a previous launch # measured in ms
-            $elapsedMs = ([DateTime]::UtcNow - $script:LastSetupLaunchTime).TotalMilliseconds
-            if ($elapsedMs -lt 5000) {
-                Add-Content -LiteralPath $logPath -Value "Debounced: ignoring click ($([int]$elapsedMs) ms since last launch)" -ErrorAction SilentlyContinue
-                Log-Always "Tray: Debounced settings launch ($([int]$elapsedMs) ms since last)."
-                return
-            }
-            try {
-                Add-Content -LiteralPath $logPath -Value "=== Clicked Open Settings at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ErrorAction SilentlyContinue
+
+                    Add-Content -LiteralPath $logPath -Value "Setup is not running. Launching new instance..." -ErrorAction SilentlyContinue
+                    $setupPath = $null
+                    # Resolve config path: prefer captured $ConfigPath, then $global:PackageDir-based
+                    $resolvedConfigPath = $ConfigPath
+                    if ([string]::IsNullOrWhiteSpace($resolvedConfigPath)) {
+                        $resolvedConfigPath = Join-Path $env:APPDATA "SAMISH\config.json"
+                    }
+                    Add-Content -LiteralPath $logPath -Value "ConfigPath resolved to: $resolvedConfigPath" -ErrorAction SilentlyContinue
+                    if (Test-Path -LiteralPath $resolvedConfigPath) {
+                        $cfgRaw = Get-Content -LiteralPath $resolvedConfigPath -Raw
+                        if (-not [string]::IsNullOrWhiteSpace($cfgRaw)) {
+                            $cfg = $cfgRaw | ConvertFrom-Json
+                            if ($cfg -and $cfg.PSObject.Properties.Name -contains "SetupPath") {
+                                $setupPath = [string]$cfg.SetupPath
+                            }
+                        }
+                    }
                 
-                $isSetupRunning = $false
-                try {
-                    $mutex = [System.Threading.Mutex]::OpenExisting("Global\SAMISH_Setup_UI")
-                    if ($mutex) {
-                        $isSetupRunning = $true
-                        $mutex.Dispose()
-                        Add-Content -LiteralPath $logPath -Value "Mutex Global\SAMISH_Setup_UI exists." -ErrorAction SilentlyContinue
-                    }
-                } catch [System.Threading.WaitHandleCannotBeOpenedException] {
-                    Add-Content -LiteralPath $logPath -Value "Mutex does not exist." -ErrorAction SilentlyContinue
-                } catch {
-                    Add-Content -LiteralPath $logPath -Value "Mutex exception: $($_.Exception.GetType().FullName) - $($_.Exception.Message)" -ErrorAction SilentlyContinue
-                }
-
-                if (-not ("SamishWin32" -as [type])) {
-                    # Already compiled in NativeMethods.ps1
-                }
-
-                # Direct window check fallback
-                $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH - Setup")
-                Add-Content -LiteralPath $logPath -Value "FindWindow('SAMISH - Setup') returned: $hwnd" -ErrorAction SilentlyContinue
-                if ($hwnd -eq [IntPtr]::Zero) {
-                    $hwnd = [SamishWin32]::FindWindow([IntPtr]::Zero, "SAMISH Setup")
-                    Add-Content -LiteralPath $logPath -Value "Fallback FindWindow('SAMISH Setup') returned: $hwnd" -ErrorAction SilentlyContinue
-                }
-
-                if ($hwnd -ne [IntPtr]::Zero) {
-                    $isSetupRunning = $true
-                }
-
-                Add-Content -LiteralPath $logPath -Value "Effective isSetupRunning: $isSetupRunning" -ErrorAction SilentlyContinue
-
-                if ($isSetupRunning) {
-                    if ($hwnd -ne [IntPtr]::Zero) {
-                        Add-Content -LiteralPath $logPath -Value "Attempting window restore & focus (SW_RESTORE=9)..." -ErrorAction SilentlyContinue
-                        $showRes = [SamishWin32]::ShowWindow($hwnd, 9)
-                        $foreRes = [SamishWin32]::SetForegroundWindow($hwnd)
-                        Add-Content -LiteralPath $logPath -Value "ShowWindow result: $showRes, SetForegroundWindow result: $foreRes" -ErrorAction SilentlyContinue
-                        
-                        # Fallback for OS foreground lock: toggle topmost to force focus
-                        if (-not $foreRes) {
-                            Add-Content -LiteralPath $logPath -Value "SetForegroundWindow returned false. Triggering SetWindowPos topmost bypass..." -ErrorAction SilentlyContinue
-                            [void][SamishWin32]::ShowWindow($hwnd, 5) # SW_SHOW
-                            [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-1, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_TOPMOST, SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
-                            [void][SamishWin32]::SetWindowPos($hwnd, [IntPtr]-2, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) # HWND_NOTOPMOST
-                            $foreRes2 = [SamishWin32]::SetForegroundWindow($hwnd)
-                            Add-Content -LiteralPath $logPath -Value "Bypass completed. SetForegroundWindow retry result: $foreRes2" -ErrorAction SilentlyContinue
-                        }
-                    } else {
-                        Add-Content -LiteralPath $logPath -Value "isSetupRunning is true, but Hwnd is Zero. Showing balloon tip." -ErrorAction SilentlyContinue
-                        if ($null -ne $script:icon) {
-                            $script:icon.ShowBalloonTip(3000, "SAMISH Settings", "The SAMISH settings window is already open.", [System.Windows.Forms.ToolTipIcon]::Info)
-                        }
-                    }
-                    return
-                }
-
-                Add-Content -LiteralPath $logPath -Value "Setup is not running. Launching new instance..." -ErrorAction SilentlyContinue
-                $setupPath = $null
-                # Resolve config path: prefer captured $ConfigPath, then $global:PackageDir-based
-                $resolvedConfigPath = $ConfigPath
-                if ([string]::IsNullOrWhiteSpace($resolvedConfigPath)) {
-                    $resolvedConfigPath = Join-Path $env:APPDATA "SAMISH\config.json"
-                }
-                Add-Content -LiteralPath $logPath -Value "ConfigPath resolved to: $resolvedConfigPath" -ErrorAction SilentlyContinue
-                if (Test-Path -LiteralPath $resolvedConfigPath) {
-                    $cfgRaw = Get-Content -LiteralPath $resolvedConfigPath -Raw
-                    if (-not [string]::IsNullOrWhiteSpace($cfgRaw)) {
-                        $cfg = $cfgRaw | ConvertFrom-Json
-                        if ($cfg -and $cfg.PSObject.Properties.Name -contains "SetupPath") {
-                            $setupPath = [string]$cfg.SetupPath
-                        }
-                    }
-                }
-                
-                # Robust fallback: check install dir first, then parent directory
-                if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
-                    # Check install directory (%APPDATA%\SAMISH) where Sync copies Setup
-                    $installDir = Join-Path $env:APPDATA "SAMISH"
-                    Add-Content -LiteralPath $logPath -Value "Checking install dir: $installDir" -ErrorAction SilentlyContinue
-                    $candidateExe = Join-Path $installDir "Setup.exe"
-                    $candidateBat = Join-Path $installDir "Setup.bat"
-                    $candidatePs1 = Join-Path $installDir "Setup.ps1"
-                    if (Test-Path -LiteralPath $candidateExe) {
-                        $setupPath = $candidateExe
-                    } elseif (Test-Path -LiteralPath $candidateBat) {
-                        $setupPath = $candidateBat
-                    } elseif (Test-Path -LiteralPath $candidatePs1) {
-                        $setupPath = $candidatePs1
-                    }
-                    Add-Content -LiteralPath $logPath -Value "Install dir result: $setupPath" -ErrorAction SilentlyContinue
-                }
-
-                # Fallback: check source package parent directory
-                if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
-                    $resolvedPackageDir = $PackageDir
-                    if ([string]::IsNullOrWhiteSpace($resolvedPackageDir)) { $resolvedPackageDir = $global:PackageDir }
-                    Add-Content -LiteralPath $logPath -Value "PackageDir resolved to: $resolvedPackageDir" -ErrorAction SilentlyContinue
-                    if (-not [string]::IsNullOrWhiteSpace($resolvedPackageDir)) {
-                        $parentDir = Split-Path -Parent $resolvedPackageDir
-                        $candidateExe = Join-Path $parentDir "Setup.exe"
-                        $candidateBat = Join-Path $parentDir "Setup.bat"
-                        $candidatePs1 = Join-Path $parentDir "Setup.ps1"
-                        Add-Content -LiteralPath $logPath -Value "Checking parent: $candidateExe, $candidateBat, $candidatePs1" -ErrorAction SilentlyContinue
+                    # Robust fallback: check install dir first, then parent directory
+                    if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
+                        # Check install directory (%APPDATA%\SAMISH) where Sync copies Setup
+                        $installDir = Join-Path $env:APPDATA "SAMISH"
+                        Add-Content -LiteralPath $logPath -Value "Checking install dir: $installDir" -ErrorAction SilentlyContinue
+                        $candidateExe = Join-Path $installDir "Setup.exe"
+                        $candidateBat = Join-Path $installDir "Setup.bat"
+                        $candidatePs1 = Join-Path $installDir "Setup.ps1"
                         if (Test-Path -LiteralPath $candidateExe) {
                             $setupPath = $candidateExe
-                        } elseif (Test-Path -LiteralPath $candidateBat) {
+                        }
+                        elseif (Test-Path -LiteralPath $candidateBat) {
                             $setupPath = $candidateBat
-                        } elseif (Test-Path -LiteralPath $candidatePs1) {
+                        }
+                        elseif (Test-Path -LiteralPath $candidatePs1) {
                             $setupPath = $candidatePs1
                         }
+                        Add-Content -LiteralPath $logPath -Value "Install dir result: $setupPath" -ErrorAction SilentlyContinue
                     }
-                }
-                
-                if (-not [string]::IsNullOrWhiteSpace($setupPath) -and (Test-Path -LiteralPath $setupPath)) {
-                    $psi = New-Object System.Diagnostics.ProcessStartInfo
-                    if ($setupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
-                        $psi.FileName = "powershell.exe"
-                        $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$setupPath`""
-                    } else {
-                        $psi.FileName = $setupPath
-                        $psi.Arguments = ""
+
+                    # Fallback: check source package parent directory
+                    if ([string]::IsNullOrWhiteSpace($setupPath) -or -not (Test-Path -LiteralPath $setupPath)) {
+                        $resolvedPackageDir = $PackageDir
+                        if ([string]::IsNullOrWhiteSpace($resolvedPackageDir)) { $resolvedPackageDir = $global:PackageDir }
+                        Add-Content -LiteralPath $logPath -Value "PackageDir resolved to: $resolvedPackageDir" -ErrorAction SilentlyContinue
+                        if (-not [string]::IsNullOrWhiteSpace($resolvedPackageDir)) {
+                            $parentDir = Split-Path -Parent $resolvedPackageDir
+                            $candidateExe = Join-Path $parentDir "Setup.exe"
+                            $candidateBat = Join-Path $parentDir "Setup.bat"
+                            $candidatePs1 = Join-Path $parentDir "Setup.ps1"
+                            Add-Content -LiteralPath $logPath -Value "Checking parent: $candidateExe, $candidateBat, $candidatePs1" -ErrorAction SilentlyContinue
+                            if (Test-Path -LiteralPath $candidateExe) {
+                                $setupPath = $candidateExe
+                            }
+                            elseif (Test-Path -LiteralPath $candidateBat) {
+                                $setupPath = $candidateBat
+                            }
+                            elseif (Test-Path -LiteralPath $candidatePs1) {
+                                $setupPath = $candidatePs1
+                            }
+                        }
                     }
-                    $psi.UseShellExecute = $true
-                    [System.Diagnostics.Process]::Start($psi) | Out-Null
-                    $script:LastSetupLaunchTime = [DateTime]::UtcNow
-                    Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
-                    return
-                }
                 
-                [System.Windows.Forms.MessageBox]::Show(
-                    "Settings application not found. Please run Setup.exe manually.",
-                    "SAMISH Settings",
-                    [System.Windows.Forms.MessageBoxButtons]::OK,
-                    [System.Windows.Forms.MessageBoxIcon]::Warning
-                ) | Out-Null
-            }
-            catch {
-                Add-Content -LiteralPath $logPath -Value "Outer catch error: $_" -ErrorAction SilentlyContinue
-                Log-Always "Failed to open settings: $($_.Exception.Message)"
-            }
-        })
+                    if (-not [string]::IsNullOrWhiteSpace($setupPath) -and (Test-Path -LiteralPath $setupPath)) {
+                        $psi = New-Object System.Diagnostics.ProcessStartInfo
+                        if ($setupPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $psi.FileName = "powershell.exe"
+                            $psi.Arguments = "-ExecutionPolicy Bypass -NoProfile -File `"$setupPath`""
+                        }
+                        else {
+                            $psi.FileName = $setupPath
+                            $psi.Arguments = ""
+                        }
+                        $psi.UseShellExecute = $true
+                        [System.Diagnostics.Process]::Start($psi) | Out-Null
+                        $script:LastSetupLaunchTime = [DateTime]::UtcNow
+                        Add-Content -LiteralPath $logPath -Value "Started Setup process: $setupPath" -ErrorAction SilentlyContinue
+                        return
+                    }
+                
+                    [System.Windows.Forms.MessageBox]::Show(
+                        "Settings application not found. Please run Setup.exe manually.",
+                        "SAMISH Settings",
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBpoxIcon]::Warning
+                    ) | Out-Null
+                }
+                catch {
+                    Add-Content -LiteralPath $logPath -Value "Outer catch error: $_" -ErrorAction SilentlyContinue
+                    Log-Always "Failed to open settings: $($_.Exception.Message)"
+                }
+            })
 
         $toggleItem.add_Click({
-            Log-Always "Tray: 'Disable/Enable helper' clicked (was enabled: $script:TrayEnabled)."
-            Set-HelperEnabled (-not $script:TrayEnabled) "TRAY MENU"
-        })
+                Log-Always "Tray: 'Disable/Enable helper' clicked (was enabled: $script:TrayEnabled)."
+                Set-HelperEnabled (-not $script:TrayEnabled) "TRAY MENU"
+            })
 
         $exitItem.add_Click({
-            Log-Always "Tray: 'Exit' clicked. Requesting engine shutdown."
-            $script:ExitRequested = $true
-        })
+                Log-Always "Tray: 'Exit' clicked. Requesting engine shutdown."
+                $script:ExitRequested = $true
+            })
     }
 
     function Notify([string]$text) {
         if ($EnableTrayIcon -and $null -ne $script:icon) {
-            try { $script:icon.ShowBalloonTip(1200,"SAMISH",$text,[System.Windows.Forms.ToolTipIcon]::Info) } catch {}
+            try { $script:icon.ShowBalloonTip(1200, "SAMISH", $text, [System.Windows.Forms.ToolTipIcon]::Info) } catch {}
         }
         Log-Always $text
     }
@@ -1493,11 +1640,13 @@ try {
             if ($null -ne $script:icon) {
                 if ($enabledNow) {
                     $script:icon.Icon = if ($script:IconActive) { $script:IconActive } else { [System.Drawing.SystemIcons]::Application }
-                } else {
+                }
+                else {
                     $script:icon.Icon = if ($script:IconDisabled) { $script:IconDisabled } else { [System.Drawing.SystemIcons]::Application }
                 }
             }
-        } catch {}
+        }
+        catch {}
 
         $stateStr = if ($enabledNow) { "ENABLED" } else { "DISABLED" }
         Log-Always ("STATE CHANGED -> " + $stateStr)
@@ -1532,9 +1681,9 @@ try {
         switch ($HotkeyMode) {
             "ScrollLock" { $vk = 0x91 }
             "PauseBreak" { $vk = 0x13 }
-            "F12"        { $vk = 0x7B }
-            "Custom"     { $vk = $CustomHotkeyVirtualKey }
-            default      { $vk = 0x91 }
+            "F12" { $vk = 0x7B }
+            "Custom" { $vk = $CustomHotkeyVirtualKey }
+            default { $vk = 0x91 }
         }
 
         $script:LastKeyDown = $false
@@ -1604,7 +1753,8 @@ try {
             }
         }
         Log-Always "Power State Interceptor successfully registered."
-    } catch {
+    }
+    catch {
         Log-Always "WARN: Failed to initialize Power State Interceptor: $_"
     }
 
@@ -1628,222 +1778,227 @@ try {
         if ($script:ExitRequested) { break }
         try {
 
-    # MAIN LOOP
-    while ($true) {
-        if ($script:ExitRequested) {
-            break
-        }
-
-        # DISABLED SHORT-CIRCUIT
-        # Process GUI messages (DoEvents), hotkey polling, and pending notifications even when disabled,
-        # while bypassing main loop logic (idle and app checks).
-        if ($script:TrayEnabled -eq $false) {
-            if ($EnableTrayIcon) {
-                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
-            }
-            if ($EnableHotkey) {
-                $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
-                if ($isDown -and -not $script:LastKeyDown) {
-                    Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
-                }
-                $script:LastKeyDown = $isDown
-            }
-            Check-PendingNotification
-            Start-Sleep -Milliseconds 100
-            continue
-        }
-
-        # Auto-Recovery check (throttled to run every 10 seconds)
-        # Run if either global auto-recovery is enabled OR any monitored app has per-app AutoRecover
-        $hasAutoRecoverMonitoredApps = $false
-        if ($script:MonitoredApps) {
-            foreach ($monApp in $script:MonitoredApps) {
-                if ($monApp.PSObject.Properties.Match('AutoRecover').Count -gt 0 -and [bool]$monApp.AutoRecover) {
-                    $hasAutoRecoverMonitoredApps = $true
+            # MAIN LOOP
+            while ($true) {
+                if ($script:ExitRequested) {
                     break
                 }
-            }
-        }
-        if (($EnableAutoRecovery -or $hasAutoRecoverMonitoredApps) -and $script:mixerStopped -eq $false) {
-            $nowTime = Get-Date
-            if ($null -eq $script:LastAutoRecoveryCheckTime) {
-                $script:LastAutoRecoveryCheckTime = $nowTime.AddSeconds(-10)
-            }
-            if (($nowTime - $script:LastAutoRecoveryCheckTime).TotalSeconds -ge 10) {
-                $script:LastAutoRecoveryCheckTime = $nowTime
-                try {
-                    # Dynamically reload configuration if config.json was updated
-                    if (Test-Path -LiteralPath $ConfigPath) {
-                        $writeTime = (Get-Item -LiteralPath $ConfigPath).LastWriteTime
-                        if ($null -eq $script:LastConfigWriteTime -or $writeTime -gt $script:LastConfigWriteTime) {
-                            $script:LastConfigWriteTime = $writeTime
-                            Log-Always "Reloading updated configuration from config.json"
-                            Apply-ConfigFromFile
+
+                # DISABLED SHORT-CIRCUIT
+                # Process GUI messages (DoEvents), hotkey polling, and pending notifications even when disabled,
+                # while bypassing main loop logic (idle and app checks).
+                if ($script:TrayEnabled -eq $false) {
+                    if ($EnableTrayIcon) {
+                        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+                    }
+                    if ($EnableHotkey) {
+                        $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                        if ($isDown -and -not $script:LastKeyDown) {
+                            Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
+                        }
+                        $script:LastKeyDown = $isDown
+                    }
+                    Check-PendingNotification
+                    Start-Sleep -Milliseconds 100
+                    continue
+                }
+
+                # Auto-Recovery check (throttled to run every 10 seconds)
+                # Run if either global auto-recovery is enabled OR any monitored app has per-app AutoRecover
+                $hasAutoRecoverMonitoredApps = $false
+                if ($script:MonitoredApps) {
+                    foreach ($monApp in $script:MonitoredApps) {
+                        if ($monApp.PSObject.Properties.Match('AutoRecover').Count -gt 0 -and [bool]$monApp.AutoRecover) {
+                            $hasAutoRecoverMonitoredApps = $true
+                            break
                         }
                     }
-                    Perform-AutoRecoveryCheck
                 }
-                catch {
-                    Log-Always "Error during auto-recovery check: $($_.Exception.Message)"
-                }
-            }
-        }
-
-        if (((Get-Date) - $lastRefresh).TotalSeconds -ge $RefreshPowerPlanEverySeconds -or -not $activeScheme) {
-            $activeScheme = Get-ActiveSchemeGuid
-            if ($activeScheme) {
-                $displayOffSeconds = Get-ACSettingSeconds $activeScheme $SUB_VIDEO $VIDEOIDLE
-                if ($displayOffSeconds -and $displayOffSeconds -gt 0) {
-                    $killThresholdSeconds = $displayOffSeconds + $DefaultPostDisplayDelaySeconds
-                } else {
-                    $killThresholdSeconds = $null
-                }
-            }
-            $lastRefresh = Get-Date
-        }
-
-        # Game-Mode Guard: update state at heartbeat frequency
-        $script:GameModeActive = Invoke-GameModeCheck -Enabled $script:GameModeEnabled -GameList $script:GameModeList
-
-        $idle = Get-IdleSeconds
-        Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds gameMode=$($script:GameModeActive) PID=$PID"
-
-        # Reset self-healing backoff after 5 minutes of stable operation
-        if ($script:engineBackoffSeconds -gt 10) {
-            $stableMinutes = ((Get-Date) - $script:engineStableStart).TotalMinutes
-            if ($stableMinutes -ge 5) {
-                $script:engineBackoffSeconds = 10  # measured in sec -- reset to initial
-            }
-        } else {
-            $script:engineStableStart = Get-Date
-        }
-
-        if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
-
-        if (-not $killThresholdSeconds) {
-            # Keep tray icon responsive even when power setting lookup fails
-            if ($EnableTrayIcon) {
-                try { [System.Windows.Forms.Application]::DoEvents() } catch {}
-            }
-            Start-Sleep -Milliseconds 100
-            continue
-        }
-
-        $blockerActive = $false
-        if (-not $script:stopLatchedThisIdleStretch -and $idle -ge ($killThresholdSeconds - $ToleranceSeconds)) {
-            # Game-Mode Guard: skip idle-based mixer shutdown while a listed game is running.
-            # WM_POWERBROADCAST suspend/resume events still fire normally (real sleep, not idle).
-            if ($script:GameModeActive) {
-                $blockerActive = $true
-                $now = Get-Date
-                if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
-                    Log-Always "Game mode active - deferring idle mixer shutdown."
-                    $script:LastBlockerLogTime = $now
-                }
-            }
-            else {
-                $blockers = Test-ActiveSleepBlockerExists
-                if ($blockers) {
-                    $blockerActive = $true
-                    $now = Get-Date
-                    if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
-                        $blockerDesc = @()
-                        foreach ($b in $blockers) {
-                            $blockerDesc += "$($b.Category) request by $($b.Type) $($b.Name)"
-                        }
-                        $blockerListString = $blockerDesc -join ", "
-                        Log-Always "Active sleep blocker detected: $blockerListString. Deferring mixer shutdown."
-                        $script:LastBlockerLogTime = $now
+                if (($EnableAutoRecovery -or $hasAutoRecoverMonitoredApps) -and $script:mixerStopped -eq $false) {
+                    $nowTime = Get-Date
+                    if ($null -eq $script:LastAutoRecoveryCheckTime) {
+                        $script:LastAutoRecoveryCheckTime = $nowTime.AddSeconds(-10)
                     }
-                } else {
-                    if (Invoke-MixerStop) {
-                        $script:mixerStopped = $true
-                        $script:mixerStoppedAt = Get-Date
-                        Write-EventLogEntry -Message "Mixer applications stopped successfully due to system idle." -EntryType "Information" -EventId 200
-                    }
-                    $script:stopLatchedThisIdleStretch = $true
-                }
-            }
-        }
-
-        if ($script:mixerStopped -and $idle -le $RestartWhenIdleLE) {
-            $elapsed = if ($script:mixerStoppedAt) { ((Get-Date) - $script:mixerStoppedAt).TotalSeconds } else { 9999 }
-            if ($elapsed -ge $RestartGuardSecondsAfterStop) {
-                if (Invoke-MixerStart) {
-                    $script:mixerStopped = $false
-                    Write-EventLogEntry -Message "Mixer applications started successfully on system wake." -EntryType "Information" -EventId 201
-
-                    # Restore preferred audio endpoints after mixer restart
-                    if (Get-Command Set-DefaultAudioDevice -ErrorAction SilentlyContinue) {
-                        if ($PreferredPlaybackDeviceGuid -or $PreferredCommDeviceGuid) {
-                            try {
-                                Set-DefaultAudioDevice -PlaybackDeviceId $PreferredPlaybackDeviceGuid -CommDeviceId $PreferredCommDeviceGuid
+                    if (($nowTime - $script:LastAutoRecoveryCheckTime).TotalSeconds -ge 10) {
+                        $script:LastAutoRecoveryCheckTime = $nowTime
+                        try {
+                            # Dynamically reload configuration if config.json was updated
+                            if (Test-Path -LiteralPath $ConfigPath) {
+                                $writeTime = (Get-Item -LiteralPath $ConfigPath).LastWriteTime
+                                if ($null -eq $script:LastConfigWriteTime -or $writeTime -gt $script:LastConfigWriteTime) {
+                                    $script:LastConfigWriteTime = $writeTime
+                                    Log-Always "Reloading updated configuration from config.json"
+                                    Apply-ConfigFromFile
+                                }
                             }
-                            catch {
-                                Log-Always "AudioEndpoint: Post-restart restore failed: $_"
+                            Perform-AutoRecoveryCheck
+                        }
+                        catch {
+                            Log-Always "Error during auto-recovery check: $($_.Exception.Message)"
+                        }
+                    }
+                }
+
+                if (((Get-Date) - $lastRefresh).TotalSeconds -ge $RefreshPowerPlanEverySeconds -or -not $activeScheme) {
+                    $activeScheme = Get-ActiveSchemeGuid
+                    if ($activeScheme) {
+                        $displayOffSeconds = Get-ACSettingSeconds $activeScheme $SUB_VIDEO $VIDEOIDLE
+                        if ($displayOffSeconds -and $displayOffSeconds -gt 0) {
+                            $killThresholdSeconds = $displayOffSeconds + $DefaultPostDisplayDelaySeconds
+                        }
+                        else {
+                            $killThresholdSeconds = $null
+                        }
+                    }
+                    $lastRefresh = Get-Date
+                }
+
+                # Game-Mode Guard: update state at heartbeat frequency
+                $script:GameModeActive = Invoke-GameModeCheck -Enabled $script:GameModeEnabled -GameList $script:GameModeList
+
+                $idle = Get-IdleSeconds
+                Log-Heartbeat "Loop: idle=$idle threshold=$killThresholdSeconds gameMode=$($script:GameModeActive) PID=$PID"
+
+                # Reset self-healing backoff after 5 minutes of stable operation
+                if ($script:engineBackoffSeconds -gt 10) {
+                    $stableMinutes = ((Get-Date) - $script:engineStableStart).TotalMinutes
+                    if ($stableMinutes -ge 5) {
+                        $script:engineBackoffSeconds = 10  # measured in sec -- reset to initial
+                    }
+                }
+                else {
+                    $script:engineStableStart = Get-Date
+                }
+
+                if ($idle -le 1) { $script:stopLatchedThisIdleStretch = $false }
+
+                if (-not $killThresholdSeconds) {
+                    # Keep tray icon responsive even when power setting lookup fails
+                    if ($EnableTrayIcon) {
+                        try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+                    }
+                    Start-Sleep -Milliseconds 100
+                    continue
+                }
+
+                $blockerActive = $false
+                if (-not $script:stopLatchedThisIdleStretch -and $idle -ge ($killThresholdSeconds - $ToleranceSeconds)) {
+                    # Game-Mode Guard: skip idle-based mixer shutdown while a listed game is running.
+                    # WM_POWERBROADCAST suspend/resume events still fire normally (real sleep, not idle).
+                    if ($script:GameModeActive) {
+                        $blockerActive = $true
+                        $now = Get-Date
+                        if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
+                            Log-Always "Game mode active - deferring idle mixer shutdown."
+                            $script:LastBlockerLogTime = $now
+                        }
+                    }
+                    else {
+                        $blockers = Test-ActiveSleepBlockerExists
+                        if ($blockers) {
+                            $blockerActive = $true
+                            $now = Get-Date
+                            if (-not $script:LastBlockerLogTime -or ($now - $script:LastBlockerLogTime).TotalSeconds -ge 30) {
+                                $blockerDesc = @()
+                                foreach ($b in $blockers) {
+                                    $blockerDesc += "$($b.Category) request by $($b.Type) $($b.Name)"
+                                }
+                                $blockerListString = $blockerDesc -join ", "
+                                Log-Always "Active sleep blocker detected: $blockerListString. Deferring mixer shutdown."
+                                $script:LastBlockerLogTime = $now
+                            }
+                        }
+                        else {
+                            if (Invoke-MixerStop) {
+                                $script:mixerStopped = $true
+                                $script:mixerStoppedAt = Get-Date
+                                Write-EventLogEntry -Message "Mixer applications stopped successfully due to system idle." -EntryType "Information" -EventId 200
+                            }
+                            $script:stopLatchedThisIdleStretch = $true
+                        }
+                    }
+                }
+
+                if ($script:mixerStopped -and $idle -le $RestartWhenIdleLE) {
+                    $elapsed = if ($script:mixerStoppedAt) { ((Get-Date) - $script:mixerStoppedAt).TotalSeconds } else { 9999 }
+                    if ($elapsed -ge $RestartGuardSecondsAfterStop) {
+                        if (Invoke-MixerStart) {
+                            $script:mixerStopped = $false
+                            Write-EventLogEntry -Message "Mixer applications started successfully on system wake." -EntryType "Information" -EventId 201
+
+                            # Restore preferred audio endpoints after mixer restart
+                            if (Get-Command Set-DefaultAudioDevice -ErrorAction SilentlyContinue) {
+                                if ($PreferredPlaybackDeviceGuid -or $PreferredCommDeviceGuid) {
+                                    try {
+                                        Set-DefaultAudioDevice -PlaybackDeviceId $PreferredPlaybackDeviceGuid -CommDeviceId $PreferredCommDeviceGuid
+                                    }
+                                    catch {
+                                        Log-Always "AudioEndpoint: Post-restart restore failed: $_"
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
 
-        # Dynamic sleep throttle calculation
-        $sleepMs = 100
-        if (-not $script:mixerStopped -and $killThresholdSeconds) {
-            $threshold = $killThresholdSeconds - $ToleranceSeconds
-            $timeToThreshold = $threshold - $idle
+                # Dynamic sleep throttle calculation
+                $sleepMs = 100
+                if (-not $script:mixerStopped -and $killThresholdSeconds) {
+                    $threshold = $killThresholdSeconds - $ToleranceSeconds
+                    $timeToThreshold = $threshold - $idle
 
-            if ($blockerActive) {
-                $sleepMs = 5000
-            }
-            elseif ($timeToThreshold -gt 30) {
-                $sleepMs = 10000
-            }
-            elseif ($timeToThreshold -gt 15) {
-                $sleepMs = 5000
-            }
-            elseif ($timeToThreshold -gt 5) {
-                $sleepMs = 2000
-            }
-            elseif ($timeToThreshold -gt 2) {
-                $sleepMs = 500
-            }
-        }
-
-        # Chunked sleep: check hotkey (and tray) every 100ms so toggle is always responsive,
-        # even when the main loop interval is several seconds.
-        $sleptMs = 0
-        while ($sleptMs -lt $sleepMs) {
-            try { [System.Windows.Forms.Application]::DoEvents() } catch {}
-
-            if ($script:ExitRequested -or $script:TrayEnabled -eq $false) {
-                break
-            }
-
-            if ($EnableHotkey) {
-                $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
-                if ($isDown -and -not $script:LastKeyDown) {
-                    Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
+                    if ($blockerActive) {
+                        $sleepMs = 5000
+                    }
+                    elseif ($timeToThreshold -gt 30) {
+                        $sleepMs = 10000
+                    }
+                    elseif ($timeToThreshold -gt 15) {
+                        $sleepMs = 5000
+                    }
+                    elseif ($timeToThreshold -gt 5) {
+                        $sleepMs = 2000
+                    }
+                    elseif ($timeToThreshold -gt 2) {
+                        $sleepMs = 500
+                    }
                 }
-                $script:LastKeyDown = $isDown
+
+                # Chunked sleep: check hotkey (and tray) every 100ms so toggle is always responsive,
+                # even when the main loop interval is several seconds.
+                $sleptMs = 0
+                while ($sleptMs -lt $sleepMs) {
+                    try { [System.Windows.Forms.Application]::DoEvents() } catch {}
+
+                    if ($script:ExitRequested -or $script:TrayEnabled -eq $false) {
+                        break
+                    }
+
+                    if ($EnableHotkey) {
+                        $isDown = ([SamishKeyState]::GetAsyncKeyState($vk) -band 0x8000) -ne 0
+                        if ($isDown -and -not $script:LastKeyDown) {
+                            Set-HelperEnabled (-not $script:TrayEnabled) "HOTKEY"
+                        }
+                        $script:LastKeyDown = $isDown
+                    }
+                    Check-PendingNotification
+
+                    Start-Sleep -Milliseconds 100
+                    $sleptMs += 100
+                }
             }
-            Check-PendingNotification
+            # End of inner main loop -- clean exit via $ExitRequested
+            break  # Exit the outer self-healing loop too
 
-            Start-Sleep -Milliseconds 100
-            $sleptMs += 100
         }
-    }
-    # End of inner main loop -- clean exit via $ExitRequested
-    break  # Exit the outer self-healing loop too
-
-        } catch {
+        catch {
             # Self-healing: log the error and retry with exponential backoff
             $errMsg = "Engine loop error (will retry in $($script:engineBackoffSeconds)s): $($_.Exception.Message)"
             try { Log-Always $errMsg } catch {}
             try {
                 Write-EventLogEntry -Message $errMsg -EntryType "Error" -EventId 500
-            } catch {}
+            }
+            catch {}
 
             Start-Sleep -Seconds $script:engineBackoffSeconds
             $script:engineBackoffSeconds = [Math]::Min($script:engineBackoffSeconds * 2, $script:engineMaxBackoff)
@@ -1859,19 +2014,22 @@ finally {
         try {
             $script:PowerForm.Close()
             $script:PowerForm.Dispose()
-        } catch {}
+        }
+        catch {}
     }
     if ($null -ne $script:icon) {
         try {
             $script:icon.Visible = $false
             $script:icon.Dispose()
-        } catch {}
+        }
+        catch {}
     }
     if ($null -ne $script:mutex) {
         try {
             $script:mutex.ReleaseMutex()
             $script:mutex.Dispose()
-        } catch {}
+        }
+        catch {}
     }
     # Clean up PID file
     if ($script:PidFilePath -and (Test-Path -LiteralPath $script:PidFilePath)) {
